@@ -1,0 +1,38 @@
+name: "Bug"
+description: Something is broken in OpenFrost
+title: "[bug] <short summary>"
+labels: ["type: bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## What broke
+        Provide steps to reproduce. Attach logs from the daemon / Control Center if possible.
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: 1. Create workspace ... 2. Send ... 3. Observe ...
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Windows version, Node LTS version, which app (web/api/telegram/daemon).
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs / stack trace

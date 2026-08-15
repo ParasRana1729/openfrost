@@ -1,0 +1,37 @@
+name: "Design decision (ADR)"
+description: Record a decision that shapes architecture or security
+title: "[adr] <short summary>"
+labels: ["type: adr"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Architecture Decision Record
+        Decisions are **recorded, not discussed endlessly**. One owner proposes, the leader reviews, and the team is notified.
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: What problem or constraint forces this decision?
+    validations:
+      required: true
+  - type: textarea
+    id: options
+    attributes:
+      label: Options considered
+      value: |
+        - **Option A:** pros / cons
+        - **Option B:** pros / cons
+    validations:
+      required: true
+  - type: textarea
+    id: decision
+    attributes:
+      label: Decision
+    validations:
+      required: true
+  - type: textarea
+    id: consequences
+    attributes:
+      label: Consequences
+      description: What becomes easier / harder, and what does it unblock?

@@ -1,0 +1,38 @@
+name: "Feature"
+description: New product capability for OpenFrost
+title: "[feat] <short summary>"
+labels: ["type: feature"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Acceptance criteria
+        - [ ] *(one owner fills these before starting)*
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Why is this needed? Link the relevant section of the spec (`docs/ai-os-project-spec.md`).
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: What will change, and in which apps/packages?
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Checkboxes a reviewer can verify. Be specific and testable.
+      value: |
+        - [ ] —
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Edge cases, risks, open questions.

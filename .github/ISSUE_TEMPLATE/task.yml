@@ -1,0 +1,36 @@
+name: "Technical task"
+description: Refactor, plumbing, infrastructure, or research required to unblock an epic
+title: "[task] <short summary>"
+labels: ["type: task"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Technical task
+        A concrete unit of work that does not change product behaviour by itself.
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: What problem does this solve, and for which epic does it unblock work?
+    validations:
+      required: true
+  - type: textarea
+    id: approach
+    attributes:
+      label: Proposed approach
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      value: |
+        - [ ] —
+    validations:
+      required: true
+  - type: textarea
+    id: deps
+    attributes:
+      label: Impact / dependencies
+      description: Which apps & packages are touched, which modules depend on this?

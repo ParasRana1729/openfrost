@@ -1,0 +1,10 @@
+# Cursor Rules for OpenFrost
+
+Read and strictly adhere to `AGENTS.md` and `docs/ai-os-project-spec.md`.
+
+Key rules:
+1. Always write strict TypeScript with Zod schemas from `packages/domain`.
+2. Do not introduce any Docker dependencies or cloud DBs for the local runtime (use SQLite + Drizzle).
+3. Secrets (API keys, bot token) must use DPAPI encryption; never commit or print plaintext keys.
+4. Follow 3-tier risk classification for tools (`auto`, `telegram`, `local`). High-risk actions require local Control Center authorization.
+5. All new features must correspond to an assigned issue in `backlog/` and pass `pnpm lint && pnpm test && pnpm build`.
