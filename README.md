@@ -77,5 +77,9 @@ If you are an AI coding assistant (Cursor, Claude Code, GitHub Copilot, Cline, A
 
 ---
 
-## 📄 License & Roadmap
-- See [`backlog/`](backlog/) for the complete 4-sprint roadmap (Iteration 0 through Iteration 3).
+## 📄 Documentation & Roadmap
+- **[Product One-Pager](docs/product-one-pager.md)** — Audience, scope, MVP definition, and non-goals.
+- **[Technical Architecture Specification](docs/ai-os-project-spec.md)** — Full technical spec and decision log.
+- **[AI Developer Guide](docs/AI_DEVELOPER_GUIDE.md)** — Step-by-step instructions for coding with AI assistants.
+- **[Issue Backlog](backlog/)** — 28 sequenced issue descriptions across 4 iterations.
+
