@@ -16,6 +16,10 @@ out
 *.db-shm
 .openfrost
 *.log
+*.pdf
+docs/openfrost-sprint-guide.html
+scripts/generate_pdf.py
+
 
 # Environment & Secrets (NEVER commit secrets)
 .env
