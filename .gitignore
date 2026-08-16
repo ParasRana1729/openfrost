@@ -8,6 +8,8 @@ build
 .next
 out
 .turbo
+*.tsbuildinfo
+
 
 # Local databases & OpenFrost state
 *.db

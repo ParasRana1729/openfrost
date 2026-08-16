@@ -9,6 +9,7 @@
 OpenFrost is a self-hosted personal **AI Operating System** for Windows. It isolates workspaces (Coding, Learning, General, Custom) into distinct "AI apps"—each with its own system prompt, isolated Markdown memory, model overrides, and scoped tool permissions.
 
 ### Monorepo Structure (`pnpm` workspaces)
+
 ```text
 apps/
   web/          # Next.js App Router dashboard (React) — local Control Center
@@ -93,6 +94,7 @@ When an AI agent is instructed to implement an issue:
 ## 5. Non-Goals (Explicitly OUT of MVP Scope)
 
 Do **NOT** implement or add dependencies for:
+
 - Cloud relays or remote hosted databases.
 - Multi-user authentication beyond local admin password.
 - Group chat bot capabilities (paired direct message only).

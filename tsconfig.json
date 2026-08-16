@@ -1,0 +1,14 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/domain" },
+    { "path": "./packages/db" },
+    { "path": "./packages/agent" },
+    { "path": "./packages/cli" },
+    { "path": "./packages/ui" },
+    { "path": "./apps/api" },
+    { "path": "./apps/telegram" },
+    { "path": "./apps/daemon" },
+    { "path": "./apps/web" }
+  ]
+}

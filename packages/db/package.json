@@ -1,0 +1,23 @@
+{
+  "name": "@openfrost/db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --config vitest.config.ts"
+  },
+  "dependencies": {
+    "@openfrost/domain": "workspace:*"
+  },
+  "devDependencies": {
+    "vitest": "^3.0.9"
+  }
+}

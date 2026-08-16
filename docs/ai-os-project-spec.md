@@ -1,4 +1,5 @@
 # OpenFrost — AI Operating System
+
 ## Project Specification (MVP, v1)
 
 **Status:** Confirmed · **Audience:** Power users · **Platform:** Windows-first
@@ -10,7 +11,7 @@
 
 OpenFrost is a **personal AI operating system** that turns a user's own PC into a
 self-hosted AI workspace platform. Instead of "one chatbot," each workspace is an
-isolated AI *app* — with its own instructions, personality, memory, models, tools,
+isolated AI _app_ — with its own instructions, personality, memory, models, tools,
 and permissions — much like an OS has different apps for different tasks.
 
 The user controls everything locally. A **Telegram DM bot** is the full remote
@@ -18,11 +19,13 @@ interface, not a limited companion; the **local browser Control Center** is the
 dashboard for management, approvals, and audit.
 
 ### MVP product definition
+
 > One always-on, self-hosted AI OS on the user's PC, with isolated custom workspaces
 > (Coding, Learning, General + custom), synced Telegram/web chats, persistent hybrid
 > memory, and approval-gated real-PC tools.
 
 ### MVP demo acceptance (definition of done)
+
 1. A user creates a Coding and a Learning workspace with different personalities.
 2. They pair Telegram with a one-time code and send a message to the active workspace.
 3. The chat appears instantly in the web dashboard (sync).
@@ -37,50 +40,50 @@ dashboard for management, approvals, and audit.
 
 ## 2. Roles
 
-| Role | Owner | Accountable for |
-|---|---|---|
-| **Leader** | You | Product, architecture, scope, integration, releases, backlog triage |
-| **Agent Runtime** | Member 2 | Planning loop, tool execution, workspace policies, memory, providers |
-| **Control Center UI** | Member 3 | Dashboard, approvals, activity timeline, workspace editor |
-| **Platform** | Member 4 | Local data, secrets, auth, Telegram, scheduler, daemon/CLI, backups |
+| Role                  | Owner    | Accountable for                                                      |
+| --------------------- | -------- | -------------------------------------------------------------------- |
+| **Leader**            | You      | Product, architecture, scope, integration, releases, backlog triage  |
+| **Agent Runtime**     | Member 2 | Planning loop, tool execution, workspace policies, memory, providers |
+| **Control Center UI** | Member 3 | Dashboard, approvals, activity timeline, workspace editor            |
+| **Platform**          | Member 4 | Local data, secrets, auth, Telegram, scheduler, daemon/CLI, backups  |
 
 ---
 
 ## 3. Core decisions (confirmation log)
 
-| Q | Decision |
-|---|---|
-| First user | Power users / developers. |
-| Product identity | Workspace-based AI OS; "different AI apps for different tasks." |
-| Self-hosting | On the user's own PC first; Docker/VPS later. |
-| Remote reach | Telegram is a **full** remote interface (same power as the PC bot). |
-| Primary interface | Local browser Control Center at `http://localhost:<port>`. |
-| Workspace model | Isolated AI profile: instructions, memory, chats, tools, permissions, local folder. |
-| PC control scope | Local files, terminal commands, browser tasks — **within explicitly granted workspaces**. No screen/mouse/OS automation in MVP. |
-| Model hosting | Cloud models (OpenAI, Anthropic) via user's own API keys; architecture ready for local models later. |
-| General context | Sees **promoted summaries** from other workspaces, never raw chats/files. |
-| Folder access | User **explicitly selects** allowed roots per Coding workspace. |
-| Telegram approval | Approve/reject directly in Telegram inline buttons; **high-risk** actions additionally require local Control Center approval. |
-| Telegram scope | Paired **direct messages only**. No groups/public in MVP. |
-| First OS | **Windows first.** |
-| Liveness | **Always-on daemon** at sign-in; Telegram online whenever PC + daemon run. Uses **long polling** (no webhook). |
-| Browser model | One **AI OS-managed Chromium profile per workspace**; user signs in manually; assistant never handles passwords/2FA. |
-| High-risk baseline | Delete/overwrite files, commands outside granted folders, new network destinations, credential changes, system-level commands. |
-| Providers | OpenAI + Anthropic initially, **per-workspace override** over a global default. |
-| Storage | OpenClaw-style **hybrid**: SQLite state + editable Markdown workspace files. |
-| Workspace subject | Start from **template** (General/Learning/Coding/custom) then **toggle capabilities** + add **custom instructions**. |
-| Proactive work | **User-created schedules only**; results → Telegram + activity log. |
-| Memory | Visible, editable workspace **Markdown summaries** saved automatically; user can promote facts to General. |
-| Daemon lifecycle | `openfrost onboard --install-daemon` registers a Windows **Scheduled Task** at sign-in; `start`/`stop`/`status` control it. |
-| Concurrency | **One active run per workspace**; extra requests queue. |
-| Offline | Pending Telegram messages processed on reconnect with a visible "delayed" notice. |
-| Conversations | Multiple **named chats per workspace**; Telegram uses active one via `/new` and `/chats`. |
-| Terminal execution | Runs as the signed-in Windows user (OpenClaw exec-style) within workspace-approved folder roots, recorded + approval-gated. |
-| Secrets | Encrypted with Windows **DPAPI / Credential Manager**; decrypted only for the signed-in owner. |
-| Missed schedules | Stay **pending**; user approves/skips at next login via Telegram buttons (also recorded). |
-| Control Center auth | Local admin password/session by default; explicit dev-only no-auth option. |
-| Backups | Automatic encrypted local backups + `openfrost backup create` / `restore`. |
-| Extensibility | Fixed core tools only in MVP. No plugin marketplace / user-written tools yet. |
+| Q                   | Decision                                                                                                                        |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| First user          | Power users / developers.                                                                                                       |
+| Product identity    | Workspace-based AI OS; "different AI apps for different tasks."                                                                 |
+| Self-hosting        | On the user's own PC first; Docker/VPS later.                                                                                   |
+| Remote reach        | Telegram is a **full** remote interface (same power as the PC bot).                                                             |
+| Primary interface   | Local browser Control Center at `http://localhost:<port>`.                                                                      |
+| Workspace model     | Isolated AI profile: instructions, memory, chats, tools, permissions, local folder.                                             |
+| PC control scope    | Local files, terminal commands, browser tasks — **within explicitly granted workspaces**. No screen/mouse/OS automation in MVP. |
+| Model hosting       | Cloud models (OpenAI, Anthropic) via user's own API keys; architecture ready for local models later.                            |
+| General context     | Sees **promoted summaries** from other workspaces, never raw chats/files.                                                       |
+| Folder access       | User **explicitly selects** allowed roots per Coding workspace.                                                                 |
+| Telegram approval   | Approve/reject directly in Telegram inline buttons; **high-risk** actions additionally require local Control Center approval.   |
+| Telegram scope      | Paired **direct messages only**. No groups/public in MVP.                                                                       |
+| First OS            | **Windows first.**                                                                                                              |
+| Liveness            | **Always-on daemon** at sign-in; Telegram online whenever PC + daemon run. Uses **long polling** (no webhook).                  |
+| Browser model       | One **AI OS-managed Chromium profile per workspace**; user signs in manually; assistant never handles passwords/2FA.            |
+| High-risk baseline  | Delete/overwrite files, commands outside granted folders, new network destinations, credential changes, system-level commands.  |
+| Providers           | OpenAI + Anthropic initially, **per-workspace override** over a global default.                                                 |
+| Storage             | OpenClaw-style **hybrid**: SQLite state + editable Markdown workspace files.                                                    |
+| Workspace subject   | Start from **template** (General/Learning/Coding/custom) then **toggle capabilities** + add **custom instructions**.            |
+| Proactive work      | **User-created schedules only**; results → Telegram + activity log.                                                             |
+| Memory              | Visible, editable workspace **Markdown summaries** saved automatically; user can promote facts to General.                      |
+| Daemon lifecycle    | `openfrost onboard --install-daemon` registers a Windows **Scheduled Task** at sign-in; `start`/`stop`/`status` control it.     |
+| Concurrency         | **One active run per workspace**; extra requests queue.                                                                         |
+| Offline             | Pending Telegram messages processed on reconnect with a visible "delayed" notice.                                               |
+| Conversations       | Multiple **named chats per workspace**; Telegram uses active one via `/new` and `/chats`.                                       |
+| Terminal execution  | Runs as the signed-in Windows user (OpenClaw exec-style) within workspace-approved folder roots, recorded + approval-gated.     |
+| Secrets             | Encrypted with Windows **DPAPI / Credential Manager**; decrypted only for the signed-in owner.                                  |
+| Missed schedules    | Stay **pending**; user approves/skips at next login via Telegram buttons (also recorded).                                       |
+| Control Center auth | Local admin password/session by default; explicit dev-only no-auth option.                                                      |
+| Backups             | Automatic encrypted local backups + `openfrost backup create` / `restore`.                                                      |
+| Extensibility       | Fixed core tools only in MVP. No plugin marketplace / user-written tools yet.                                                   |
 
 ---
 
@@ -107,6 +110,7 @@ infra/
 ```
 
 ### Data flow
+
 ```mermaid
 flowchart LR
   TG[Telegram] --> API[API]
@@ -124,6 +128,7 @@ flowchart LR
 ```
 
 ### Storage layout (confirmed hybrid)
+
 ```
 %USERPROFILE%\.openfrost\            protected app state
   config.json                        settings (not secrets)
@@ -143,6 +148,7 @@ flowchart LR
 ```
 
 ### Key components
+
 - **Next.js App Router** — Control Center dashboard + workspace editor.
 - **grammY** — TypeScript Telegram bot (long polling; inline approval buttons).
 - **better-sqlite3 + Drizzle ORM** — typed local SQLite access, migrations.

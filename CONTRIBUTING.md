@@ -17,6 +17,7 @@ Thank you for contributing! Whether you are a human engineer or an AI coding ass
 ## 2. Commit Message Guidelines
 
 Use conventional commits:
+
 - `feat(platform): add monorepo pnpm workspaces setup (#3)`
 - `feat(domain): add user and workspace zod schema contracts (#7)`
 - `fix(telegram): handle long polling reconnect backoff (#9)`
