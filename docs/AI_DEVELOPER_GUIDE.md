@@ -69,7 +69,7 @@ Please:
 ```
 
 > **Example for Issue #7:**
-> *"I am working on OpenFrost. Please read AGENTS.md and docs/ai-os-project-spec.md. I am assigned to implement Issue #7 (backlog/007-domain-schema.md). Please implement all domain entities with Zod schemas and tests."*
+> _"I am working on OpenFrost. Please read AGENTS.md and docs/ai-os-project-spec.md. I am assigned to implement Issue #7 (backlog/007-domain-schema.md). Please implement all domain entities with Zod schemas and tests."_
 
 ---
 
@@ -92,7 +92,8 @@ pnpm build
 ```
 
 👉 **If any command shows an error**, simply copy-paste the error message back to the AI and say:
-> *"The tests/build failed with this error: [paste error here]. Please fix it."*
+
+> _"The tests/build failed with this error: [paste error here]. Please fix it."_
 
 ---
 
@@ -101,11 +102,13 @@ pnpm build
 Once everything passes (`pnpm test` and `pnpm build` are green):
 
 1. **Stage and commit your changes**:
+
    ```bash
    git add .
    git commit -m "feat(<area>): describe what you built (#<issue_number>)"
    ```
-   *(Example: `git commit -m "feat(platform): setup monorepo pnpm workspaces (#3)"`)*
+
+   _(Example: `git commit -m "feat(platform): setup monorepo pnpm workspaces (#3)"`)_
 
 2. **Push your branch to GitHub**:
    ```bash
@@ -142,9 +145,9 @@ Once the Leader reviews and merges your Pull Request:
 
 ## 🆘 Quick Troubleshooting & FAQ
 
-| Problem | Solution |
-|---|---|
-| *The AI is trying to use Docker or Postgres* | Remind the AI: *"Per AGENTS.md, OpenFrost uses SQLite with Drizzle ORM and runs natively on Windows. Do not use Docker or PostgreSQL."* |
-| *Git says "fatal: not a git repository"* | Make sure your terminal is inside the `openfrost` folder (`cd openfrost`). |
-| *I have merge conflicts with `main`* | Run `git pull origin main` and ask your AI: *"Help me resolve these git merge conflicts."* |
-| *I don't know what to build next* | Check your assigned issues on [GitHub Issues](https://github.com/ParasRana1729/openfrost/issues) or consult the [Engineering Roadmap](../README.md). |
+| Problem                                      | Solution                                                                                                                                             |
+| -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| _The AI is trying to use Docker or Postgres_ | Remind the AI: _"Per AGENTS.md, OpenFrost uses SQLite with Drizzle ORM and runs natively on Windows. Do not use Docker or PostgreSQL."_              |
+| _Git says "fatal: not a git repository"_     | Make sure your terminal is inside the `openfrost` folder (`cd openfrost`).                                                                           |
+| _I have merge conflicts with `main`_         | Run `git pull origin main` and ask your AI: _"Help me resolve these git merge conflicts."_                                                           |
+| _I don't know what to build next_            | Check your assigned issues on [GitHub Issues](https://github.com/ParasRana1729/openfrost/issues) or consult the [Engineering Roadmap](../README.md). |

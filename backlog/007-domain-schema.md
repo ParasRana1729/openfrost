@@ -9,9 +9,11 @@ depends_on: [006]
 ---
 
 ## Context
+
 Single source of truth for the data shapes every app shares (spec §5). Define entities + enums + Zod schemas in `packages/domain`; this is the API contract for the whole MVP. Zero behaviour here — just types & validation.
 
 ## Entities
+
 - Workspace (template, instructions, persona, model override, capability toggles, allowed folder roots, telegramAllowed)
 - Conversation (named, per-workspace)
 - Message (channel: web|telegram, status, isDelayed)
@@ -22,6 +24,7 @@ Single source of truth for the data shapes every app shares (spec §5). Define e
 - MemoryRecord (workspaceId, scope: workspace|general, promoted flag)
 
 ## Acceptance criteria
+
 - [ ] All entities exported from `packages/domain` with Zod schemas + TS types.
 - [ ] Enums match the permission classes and high-risk baseline in spec §6.
 - [ ] Unit tests: each schema rejects obviously invalid payloads.

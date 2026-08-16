@@ -9,9 +9,11 @@ depends_on: [001, 005, 008, 012, 014, 017, 018, 019, 023, 024, 026]
 ---
 
 ## Context
+
 The MVP demo (spec §1) is the shared definition of done. This issue turns the 7 acceptance points into a scripted, repeatable runbook the leader drives with the team — not an unplanned "let's see what works".
 
 ## Scope
+
 - Scripted demo scenario (from spec §1):
   1. Create Coding + Learning workspaces with different personalities.
   2. Pair Telegram via one-time code; send a message to the active workspace.
@@ -24,6 +26,7 @@ The MVP demo (spec §1) is the shared definition of done. This issue turns the 7
 - Postmortem checklist: each failed demo point becomes a follow-up issue.
 
 ## Acceptance criteria
+
 - [ ] All 7 demo points pass in a single 30-minute run on a clean machine.
 - [ ] Runbook committed and reproducible by any member.
 - [ ] Any failure produced a tracked issue with one owner before this issue closes.
