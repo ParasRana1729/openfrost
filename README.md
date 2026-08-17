@@ -1,4 +1,5 @@
 # ❄️ OpenFrost — Personal AI Operating System
+[![CI](https://github.com/ParasRana1729/openfrost/actions/workflows/ci.yml/badge.svg)](https://github.com/ParasRana1729/openfrost/actions/workflows/ci.yml)
 
 > **A self-hosted, goal-driven personal AI Operating System for Windows power users.** Workspaces as apps, real-time sync between Telegram and local Control Center, and granular approval-gated tool execution.
 
@@ -46,7 +47,7 @@ openfrost/
 
 ### Prerequisites (Windows 10/11)
 
-1. **Node.js LTS (v20+)** — [nodejs.org](https://nodejs.org/) (~5 min)
+1. **Node.js LTS (v22+)** — [nodejs.org](https://nodejs.org/) (~5 min)
 2. **pnpm** — after Node is installed, run in PowerShell:
    ```powershell
    npm install -g pnpm
