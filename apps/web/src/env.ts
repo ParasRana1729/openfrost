@@ -10,4 +10,3 @@ export function getWebEnv(env: NodeJS.ProcessEnv = process.env): WebEnv {
 export function resetWebEnvForTests(): void {
   cachedEnv = undefined;
 }
-"const unused = 1;" 
