@@ -1,6 +1,3 @@
-export const API_BASE =
-  process.env.NEXT_PUBLIC_OPENFROST_API_URL ?? 'http://127.0.0.1:8787';
-
 export class ApiError extends Error {
   constructor(
     public readonly status: number,
@@ -12,7 +9,9 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
+  // Same-origin only: the Next server proxies /api to the local service
+  // (next.config.ts), so the session cookie is always first-party.
+  const res = await fetch(path, {
     ...init,
     credentials: 'include',
     headers: {

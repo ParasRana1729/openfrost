@@ -34,7 +34,8 @@ export function newCsrfToken(): string {
   return randomBytes(32).toString('hex');
 }
 
-function tokensMatch(a: string, b: string): boolean {
+/** Constant-time comparison for secret values of equal length. */
+export function tokensMatch(a: string, b: string): boolean {
   const ha = createHash('sha256').update(a).digest();
   const hb = createHash('sha256').update(b).digest();
   return timingSafeEqual(ha, hb);

@@ -54,6 +54,10 @@ function powershellScript(op: 'protect' | 'unprotect', entropyB64: string): stri
   ].join('\n');
 }
 
+/** A hung PowerShell (e.g. AV interference) must not leave API requests
+ * pending forever: kill the child and fail closed. */
+const POWERSHELL_TIMEOUT_MS = 15_000;
+
 function runPowerShell(
   op: 'protect' | 'unprotect',
   purpose: string,
@@ -75,10 +79,25 @@ function runPowerShell(
     );
     let stdout = '';
     let stderr = '';
+    const timer = setTimeout(() => {
+      child.kill();
+      reject(
+        new DpapiUnavailableError(
+          `PowerShell ${op} timed out after ${POWERSHELL_TIMEOUT_MS} ms`,
+        ),
+      );
+    }, POWERSHELL_TIMEOUT_MS);
     child.stdout.on('data', (chunk: Buffer) => (stdout += chunk.toString('utf8')));
     child.stderr.on('data', (chunk: Buffer) => (stderr += chunk.toString('utf8')));
-    child.on('error', (err) => reject(new DpapiUnavailableError(err.message)));
+    // Killing the child can surface EPIPE on stdin; the timeout rejection
+    // already covers this case.
+    child.stdin.on('error', () => {});
+    child.on('error', (err) => {
+      clearTimeout(timer);
+      reject(new DpapiUnavailableError(err.message));
+    });
     child.on('close', (code) => {
+      clearTimeout(timer);
       if (code !== 0) {
         reject(
           new DpapiUnavailableError(

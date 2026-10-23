@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ApiError, mutate } from '../../lib/api';
+import { ApiError, getJson, mutate } from '../../lib/api';
+import type { SessionInfo } from '../../lib/api';
 import { useSession } from '../../lib/useSession';
 
 export default function LoginPage() {
@@ -28,6 +29,17 @@ export default function LoginPage() {
         body: { username: 'owner', password },
         csrfToken: null,
       });
+      // A 200 only means the API accepted the password; if the browser is
+      // not keeping the session cookie, the owner would otherwise loop on
+      // this page with no explanation.
+      const session = await getJson<SessionInfo>('/api/auth/session');
+      if (!session.authenticated) {
+        setError(
+          'Signed in, but this browser is not keeping the session cookie. Allow cookies for this site and try again.',
+        );
+        setBusy(false);
+        return;
+      }
       router.replace('/');
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Login failed');

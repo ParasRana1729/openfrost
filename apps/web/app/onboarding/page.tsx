@@ -2,7 +2,8 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ApiError, mutate } from '../../lib/api';
+import { ApiError, getJson, mutate } from '../../lib/api';
+import type { SessionInfo } from '../../lib/api';
 
 /**
  * First-run onboarding. The disclosures below are a product requirement
@@ -34,6 +35,16 @@ export default function OnboardingPage() {
         body: { username: 'owner', password },
         csrfToken: null,
       });
+      // Same diagnostic as the login page: a 201 does not prove the browser
+      // stored the session cookie.
+      const session = await getJson<SessionInfo>('/api/auth/session');
+      if (!session.authenticated) {
+        setError(
+          'Account created, but this browser is not keeping the session cookie. Allow cookies for this site and sign in again.',
+        );
+        setBusy(false);
+        return;
+      }
       router.replace('/');
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Setup failed');

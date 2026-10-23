@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import type { Event, Task } from '@openfrost/domain';
 import { ApiError, getJson, mutate } from '../lib/api';
+import { formatTimestamp } from '../lib/format';
 import { useSession } from '../lib/useSession';
 
 interface TasksResponse {
@@ -108,7 +109,7 @@ export default function HomePage() {
         ) : (
           events.map((event) => (
             <div className="event" key={event.id}>
-              <code>{event.type}</code> {event.createdAt}
+              <code>{event.type}</code> {formatTimestamp(event.createdAt)}
               {event.taskId ? ` · task ${event.taskId.slice(0, 8)}…` : ''}
             </div>
           ))

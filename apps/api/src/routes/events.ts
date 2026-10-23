@@ -16,12 +16,22 @@ export const makeEventRoutes = (ctx: AppContext): FastifyPluginAsync => async (a
   app.get('/events/stream', { logLevel: 'warn' }, (request, reply) => {
     reply.hijack();
     const response = reply.raw;
-    response.writeHead(200, {
+    // reply.hijack() discards the headers @fastify/cors already set on the
+    // reply, so a cross-origin EventSource would be refused by the browser.
+    // The root origin guard has already validated Origin against the
+    // allowlist; echo it back for browser clients.
+    const headers: Record<string, string> = {
       'content-type': 'text/event-stream; charset=utf-8',
       'cache-control': 'no-cache, no-transform',
       connection: 'keep-alive',
       'x-accel-buffering': 'no',
-    });
+    };
+    const origin = request.headers.origin;
+    if (typeof origin === 'string' && origin.length > 0) {
+      headers['access-control-allow-origin'] = origin;
+      headers['access-control-allow-credentials'] = 'true';
+    }
+    response.writeHead(200, headers);
     response.write('retry: 3000\n\n');
     const unsubscribe = ctx.bus.subscribe((event) => {
       response.write(
