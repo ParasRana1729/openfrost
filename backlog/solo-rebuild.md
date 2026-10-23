@@ -1,0 +1,192 @@
+# OpenFrost — Solo rebuild backlog
+
+- **Specification:** [v0.1 solo rebuild](../docs/ai-os-project-spec.md)
+- **Owner for every item:** ParasRana1729
+- **Current assignment:** S00, specification-only baseline
+
+These are local backlog identifiers, not GitHub issue numbers. Only S00 is in
+scope for the current reset. S01–S07 are planned, unimplemented
+work; ownership is not permission for an agent to start all of them or publish
+anything. Implement the next explicitly assigned item in dependency order.
+
+There is no implementation or runnable toolchain in this baseline. Documentation
+describes intended behavior; verify actual code and checks before claiming progress.
+
+## S00 — Establish the clean specification-only baseline
+
+- **Status:** Complete (specification-only reset); no runtime implementation
+- **Depends on:** None
+
+Start with one personal assistant, a local web interface, and three concrete
+workflows for a solo builder. Keep only the approved specification, delivery plan,
+Git hygiene, and minimal human/agent guidance.
+
+### Acceptance criteria
+
+- [x] The spec identifies one owner, Windows-first local execution, one assistant,
+      project-scoped context, and OpenAI as the initial provider.
+- [x] Research briefs, project updates, and weekly planning have observable outcomes.
+- [x] The one-pager, README, contributor guidance, and agent instructions point to
+      the approved scope and explicitly state that no implementation exists.
+- [x] The backlog defines ordered work, dependencies, and acceptance gates.
+- [x] No application sources, package manifests, automation scripts, build
+      configuration, or CI workflows remain in the baseline.
+- [x] The baseline starts from one parentless commit with no recovery branch;
+      application data outside this repository is untouched.
+
+## S01 — Establish the minimal local task foundation
+
+- **Status:** Planned
+- **Depends on:** S00
+
+Implement only the foundation needed to persist and safely execute a first task.
+Create the minimal workspace from scratch; do not introduce a separate queue service.
+Add domain entities incrementally, only when the assigned slice requires them.
+
+### Acceptance criteria
+
+- [ ] Create the minimal pnpm workspace and required packages/apps from the spec;
+      pin a supported Node.js LTS version and pnpm version, add a lockfile, define
+      working lint/test/build/dev scripts, and document actual setup commands.
+- [ ] Add CI for `pnpm lint && pnpm test && pnpm build`; no unused service shells
+      or placeholder implementations are presented as working features.
+- [ ] Shared task/run/message/artifact/event contracts and state transitions use
+      Zod in `packages/domain`, with validation tests.
+- [ ] SQLite + Drizzle migrations persist conversations, queued tasks, run
+      attempts, results, and activity; restarting does not reset data.
+- [ ] The local UI/API enforce owner sessions, loopback binding, origin checks,
+      authenticated streams, and CSRF protection.
+- [ ] The owner can supply an OpenAI key through local settings; it is protected
+      by DPAPI, and neither raw keys nor sensitive request bodies enter logs.
+- [ ] Onboarding explains provider data transmission and PC/runtime availability.
+- [ ] One global executor enforces finite limits and cancellation; restart marks
+      unfinished runs interrupted and pauses dispatch for owner review.
+- [ ] A fake provider/tool verifies queue ordering, completion, failure,
+      cancellation, limit exhaustion, and interruption without paid API calls.
+
+## S02 — Complete the research-brief vertical slice
+
+- **Status:** Planned
+- **Depends on:** S01
+
+Deliver a real request-to-report experience before adding more configuration.
+Use one configured OpenAI model, provider-backed web search, and bounded public
+page retrieval. No shell, managed browser, or connector catalog.
+
+### Acceptance criteria
+
+- [ ] From the web app, submit a question and constraints, see task progress, and
+      open a saved report after a restart.
+- [ ] A brief includes a comparison, recommendation, sources, retrieval times,
+      uncertainties, and unanswered questions.
+- [ ] Fetching blocks private/loopback/link-local/metadata destinations and
+      unsafe URLs, including redirects and DNS changes; requests are bounded.
+- [ ] Source content cannot change tool policy, access credentials, or approve
+      actions. Failed retrievals and unsupported claims are surfaced.
+- [ ] The UI exposes failure, cancel/retry controls, usage, and cost estimates
+      when available without claiming certainty about unknown costs.
+- [ ] Fake-provider tests cover the workflow; the owner separately evaluates one
+      real research task. Automated tests need no real API keys.
+
+## S03 — Add project context and evidence-backed updates
+
+- **Status:** Planned
+- **Depends on:** S02
+
+Projects organize one assistant's context. Read granted text/Markdown notes and
+produce dated updates without mutating a repository or invoking Git/shell tools.
+
+### Acceptance criteria
+
+- [ ] Create/edit a project, explicitly grant/revoke folder roots, and scope a
+      conversation/task to it.
+- [ ] Canonical path checks reject traversal, junction/symlink escapes, and
+      credential stores; file count/size/type limits and skipped sources are visible.
+- [ ] A saved update cites files/excerpts and separates documented progress,
+      blockers, unknowns, and proposed work; notes do not become proof of shipping.
+- [ ] Two-project tests demonstrate that chats, files, and project facts do not
+      leak across scopes. Cross-project attachment requires owner action.
+- [ ] Revoked grants are rechecked at tool execution, including queued tasks.
+
+## S04 — Add approval-bound report export
+
+- **Status:** Planned
+- **Depends on:** S03
+
+Add one narrow write: exporting a saved report as a new Markdown file beneath an
+explicitly granted destination. Internal artifact storage already works without
+this feature.
+
+### Acceptance criteria
+
+- [ ] Risk contracts retain `auto`, `telegram`, and `local`; standard writes use
+      the `telegram` identifier but approvals occur in the local web app only.
+- [ ] Review shows exact content and destination and binds the decision to an
+      immutable action/run with expiry and audit events.
+- [ ] Rejecting, changing content, expiring, canceling, or revoking access prevents
+      execution. Duplicate decisions cannot write twice.
+- [ ] Export creates a new file without overwrite; canonical-root checks and
+      execution-time validation prevent escapes, including changed junctions.
+- [ ] Unknown write outcomes are reconciled rather than replayed automatically.
+- [ ] Delete/overwrite/shell/system/credential tools remain unavailable; approval
+      cannot override a denied capability or folder boundary.
+
+## S05 — Add inspectable, owner-approved memory
+
+- **Status:** Planned
+- **Depends on:** S03
+
+Keep conversation history separate from durable global preferences and project
+facts. Start with Markdown and straightforward retrieval, not embeddings.
+
+### Acceptance criteria
+
+- [ ] The owner can confirm a proposed memory, inspect its scope/source/date,
+      edit it, and delete it from future memory retrieval.
+- [ ] Only approved global preferences and the active project's approved facts
+      enter a task's context; source history is not silently deleted with memory.
+- [ ] Markdown is canonical memory content; SQLite metadata/indexes do not become
+      a competing copy. External edits are detected before overwrite.
+- [ ] Tests cover approval, deletion, project isolation, restart, external edits,
+      and exclusion of secrets from memory proposals.
+
+## S06 — Add owner-confirmed weekly planning routines
+
+- **Status:** Planned
+- **Depends on:** S03, S05
+
+Reuse the task executor to draft priorities from scoped notes and recent updates.
+Do not add external notifications, calendar integration, or self-assigned work.
+
+### Acceptance criteria
+
+- [ ] The owner reviews a task template, project/source scope, time zone, and
+      cadence before enabling; routines can be paused, edited, or removed.
+- [ ] The runtime runs due work without an open browser, honoring the global queue
+      and execution limits, and saves a source-backed weekly-plan artifact.
+- [ ] Persisted occurrence identifiers prevent duplicates across ticks/restarts,
+      clock changes, and daylight-saving transitions.
+- [ ] Unavailable-runtime intervals produce one missed occurrence for review per
+      routine, with “run once now”/“skip”, not an automatic replay burst.
+- [ ] Fake-clock integration tests cover due, missed, paused, edited, failed,
+      overlapping, and restart cases.
+
+## S07 — Harden and validate the personal-use release
+
+- **Status:** Planned
+- **Depends on:** S04, S06
+
+This is a working-product gate, not just a passing build.
+
+### Acceptance criteria
+
+- [ ] `pnpm lint && pnpm test && pnpm build` passes.
+- [ ] Document and perform fresh Windows setup, DPAPI round-trip under the owner,
+      local authentication, migration, and clean runtime start/stop.
+- [ ] Exercise all three real workflows and inspect citations, project isolation,
+      approved export, rejection, cancellation, and missing-source behavior.
+- [ ] Verify browser closure, runtime interruption, queued-work recovery, missed
+      routines, revoked grants, duplicate requests, and unavailable provider behavior.
+- [ ] Record one working week's usefulness/corrections and resolve release blockers.
+- [ ] README/setup instructions describe what actually ships, where data lives,
+      and the limitations; planned work is not advertised as a completed feature.

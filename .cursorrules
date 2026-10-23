@@ -1,0 +1,16 @@
+# Cursor Rules for OpenFrost
+
+Read and strictly adhere to `AGENTS.md` and `docs/ai-os-project-spec.md`.
+
+Current state: specification only. No implementation, package manifests, tests,
+or CI workflows exist yet. Paths in the spec describe planned architecture.
+
+1. Implement only the assigned S00–S07 item in `backlog/solo-rebuild.md`.
+2. When code is introduced, use strict TypeScript and shared Zod contracts in
+   `packages/domain`.
+3. Use local SQLite + Drizzle. No Docker or cloud database for the runtime.
+4. Protect credentials with Windows DPAPI; never commit or print plaintext keys.
+5. Enforce the `auto`, `telegram`, and `local` risk tiers per `AGENTS.md`.
+6. S01 must define the toolchain and scripts for
+   `pnpm lint && pnpm test && pnpm build`. Until then, those checks are unavailable,
+   not passing.
