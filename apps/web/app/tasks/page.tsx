@@ -5,6 +5,7 @@ import type { AgentRun, Event, Task } from '@openfrost/domain';
 import { ApiError, getJson, mutate } from '../../lib/api';
 import { formatTimestamp } from '../../lib/format';
 import { useSession } from '../../lib/useSession';
+import { DispatchStrip } from '../../components/DispatchStrip';
 
 interface ExecutorStatus {
   busy: boolean;
@@ -148,6 +149,13 @@ export default function TasksPage() {
 
   return (
     <>
+      <DispatchStrip
+        busy={data?.executor.busy ?? false}
+        activeTaskId={data?.executor.activeTaskId ?? null}
+        dispatchPaused={data?.executor.dispatchPaused ?? false}
+        queuedCount={(data?.tasks ?? []).filter((task) => task.state === 'queued').length}
+      />
+
       <div className="panel">
         <h1>New task</h1>
         <label htmlFor="title">Title</label>
@@ -201,10 +209,13 @@ export default function TasksPage() {
         <h2>Queue &amp; history</h2>
         {error ? <p className="error">{error}</p> : null}
         {(data?.tasks ?? []).length === 0 ? (
-          <p className="muted">No tasks yet.</p>
+          <p className="empty">
+            <strong>Nothing queued right now.</strong> Describe what the assistant
+            should work on above, and it will run here — one task at a time.
+          </p>
         ) : (
           (data?.tasks ?? []).map((task) => (
-            <div className="task" key={task.id}>
+            <div className="task" data-state={task.state} key={task.id}>
               <div className="head">
                 <strong>{task.title}</strong>
                 <span className={`chip ${task.state}`}>{task.state.replace('_', ' ')}</span>
@@ -255,9 +266,9 @@ export default function TasksPage() {
             <tbody>
               {detail.runs.map((run) => (
                 <tr key={run.id}>
-                  <td>{run.attempt}</td>
-                  <td>{run.state}</td>
-                  <td>
+                  <td className="mono">#{run.attempt}</td>
+                  <td className="mono">{run.state}</td>
+                  <td className="mono">
                     {run.usage
                       ? `${run.usage.steps} steps · ${run.usage.outputChars} chars out`
                       : '—'}
@@ -272,11 +283,18 @@ export default function TasksPage() {
             </tbody>
           </table>
           <h2>Activity</h2>
-          {detail.events.map((event) => (
-            <div className="event" key={event.id}>
-              <code>{event.type}</code> {formatTimestamp(event.createdAt)}
-            </div>
-          ))}
+          <div className="console">
+            {detail.events.length === 0 ? (
+              <div className="console-empty">No recorded activity for this task.</div>
+            ) : (
+              detail.events.map((event) => (
+                <div className="console-row" key={event.id}>
+                  <span className="console-type">{event.type}</span>
+                  <span className="console-time">{formatTimestamp(event.createdAt)}</span>
+                </div>
+              ))
+            )}
+          </div>
           <div className="row" style={{ marginTop: 12 }}>
             <button onClick={() => setDetail(null)}>Close details</button>
           </div>

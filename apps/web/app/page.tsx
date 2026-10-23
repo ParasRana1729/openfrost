@@ -6,6 +6,7 @@ import type { Event, Task } from '@openfrost/domain';
 import { ApiError, getJson, mutate } from '../lib/api';
 import { formatTimestamp } from '../lib/format';
 import { useSession } from '../lib/useSession';
+import { DispatchStrip } from '../components/DispatchStrip';
 
 interface TasksResponse {
   tasks: Task[];
@@ -58,13 +59,17 @@ export default function HomePage() {
     );
   }
 
-  const counts = (tasks?.tasks ?? []).reduce<Record<string, number>>((acc, task) => {
-    acc[task.state] = (acc[task.state] ?? 0) + 1;
-    return acc;
-  }, {});
+  const queuedCount = (tasks?.tasks ?? []).filter((task) => task.state === 'queued').length;
 
   return (
     <>
+      <DispatchStrip
+        busy={tasks?.executor.busy ?? false}
+        activeTaskId={tasks?.executor.activeTaskId ?? null}
+        dispatchPaused={tasks?.executor.dispatchPaused ?? false}
+        queuedCount={queuedCount}
+      />
+
       {tasks?.executor.dispatchPaused ? (
         <div className="panel">
           <h2>Dispatch paused after recovery</h2>
@@ -94,26 +99,29 @@ export default function HomePage() {
           <Link href="/tasks">
             <button className="primary">Go to tasks</button>
           </Link>
-          <span className="muted">
-            {counts['queued'] ?? 0} queued · {counts['running'] ?? 0} running ·{' '}
-            {counts['completed'] ?? 0} completed
-          </span>
         </div>
       </div>
 
       <div className="panel">
-        <h2>Recent activity</h2>
+        <h2>Runtime activity</h2>
         {actionError ? <p className="error">{actionError}</p> : null}
-        {events.length === 0 ? (
-          <p className="muted">Nothing yet.</p>
-        ) : (
-          events.map((event) => (
-            <div className="event" key={event.id}>
-              <code>{event.type}</code> {formatTimestamp(event.createdAt)}
-              {event.taskId ? ` · task ${event.taskId.slice(0, 8)}…` : ''}
+        <div className="console">
+          {events.length === 0 ? (
+            <div className="console-empty">
+              No activity yet. Submit a task and the runtime will report here.
             </div>
-          ))
-        )}
+          ) : (
+            events.map((event) => (
+              <div className="console-row" key={event.id}>
+                <span className="console-type">{event.type}</span>
+                {event.taskId ? (
+                  <span className="console-ref">{event.taskId.slice(0, 8)}…</span>
+                ) : null}
+                <span className="console-time">{formatTimestamp(event.createdAt)}</span>
+              </div>
+            ))
+          )}
+        </div>
       </div>
     </>
   );
