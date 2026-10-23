@@ -13,6 +13,10 @@ Read these in order:
 3. [Full specification](./ai-os-project-spec.md): behavior and release gates.
 4. [Solo backlog](../backlog/solo-rebuild.md): the assigned S00–S07 slice.
 
+Then inspect current `origin/main`, relevant recent commits/PRs, and the assigned
+entry's handoff. Those are shared context; do not assume another agent's private
+conversation or unpushed edits are available.
+
 **Current state: specification only. No implementation exists yet.** Application
 sources, package manifests, tests, and CI are not present. Treat the architecture
 as a plan, not as a working codebase.
@@ -43,11 +47,22 @@ Create only what the assigned slice needs and preserve unrelated work.
 Use strict TypeScript, shared Zod contracts in packages/domain, and Vitest tests.
 Use fake providers/clocks for automated tests; never request keys in chat.
 Exercise the actual workflow and report exactly what was verified or blocked.
-Do not publish, push, or merge without my explicit authorization.
+
+Make meaningful checkpoint commits and push the task branch as work progresses.
+Keep the assigned backlog entry current with evidence, blockers, and handoff notes.
+
+I authorize you to publish this task's branch, open its PR, and merge this
+specific task into main once its acceptance criteria, required checks, and
+configured CI pass. Prefer a merge commit to preserve useful checkpoint history.
+Do not ask again to land this same scope after those conditions are met.
+Do not merge incomplete work, implement another slice, force-push shared history,
+change repository settings, or deploy under this authorization.
 ```
 
 Use `S01 — Establish the minimal local task foundation` as the next implementation
 assignment. Research briefs are the first end-to-end product slice after that.
+Replace the placeholder with the specific task before sending the assignment;
+the merge authorization applies to that scope, not the whole backlog.
 
 ## 4. Verify the implementation
 
@@ -72,8 +87,15 @@ An AI-generated summary is not proof that a test or real workflow was run.
 
 Review the diff against the acceptance criteria and
 [contribution rules](../CONTRIBUTING.md). Reference local S-IDs, not invented
-GitHub issue numbers. Owner review and passing CI are required for landing code;
-there is no mandatory second human in the solo workflow.
+GitHub issue numbers. When the assignment explicitly authorizes landing, complete
+the PR and merge after the acceptance/verification gates pass; no additional human
+approval is needed for that same scope. Configured CI must pass. If a gate is
+blocked, leave a pushed checkpoint branch and record the reason instead of merging.
+
+Before handing off, update the assigned backlog entry with working behavior,
+important decisions, exact verification results, remaining work, and the next
+step. Prefer merge commits so that useful checkpoint history is retained. Verify
+the landed commit on remote `main` and report its PR and commit.
 
 Assign the next slice only after the current one works. Capture adjacent ideas as
 future work instead of silently expanding the MVP.

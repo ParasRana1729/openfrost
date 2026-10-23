@@ -19,8 +19,9 @@ separate assistant personalities.
 - Planned behavior and checked documentation tasks are not proof that a product
   feature is implemented. Inspect actual files and verify dependencies before
   claiming anything works.
-- Do not fetch or restore earlier code from remotes to bootstrap implementation
-  unless the owner explicitly asks. The current spec is the source of truth.
+- Start assigned work from the current clean `origin/main`. Fetching current
+  progress is expected; restoring removed code or earlier history is not, unless
+  the owner explicitly asks. The current spec is the source of truth.
 - Implement only assigned work. Further deletion, database resets, or history
   changes require explicit authorization.
 
@@ -101,10 +102,42 @@ not a description of an existing runtime.
    passing tests alone.
 6. Follow [CONTRIBUTING.md](CONTRIBUTING.md). Reference the local backlog ID;
    use `Closes #...` only for a real, explicitly mapped GitHub issue.
-7. Implement only assigned work. Completion is not authorization to publish,
-   push to a shared branch, or merge.
+7. Implement only assigned work and follow the commit, landing, and handoff
+   workflow below. Do not leave completed work only in an agent conversation.
 
-## 5. Scope guardrails
+## 5. Commits, landing, and agent handoffs
+
+The owner wants a useful, accumulating Git history so later agents can continue
+from verified work instead of reconstructing earlier conversations.
+
+- Use a topic branch for each assigned slice. Make a meaningful checkpoint commit
+  after each coherent milestone and before a handoff; do not wait until the end
+  of a long task. Describe the change and relevant local S-ID in the commit.
+- Push checkpoint branches to the verified GitHub source remote so other agents
+  can access them. Incomplete work must be labeled as such and stay off `main`.
+  Never use the `local` backlink as a substitute for the shared GitHub remote.
+- Keep the assigned backlog entry current. At checkpoints and handoff, record
+  what works, exact checks/results, remaining work or blockers, and the next step.
+  Check acceptance boxes only when supported by evidence.
+- Open a focused PR with that summary and verification evidence. Prefer a merge
+  commit so meaningful checkpoint history survives; do not force-push shared
+  branches or rewrite history as part of normal development.
+- Merging requires explicit authorization for the specific assigned change, such
+  as “Implement S01 and merge it when checks and CI pass.” Once given, carry that
+  task through verification, PR, and merge without asking again at every step.
+  A general preference for frequent merges is not permission to land other work.
+- Before merging, review the diff, satisfy the assigned acceptance criteria, run
+  available required checks and the relevant workflow, and confirm configured CI
+  has passed. If `main` advances, integrate it safely and repeat affected checks.
+  Missing or failing checks are blockers, not passes. For documentation-only
+  changes before S01, use documentation checks and disclose the absent toolchain.
+- After merging, verify the actual commit on remote `main` and report the PR,
+  commit, checks, limitations, and next assigned slice. A local commit, branch
+  push, or completed PR review alone is not a landed result.
+- Never merge unfinished work just to share context. A checkpoint branch and
+  durable handoff provide context while `main` stays a verified integration point.
+
+## 6. Scope guardrails
 
 Do not add Telegram, native/mobile clients, remote access, agent teams, cloud
 workers, plugin/MCP infrastructure, multiple model providers, arbitrary shell,

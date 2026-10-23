@@ -34,6 +34,19 @@ Git hygiene, and minimal human/agent guidance.
 - [x] The baseline starts from one parentless commit with no recovery branch;
       application data outside this repository is untouched.
 
+### Handoff
+
+- Implemented: the specification-only baseline and agent delivery guidance for
+  checkpoint commits, pushed task branches, verified PR merges, and durable
+  task handoffs. The assignment template includes task-specific merge permission.
+- Verification: `git diff --check` passed. Node assertions passed for relative
+  links, Markdown whitespace/fences, consistent checkpoint/merge/handoff guidance,
+  and absence of application/toolchain files.
+- Not run: `pnpm lint`, `pnpm test`, and `pnpm build`; no package manifest or
+  scripts exist yet. No runtime functionality has been implemented or verified.
+- Next: explicitly assign S01, including its landing conditions. Start from the
+  current clean `origin/main`; S01–S07 remain unimplemented.
+
 ## S01 — Establish the minimal local task foundation
 
 - **Status:** Planned
