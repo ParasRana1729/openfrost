@@ -111,6 +111,25 @@ describe('executor error paths', () => {
     expect(store.tasks.get(task.id)?.state).toBe('completed');
   });
 
+  it('aborts a hung provider call at the wall-clock limit', async () => {
+    const provider = new FakeProvider([{ type: 'hang', ms: 30_000 }]);
+    const executor = new TaskExecutor({
+      store,
+      provider,
+      limits: { ...limits, maxWallClockMs: 80 },
+      now: () => at(0),
+    });
+
+    const task = await executor.enqueue('Hung call', 'request');
+    await executor.whenIdle();
+
+    expect(provider.abortedCalls).toBe(1);
+    const run = store.runs.listForTask(task.id)[0];
+    expect(run?.state).toBe('failed');
+    expect(run?.failure).toMatchObject({ code: 'limit_reached', limitHit: 'wall_clock' });
+    expect(store.tasks.get(task.id)?.state).toBe('failed');
+  });
+
   it('purges expired sessions during recovery', () => {
     const owner = store.users.createOwner('owner', 'a-long-passphrase', at(0));
     store.sessions.create({

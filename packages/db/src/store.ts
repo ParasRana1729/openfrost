@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { asc, desc, eq, inArray, lt } from 'drizzle-orm';
+import { asc, desc, eq, inArray, lt, sql } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import {
   InvalidTransitionError,
@@ -159,7 +159,16 @@ export function createStore(db: Db, options: StoreOptions = {}): Store {
         passwordHash: hashPassword(password),
         createdAt: now,
       };
-      db.insert(schema.users).values(row).run();
+      try {
+        db.insert(schema.users).values(row).run();
+      } catch (err) {
+        // Two concurrent setups can both pass the count check; the unique
+        // username constraint is the arbiter, and it maps to the same 409.
+        if (err instanceof Error && err.message.includes('UNIQUE constraint failed')) {
+          throw new OwnerExistsError();
+        }
+        throw err;
+      }
       return { id: row.id, username: row.username, createdAt: row.createdAt };
     },
     verifyOwnerCredentials(username: string, password: string): OwnerUser | null {
@@ -232,7 +241,7 @@ export function createStore(db: Db, options: StoreOptions = {}): Store {
       return db
         .select()
         .from(schema.tasks)
-        .orderBy(desc(schema.tasks.createdAt), desc(schema.tasks.id))
+        .orderBy(desc(schema.tasks.createdAt), sql`rowid desc`)
         .all()
         .map(toTask);
     },
@@ -250,11 +259,13 @@ export function createStore(db: Db, options: StoreOptions = {}): Store {
         .map(toTask);
     },
     listQueued(): Task[] {
+      // Rowid breaks createdAt ties by insertion order: two tasks created in
+      // the same millisecond keep true FIFO instead of random uuid order.
       return db
         .select()
         .from(schema.tasks)
         .where(eq(schema.tasks.state, 'queued'))
-        .orderBy(asc(schema.tasks.createdAt), asc(schema.tasks.id))
+        .orderBy(asc(schema.tasks.createdAt), sql`rowid asc`)
         .all()
         .map(toTask);
     },
