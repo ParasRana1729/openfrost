@@ -17,9 +17,10 @@ Then inspect current `origin/main`, relevant recent commits/PRs, and the assigne
 entry's handoff. Those are shared context; do not assume another agent's private
 conversation or unpushed edits are available.
 
-**Current state: specification only. No implementation exists yet.** Application
-sources, package manifests, tests, and CI are not present. Treat the architecture
-as a plan, not as a working codebase.
+**Current state: S01 local foundation implemented; no model provider yet.** The
+workspace, contracts, persistence, DPAPI secrets, loopback API/UI, tests, and
+CI are present. The three product workflows are still a plan (S02+); check the
+solo backlog for what actually exists before building.
 
 ## 2. Set up and choose one slice
 
@@ -41,7 +42,7 @@ Read AGENTS.md and docs/ai-os-project-spec.md.
 
 Implement only <S-ID and title> from backlog/solo-rebuild.md.
 Check the actual repository state and follow the item's acceptance criteria.
-The initial repository is specification-only; do not invent existing components.
+Do not invent existing components beyond the S01 foundation; check the backlog handoff.
 Create only what the assigned slice needs and preserve unrelated work.
 
 Use strict TypeScript, shared Zod contracts in packages/domain, and Vitest tests.

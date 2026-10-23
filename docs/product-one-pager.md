@@ -5,8 +5,9 @@
 - **Release:** v0.1, Windows-first local runtime and local web app
 - **Source of truth:** [Full specification](./ai-os-project-spec.md)
 
-**Current repository: specification only. No implementation exists yet.**
-The capabilities below are planned, not delivered.
+**Current repository: S01 local foundation implemented (contracts, persistence,
+DPAPI secrets, loopback API/UI, bounded executor). The capabilities below are
+planned, not delivered; no model provider or product workflow exists yet.**
 
 ## Problem
 

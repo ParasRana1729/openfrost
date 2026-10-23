@@ -2,7 +2,7 @@
 
 - **Specification:** [v0.1 solo rebuild](../docs/ai-os-project-spec.md)
 - **Owner for every item:** ParasRana1729
-- **Current assignment:** S00, specification-only baseline
+- **Current assignment:** S02 next; S01 complete (see its handoff)
 
 These are local backlog identifiers, not GitHub issue numbers. Only S00 is in
 scope for the current reset. S01–S07 are planned, unimplemented
@@ -49,33 +49,70 @@ Git hygiene, and minimal human/agent guidance.
 
 ## S01 — Establish the minimal local task foundation
 
-- **Status:** Planned
+- **Status:** Complete (local foundation; no model provider yet)
 - **Depends on:** S00
 
 Implement only the foundation needed to persist and safely execute a first task.
 Create the minimal workspace from scratch; do not introduce a separate queue service.
-Add domain entities incrementally, only when the assigned slice requires them.
+Add domain entities incrementally, only when the assigned slice needs them.
 
 ### Acceptance criteria
 
-- [ ] Create the minimal pnpm workspace and required packages/apps from the spec;
+- [x] Create the minimal pnpm workspace and required packages/apps from the spec;
       pin a supported Node.js LTS version and pnpm version, add a lockfile, define
       working lint/test/build/dev scripts, and document actual setup commands.
-- [ ] Add CI for `pnpm lint && pnpm test && pnpm build`; no unused service shells
+- [x] Add CI for `pnpm lint && pnpm test && pnpm build`; no unused service shells
       or placeholder implementations are presented as working features.
-- [ ] Shared task/run/message/artifact/event contracts and state transitions use
+- [x] Shared task/run/message/artifact/event contracts and state transitions use
       Zod in `packages/domain`, with validation tests.
-- [ ] SQLite + Drizzle migrations persist conversations, queued tasks, run
+- [x] SQLite + Drizzle migrations persist conversations, queued tasks, run
       attempts, results, and activity; restarting does not reset data.
-- [ ] The local UI/API enforce owner sessions, loopback binding, origin checks,
+- [x] The local UI/API enforce owner sessions, loopback binding, origin checks,
       authenticated streams, and CSRF protection.
-- [ ] The owner can supply an OpenAI key through local settings; it is protected
+- [x] The owner can supply an OpenAI key through local settings; it is protected
       by DPAPI, and neither raw keys nor sensitive request bodies enter logs.
-- [ ] Onboarding explains provider data transmission and PC/runtime availability.
-- [ ] One global executor enforces finite limits and cancellation; restart marks
+- [x] Onboarding explains provider data transmission and PC/runtime availability.
+- [x] One global executor enforces finite limits and cancellation; restart marks
       unfinished runs interrupted and pauses dispatch for owner review.
-- [ ] A fake provider/tool verifies queue ordering, completion, failure,
+- [x] A fake provider/tool verifies queue ordering, completion, failure,
       cancellation, limit exhaustion, and interruption without paid API calls.
+
+### Handoff
+
+- Implemented: pnpm workspace (Node 24 LTS in `.nvmrc`, engines 24–26, pnpm
+  10.34.7 via `packageManager`); `packages/domain` Zod contracts with enforced
+  task/run transition maps; `packages/db` SQLite + Drizzle migrations,
+  repository store, scrypt owner passwords, and Windows DPAPI secret sealing
+  (PowerShell `ProtectedData`, CurrentUser scope, purpose-bound entropy,
+  fail-closed off Windows); `packages/agent` single-run executor with finite
+  step/wall-clock/input/output limits, cancellation, explicit retries, and
+  restart recovery that interrupts unfinished runs and pauses dispatch;
+  `apps/api` Fastify on `127.0.0.1` with owner sessions (HttpOnly
+  SameSite=Strict), session-bound CSRF tokens, origin allowlisting before CORS,
+  authenticated SSE activity stream, dispatch review endpoints, and
+  secret-safe logging; `apps/web` Next.js UI on `127.0.0.1:3000` with the
+  required onboarding disclosures, task queue/controls, and DPAPI key settings.
+  `packages/ui` deliberately not created (no justified reuse yet). No OpenAI
+  adapter: tasks fail honestly as `provider_missing` until S02.
+- Verification: `pnpm lint`, `pnpm test`, and `pnpm build` all pass locally on
+  Windows (93 tests: 29 domain, 24 db, 16 agent, 24 api) and in GitHub Actions
+  CI on `windows-latest`. DPAPI round-trips are exercised for real on Windows
+  (blob format, wrong-purpose rejection, key file, log-redaction). The built
+  API entrypoint was smoke-tested end to end on a temp home: health, owner
+  setup/login, unauthenticated 401s, task enqueue, honest provider-missing
+  failure, and no secret material in logs.
+- Not run/verified: a real OpenAI call (no provider exists by design this
+  slice); long-running wall-clock behavior beyond the tested bounds; the web
+  UI was verified by `next build` and manual review, not by automated browser
+  tests.
+- Known limitations: SSE clients rely on polling as a fallback (4s); sessions
+  are single-device-friendly but not rate-limited; executor wall-clock checks
+  happen between provider steps, so a single long provider call can overshoot
+  its limit before being stopped.
+- Next: S02 — wire one OpenAI model via the `LlmProvider` seam
+  (`packages/agent/src/provider.ts`), add bounded public search/fetch tools
+  with private-network blocking, and deliver the research-brief vertical
+  slice from the web app.
 
 ## S02 — Complete the research-brief vertical slice
 

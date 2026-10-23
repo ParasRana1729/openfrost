@@ -13,8 +13,8 @@ assigned entry in the [solo backlog](backlog/solo-rebuild.md) before starting.
 - Confirm dependencies in the code, not just in planning documents.
 - Use a topic branch, for example `feat/s02-research-brief`,
   `fix/s03-folder-boundary`, or `docs/s00-product-reset`.
-- The current baseline contains no implementation. S01 starts with the minimal
-  workspace and toolchain; do not infer an existing runtime from the spec.
+- The S01 foundation is on `main`. Build only what the assigned slice needs and
+  verify dependencies in the actual code; do not infer capabilities from the spec.
 - Keep unrelated cleanup and destructive operations out of an assigned slice
   unless explicitly authorized.
 
@@ -53,8 +53,8 @@ force-push shared branches or change repository merge settings without permissio
   pnpm lint && pnpm test && pnpm build
   ```
 
-- These checks are not runnable in the specification-only baseline. Once the
-  toolchain exists, run them for implementation changes and before landing code.
+- These checks exist since S01 and CI runs them on `windows-latest`; run them
+  for implementation changes and before landing code.
 - Exercise the relevant real workflow as well. For documentation-only changes,
   check local links and consistency; report any project checks not run.
 - Review the diff, criteria, security implications, and evidence before landing.

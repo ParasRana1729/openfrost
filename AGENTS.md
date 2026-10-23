@@ -5,9 +5,13 @@ before changing the repository.
 
 ## 1. Current direction and authority
 
-**Current state: specification only. No implementation exists yet.** There are
-no app/package sources, package manifests, tests, or CI workflows. Do not invent
-existing APIs, scripts, migrations, tools, or passing checks.
+**Current state: S01 local foundation implemented; no model provider yet.** The
+pnpm workspace, shared Zod contracts, SQLite persistence, DPAPI secret storage,
+authenticated loopback API/UI, and the bounded single-run executor exist and are
+covered by `pnpm lint && pnpm test && pnpm build` and CI. Product workflows
+(research briefs, project updates, weekly planning) are not implemented; do not
+claim they work. Do not invent APIs, scripts, migrations, tools, or passing
+checks beyond what the repository actually contains.
 
 OpenFrost is a Windows-first personal **AI OS** being rebuilt by one owner,
 ParasRana1729. One assistant completes research briefs, project updates, and
@@ -93,9 +97,9 @@ not a description of an existing runtime.
    pnpm lint && pnpm test && pnpm build
    ```
 
-   Until that toolchain exists, these commands are unavailable. For this
-   specification-only baseline, validate links, scope, and repository contents;
-   never label missing commands as passing.
+   Since S01 these commands exist and CI runs them. For documentation-only
+   changes, additionally validate links and consistency; never label checks
+   that were not run as passing.
 
 5. Exercise the workflow named in the acceptance criteria. State what passed,
    what was not run, and what is still assumed. Do not claim a feature works from

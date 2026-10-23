@@ -3,9 +3,9 @@
 Read [AGENTS.md](AGENTS.md) and the
 [specification](docs/ai-os-project-spec.md) before making changes.
 
-This is a specification-only baseline. No implementation or runnable development
-commands exist yet. S01 in the [solo backlog](backlog/solo-rebuild.md) creates the
-initial workspace and task foundation.
+The S01 local foundation is implemented (workspace, contracts, persistence,
+DPAPI secrets, loopback API/UI, bounded executor). No model provider or product
+workflow exists yet; S02 in the [solo backlog](backlog/solo-rebuild.md) is next.
 
 Follow the authoritative instructions instead of assuming planned architecture
 already exists. Implement only the explicitly assigned slice.
