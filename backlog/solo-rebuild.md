@@ -121,6 +121,15 @@ Add domain entities incrementally, only when the assigned slice needs them.
   logout CSRF check is timing-safe; failed logins that cannot keep the
   session cookie now show a diagnostic; activity timestamps render in local
   time. The SSE polling fallback remains only as a resilience net.
+- Follow-up 2 (2026-10-24): remaining audit items closed. The web UI received
+  its frost design pass (dispatch status strip, dark runtime-console activity
+  panel, mono system data, drawn snowflake wordmark, invitation empty states),
+  the wall-clock limit is enforced with a real abort timer (a hung provider
+  call stops at the limit instead of overshooting), task FIFO ties break by
+  insertion order instead of random uuid, concurrent owner setup returns 409
+  instead of 500, startup recovers before listen with correct shutdown exit
+  codes and a force-exit on a second signal, and the never-emitted
+  `task.started` event type was removed from the contract. 100 tests green.
 - Next: S02 — wire one OpenAI model via the `LlmProvider` seam
   (`packages/agent/src/provider.ts`), add bounded public search/fetch tools
   with private-network blocking, and deliver the research-brief vertical
