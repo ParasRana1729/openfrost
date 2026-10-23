@@ -1,0 +1,29 @@
+{
+  "name": "@openfrost/db",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SQLite + Drizzle persistence, migrations, and DPAPI-backed secret storage",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch --preserveWatchOutput",
+    "test": "vitest run",
+    "migrations:generate": "drizzle-kit generate"
+  },
+  "dependencies": {
+    "@openfrost/domain": "workspace:*",
+    "better-sqlite3": "^13.0.3",
+    "drizzle-orm": "^0.45.4"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
+    "drizzle-kit": "^0.31.11"
+  }
+}
