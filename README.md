@@ -67,10 +67,12 @@ real today.
   scrypt passwords, HttpOnly SameSite=Strict sessions, session-bound CSRF
   tokens, origin allowlisting, an authenticated SSE activity stream, and
   logging that drops headers/cookies/bodies so secrets never reach logs.
-- **`apps/web`:** minimal Next.js UI on `127.0.0.1:3000` — onboarding with
-  the required data-transmission and availability disclosures, login, the
-  task queue with cancel/retry/run history, dispatch-resume review, and
-  settings for the DPAPI-protected OpenAI key and execution limits.
+- **`apps/web`:** local Next.js UI on `127.0.0.1:3000` with a frost visual
+  identity — a dispatch status strip, a dark runtime-console activity log, and
+  mono system data — onboarding with the required data-transmission and
+  availability disclosures, login, the task queue with cancel/retry/run
+  history, dispatch-resume review, and settings for the DPAPI-protected
+  OpenAI key and execution limits.
 
 `packages/ui` is intentionally absent: nothing is shared enough to justify it
 yet. It will be created when a slice actually reuses components.

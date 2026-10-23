@@ -11,33 +11,43 @@ async function main(): Promise<void> {
   const built = await buildApp({ config });
   const { app, executor } = built;
 
-  await app.listen({ port: config.port, host: config.host });
-
+  // Recover before listening: no request can precede recovery, and dispatch
+  // is already paused for review when the first request arrives.
   const recovery = executor.recover();
   if (recovery.dispatchPaused) {
     app.log.warn(
       { interruptedRuns: recovery.interruptedRuns },
       'dispatch paused after recovery; owner review required at /api/dispatch',
     );
-  } else {
-    void executor.kick();
   }
 
   let shuttingDown = false;
   const shutdown = async (signal: string): Promise<void> => {
     if (shuttingDown) {
-      return;
+      // A second signal means the owner wants out even if closing hangs.
+      process.exit(1);
     }
     shuttingDown = true;
     app.log.info({ signal }, 'shutting down; in-flight runs are marked interrupted');
     try {
       await closeBuiltApp(built);
-    } finally {
       process.exit(0);
+    } catch (err) {
+      app.log.error({ err }, 'error during shutdown');
+      process.exit(1);
     }
   };
   process.on('SIGINT', () => void shutdown('SIGINT'));
   process.on('SIGTERM', () => void shutdown('SIGTERM'));
+
+  await app.listen({ port: config.port, host: config.host });
+
+  if (!recovery.dispatchPaused) {
+    void executor.kick();
+  }
 }
 
-void main();
+main().catch((err) => {
+  console.error('OpenFrost API failed to start:', err);
+  process.exit(1);
+});

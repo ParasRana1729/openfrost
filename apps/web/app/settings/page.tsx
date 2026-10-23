@@ -134,19 +134,25 @@ export default function SettingsPage() {
           <tbody>
             <tr>
               <th>Max steps per run</th>
-              <td>{settings?.executionLimits.maxSteps ?? '—'}</td>
+              <td className="mono">{settings?.executionLimits.maxSteps ?? '—'}</td>
             </tr>
             <tr>
               <th>Wall clock</th>
-              <td>{((settings?.executionLimits.maxWallClockMs ?? 0) / 1000 / 60).toFixed(0)} min</td>
+              <td className="mono">
+                {((settings?.executionLimits.maxWallClockMs ?? 0) / 1000 / 60).toFixed(0)} min
+              </td>
             </tr>
             <tr>
               <th>Max input</th>
-              <td>{settings?.executionLimits.maxInputChars.toLocaleString() ?? '—'} chars</td>
+              <td className="mono">
+                {settings?.executionLimits.maxInputChars.toLocaleString() ?? '—'} chars
+              </td>
             </tr>
             <tr>
               <th>Max output</th>
-              <td>{settings?.executionLimits.maxOutputChars.toLocaleString() ?? '—'} chars</td>
+              <td className="mono">
+                {settings?.executionLimits.maxOutputChars.toLocaleString() ?? '—'} chars
+              </td>
             </tr>
           </tbody>
         </table>

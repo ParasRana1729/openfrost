@@ -324,6 +324,13 @@ export class TaskExecutor {
 
     const inputChars = claimed.task.request.length + claimed.task.title.length;
     const deadlineMs = Date.now() + this.limits.maxWallClockMs;
+    // The wall clock is enforced with a real abort timer, so a single hung
+    // provider call stops at the limit instead of overshooting it.
+    const deadlineTimer = setTimeout(
+      () => controller.abort(),
+      this.limits.maxWallClockMs,
+    );
+    deadlineTimer.unref?.();
     let steps = 0;
     let outputChars = 0;
 
@@ -345,14 +352,14 @@ export class TaskExecutor {
       }
 
       for (let step = 1; step <= this.limits.maxSteps; step += 1) {
-        if (controller.signal.aborted) {
-          throw abortError();
-        }
         if (Date.now() > deadlineMs) {
           throw new LimitReachedError(
             'wall_clock',
             `Run exceeded its ${this.limits.maxWallClockMs} ms wall-clock limit.`,
           );
+        }
+        if (controller.signal.aborted) {
+          throw this.abortOutcome(deadlineMs);
         }
         let result;
         try {
@@ -364,7 +371,7 @@ export class TaskExecutor {
           });
         } catch (err) {
           if (controller.signal.aborted || isAbortError(err)) {
-            throw abortError();
+            throw this.abortOutcome(deadlineMs);
           }
           throw err;
         }
@@ -427,8 +434,24 @@ export class TaskExecutor {
     } catch (err) {
       this.finalizeFailure(taskId, run.id, { steps, inputChars, outputChars }, err);
     } finally {
+      clearTimeout(deadlineTimer);
       this.#active = null;
     }
+  }
+
+  /** Classify an abort: shutdown → interrupted, deadline → wall-clock limit,
+   * otherwise the owner canceled. */
+  private abortOutcome(deadlineMs: number): Error {
+    if (this.#shutdown) {
+      return abortError();
+    }
+    if (Date.now() > deadlineMs) {
+      return new LimitReachedError(
+        'wall_clock',
+        `Run exceeded its ${this.limits.maxWallClockMs} ms wall-clock limit.`,
+      );
+    }
+    return abortError();
   }
 
   private finishRun(

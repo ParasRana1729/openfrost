@@ -37,6 +37,27 @@ describe('task lifecycle through the store', () => {
     expect(store.tasks.listQueued().map((t) => t.id)).toEqual([first.id, second.id]);
   });
 
+  it('breaks FIFO ties by insertion order when timestamps collide', () => {
+    // Same millisecond: uuid ordering would be random, insertion order is
+    // not. Fresh store so earlier tests' queued tasks cannot interfere.
+    const tieHome = mkdtempSync(join(tmpdir(), 'openfrost-tie-test-'));
+    const tieOpened = openDatabase(tieHome);
+    const tieStore = createStore(tieOpened.db);
+    try {
+      const first = tieStore.tasks.create({ title: 'A', request: 'x' }, at(5));
+      const second = tieStore.tasks.create({ title: 'B', request: 'x' }, at(5));
+      const third = tieStore.tasks.create({ title: 'C', request: 'x' }, at(5));
+      expect(tieStore.tasks.listQueued().map((t) => t.id)).toEqual([
+        first.id,
+        second.id,
+        third.id,
+      ]);
+    } finally {
+      tieOpened.sqlite.close();
+      rmSync(tieHome, { recursive: true, force: true });
+    }
+  });
+
   it('startRun claims a queued task atomically and counts attempts', () => {
     const task = store.tasks.create({ title: 'Run me', request: 'x' }, at(0));
     const { task: claimed, run } = store.tasks.startRun(task.id, at(0));
@@ -127,8 +148,8 @@ describe('task lifecycle through the store', () => {
     });
     try {
       watchedStore.events.append('task.created', {}, at(0));
-      watchedStore.events.append('task.started', {}, at(0));
-      expect(seen).toEqual(['task.created', 'task.started']);
+      watchedStore.events.append('task.completed', {}, at(0));
+      expect(seen).toEqual(['task.created', 'task.completed']);
     } finally {
       openedWatched.sqlite.close();
       rmSync(watched, { recursive: true, force: true });
