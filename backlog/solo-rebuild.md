@@ -105,10 +105,22 @@ Add domain entities incrementally, only when the assigned slice needs them.
   slice); long-running wall-clock behavior beyond the tested bounds; the web
   UI was verified by `next build` and manual review, not by automated browser
   tests.
-- Known limitations: SSE clients rely on polling as a fallback (4s); sessions
-  are single-device-friendly but not rate-limited; executor wall-clock checks
-  happen between provider steps, so a single long provider call can overshoot
-  its limit before being stopped.
+- Known limitations: executor wall-clock checks happen between provider steps,
+  so a single long provider call can overshoot its limit before being stopped;
+  sessions are single-device-friendly but not rate-limited.
+- Follow-up (2026-10-24, audit fixes): an independent audit reproduced two
+  browser-facing defects — the hijacked SSE response dropped CORS headers (the
+  UI silently ran on its 4s polling fallback) and the allowlisted
+  `http://localhost:3000` origin could never hold the SameSite=Strict session
+  cookie. Fixed by restoring CORS on the stream and proxying API calls under
+  the web origin (both loopback hosts verified working end to end in a real
+  browser, SSE delivering live events in ~46 ms). Executor error paths were
+  hardened (orphaned-run reconciliation, artifact-before-finalize ordering
+  with an honest `internal` failure code, no unhandled rejections); expired
+  sessions are purged at startup; the DPAPI subprocess has a timeout; the
+  logout CSRF check is timing-safe; failed logins that cannot keep the
+  session cookie now show a diagnostic; activity timestamps render in local
+  time. The SSE polling fallback remains only as a resilience net.
 - Next: S02 — wire one OpenAI model via the `LlmProvider` seam
   (`packages/agent/src/provider.ts`), add bounded public search/fetch tools
   with private-network blocking, and deliver the research-brief vertical

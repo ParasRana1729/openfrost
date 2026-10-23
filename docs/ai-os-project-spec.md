@@ -180,6 +180,8 @@ attempts; retry history must remain visible.
   It does not undo an action already completed; show that outcome honestly.
 - On restart, mark unfinished active runs `interrupted`, retain queued work, and
   pause dispatch until the owner reviews recovery. Never blindly replay writes.
+  A restart that finds no unfinished runs may resume dispatch immediately;
+  retaining queued work is not, by itself, a pause condition.
 - Deduplicate routine occurrences and retried action requests. An unknown write
   outcome requires reconciliation, not an automatic repeat.
 

@@ -89,9 +89,12 @@ pnpm test             # vitest in every package (93 tests; includes real
 pnpm dev              # API on 127.0.0.1:8787 and web on 127.0.0.1:3000
 ```
 
-Day-to-day use after `pnpm dev`: open `http://127.0.0.1:3000`, complete
-onboarding (owner password), and optionally store your OpenAI key in Settings.
-API ports and origins are configurable through `OPENFROST_API_PORT` and
+Day-to-day use after `pnpm dev`: open `http://127.0.0.1:3000` (or
+`http://localhost:3000`) — the web app proxies API calls to the local service,
+so the browser only needs port 3000 and the session cookie stays first-party on
+either host. The API also listens directly on `127.0.0.1:8787` for local tools
+and tests. API/proxy ports and origins are configurable through
+`OPENFROST_API_PORT`, `OPENFROST_API_ORIGIN` (loopback only), and
 `OPENFROST_WEB_ORIGIN`. All local data lives under `%USERPROFILE%\.openfrost`.
 
 CI runs the same `pnpm lint && pnpm test && pnpm build` on `windows-latest`.
