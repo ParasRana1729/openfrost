@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AgentRun, Event, Task } from '@openfrost/domain';
-import { API_BASE, ApiError, getJson, mutate } from '../../lib/api';
+import { ApiError, getJson, mutate } from '../../lib/api';
+import { formatTimestamp } from '../../lib/format';
 import { useSession } from '../../lib/useSession';
 
 interface ExecutorStatus {
@@ -60,7 +61,7 @@ export default function TasksPage() {
     if (!session?.authenticated) {
       return;
     }
-    const stream = new EventSource(`${API_BASE}/api/events/stream`, {
+    const stream = new EventSource('/api/events/stream', {
       withCredentials: true,
     });
     stream.addEventListener('activity', () => void refreshTasks());
@@ -273,7 +274,7 @@ export default function TasksPage() {
           <h2>Activity</h2>
           {detail.events.map((event) => (
             <div className="event" key={event.id}>
-              <code>{event.type}</code> {event.createdAt}
+              <code>{event.type}</code> {formatTimestamp(event.createdAt)}
             </div>
           ))}
           <div className="row" style={{ marginTop: 12 }}>
