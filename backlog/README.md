@@ -20,6 +20,8 @@ All items belong to ParasRana1729. IDs are local planning identifiers, **not**
 GitHub issue numbers. Work one assigned slice at a time; each entry contains its
 acceptance criteria. There are no team role assignments or fixed iteration dates.
 
-**Current state:** S00 establishes the specification-only baseline. S01–S07 are
-unimplemented. No package manifests, application code, tests, or CI workflows
-exist yet. Completing a planning item is not evidence that a product feature works.
+**Current state:** S00 and S01 are complete. The S01 local foundation exists on
+`main`: pnpm workspace, Zod contracts, SQLite persistence, DPAPI secrets,
+authenticated loopback API/UI, and the bounded single-run executor. S02–S07
+are unimplemented; no model provider or product workflow exists yet, so
+completing a planning item is not evidence that a product feature works.

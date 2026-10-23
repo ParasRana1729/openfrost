@@ -7,10 +7,13 @@
 - **Platform:** Windows-first, local runtime
 - **Primary interface:** Local web app
 
-**Repository state: specification only. No implementation exists yet.** There are
-no app/package sources, package manifests, tests, or CI workflows. The architecture
-and capabilities below are requirements to implement, not existing functionality.
-The [solo backlog](../backlog/solo-rebuild.md) is the delivery plan.
+**Repository state: S01 local foundation implemented.** The workspace, shared
+Zod contracts, SQLite persistence, DPAPI secret storage, authenticated loopback
+API/UI, and the bounded single-run task executor exist and are covered by CI.
+No model provider or product workflow is implemented yet: capabilities below
+that depend on the provider are requirements to implement, not existing
+functionality. The [solo backlog](../backlog/solo-rebuild.md) is the delivery
+plan and per-slice progress record.
 
 ## 1. Product promise
 
@@ -224,9 +227,9 @@ Approval cannot turn an out-of-scope action into a permitted action.
 
 ## 7. Minimal local architecture
 
-Build with strict TypeScript and pnpm. The paths below are the target layout;
-none of these application/package directories exist in the specification-only
-baseline. S01 must create the minimal workspace and pin the development toolchain.
+Build with strict TypeScript and pnpm. The paths below are the layout as of S01,
+except `packages/ui`, which is created only when a slice justifies shared
+components:
 
 ```text
 apps/web           Next.js / React: local assistant and task UI

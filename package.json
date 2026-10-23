@@ -1,0 +1,27 @@
+{
+  "name": "openfrost",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OpenFrost — personal AI OS foundation (Windows-first, local runtime)",
+  "packageManager": "pnpm@10.34.7",
+  "engines": {
+    "node": ">=24.0.0 <27.0.0",
+    "pnpm": ">=10.34.7 <11.0.0"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "test": "pnpm -r run test",
+    "build": "pnpm -r run build",
+    "dev": "pnpm -r --parallel run dev"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@types/node": "^24.19.2",
+    "eslint": "^9.39.5",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.72.0",
+    "vitest": "^3.2.7"
+  }
+}

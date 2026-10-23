@@ -1,0 +1,23 @@
+{
+  "name": "@openfrost/api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local Fastify service: owner auth, task API, SSE, one task worker",
+  "main": "./dist/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx watch src/main.ts",
+    "start": "node dist/main.js",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@fastify/cookie": "^11.0.2",
+    "@fastify/cors": "^11.0.1",
+    "@openfrost/agent": "workspace:*",
+    "@openfrost/db": "workspace:*",
+    "@openfrost/domain": "workspace:*",
+    "fastify": "^5.2.1",
+    "pino": "^10.1.0",
+    "zod": "^4.1.13"
+  }
+}
