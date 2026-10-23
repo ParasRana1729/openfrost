@@ -30,6 +30,15 @@ importers:
         specifier: ^3.2.7
         version: 3.2.7(@types/node@24.19.2)(tsx@4.23.15)
 
+  packages/agent:
+    dependencies:
+      '@openfrost/db':
+        specifier: workspace:*
+        version: link:../db
+      '@openfrost/domain':
+        specifier: workspace:*
+        version: link:../domain
+
   packages/db:
     dependencies:
       '@openfrost/domain':
