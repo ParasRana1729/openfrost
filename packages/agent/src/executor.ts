@@ -6,7 +6,9 @@ import {
   type ExecutionLimits,
   type RunFailure,
   type RunLimitKind,
+  type RunState,
   type Task,
+  type TaskState,
 } from '@openfrost/domain';
 import { TaskNotFoundError, type Store } from '@openfrost/db';
 import { ProviderMissingError, type LlmProvider } from './provider.js';
@@ -34,6 +36,14 @@ class LimitReachedError extends Error {
   ) {
     super(message);
     this.name = 'LimitReachedError';
+  }
+}
+
+/** App-internal failure (e.g. result persistence) — not a provider problem. */
+class ExecutorInternalError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ExecutorInternalError';
   }
 }
 
@@ -170,9 +180,11 @@ export class TaskExecutor {
 
   /**
    * Restart recovery (spec §5): mark unfinished active runs `interrupted`,
-   * keep queued work, and pause dispatch until the owner reviews it.
+   * keep queued work, and pause dispatch until the owner reviews it. Also
+   * purges expired sessions — this is the one guaranteed startup hook.
    */
   recover(): { interruptedRuns: number; dispatchPaused: boolean } {
+    this.store.sessions.purgeExpired(this.now());
     const stuck = this.store.tasks.listByStates(['running', 'awaiting_approval']);
     for (const task of stuck) {
       if (task.lastRunId) {
@@ -207,9 +219,14 @@ export class TaskExecutor {
     if (this.#shutdown || this.isDispatchPaused()) {
       return Promise.resolve();
     }
-    this.#drainPromise = this.#drain().finally(() => {
-      this.#drainPromise = null;
-    });
+    this.#drainPromise = this.#drain()
+      .catch(() => {
+        // #drain handles its own errors; this last-resort guard only keeps
+        // an unexpected rejection from crashing the runtime as unhandled.
+      })
+      .finally(() => {
+        this.#drainPromise = null;
+      });
     return this.#drainPromise;
   }
 
@@ -240,20 +257,55 @@ export class TaskExecutor {
       try {
         await this.#executeTask(next.id);
       } catch (err) {
-        // An unexpected executor bug must not wedge the queue; record it
-        // honestly and continue with the next task.
+        // An unexpected executor bug must not wedge the queue, leave a run
+        // row stuck in `running`, or crash the runtime. Reconcile the run
+        // first; if reconciliation itself fails, leave the pair untouched
+        // so restart recovery (recover()) marks both interrupted and pauses
+        // dispatch for owner review.
         const message = err instanceof Error ? err.message : String(err);
-        this.store.events.append(
-          'task.failed',
-          { taskId: next.id, payload: { origin: 'executor', message } },
-          this.now(),
-        );
+        let runState: RunState | 'unreconciled';
         try {
-          this.store.tasks.transition(next.id, 'failed', this.now(), {
-            error: `Executor error: ${message}`,
-          });
+          const current = this.store.tasks.get(next.id);
+          const run = current?.lastRunId
+            ? this.store.runs.get(current.lastRunId)
+            : null;
+          if (run && run.state === 'running') {
+            this.store.runs.finish(run.id, 'interrupted', this.now());
+            try {
+              this.store.events.append(
+                'run.interrupted',
+                { taskId: next.id, runId: run.id },
+                this.now(),
+              );
+            } catch {
+              // Best effort; the log gap is acceptable during a store failure.
+            }
+          }
+          runState =
+            current?.lastRunId != null
+              ? (this.store.runs.get(current.lastRunId)?.state ?? 'unreconciled')
+              : 'unreconciled';
         } catch {
-          // Task was concurrently claimed/canceled; nothing to do.
+          runState = 'unreconciled';
+        }
+        if (runState !== 'unreconciled') {
+          const to: TaskState = runState === 'failed' ? 'failed' : 'interrupted';
+          try {
+            this.store.events.append(
+              to === 'failed' ? 'task.failed' : 'task.interrupted',
+              { taskId: next.id, payload: { origin: 'executor', message } },
+              this.now(),
+            );
+          } catch {
+            // Best effort.
+          }
+          try {
+            this.store.tasks.transition(next.id, to, this.now(), {
+              error: to === 'failed' ? `Executor error: ${message}` : null,
+            });
+          } catch {
+            // Finalized concurrently (e.g. canceled); nothing to do.
+          }
         }
       }
     }
@@ -335,13 +387,31 @@ export class TaskExecutor {
                 `${this.limits.maxOutputChars} character limit.`,
             );
           }
-          this.finishRun(taskId, run.id, 'completed', {
+          // Rows land before log events: a failed event append is recoverable
+          // in the drain catch, but a task row left behind by a failed run
+          // row is not. The artifact is created before the run is finalized
+          // so a persistence failure still classifies as a normal run failure.
+          let artifact: Artifact;
+          try {
+            artifact = this.reportArtifact(taskId, claimed.task, result.text);
+          } catch (err) {
+            throw new ExecutorInternalError(
+              `Failed to save the result artifact: ${
+                err instanceof Error ? err.message : String(err)
+              }`,
+            );
+          }
+          this.store.runs.finish(run.id, 'completed', this.now(), {
             usage: { steps, inputChars, outputChars },
           });
-          const artifact = this.reportArtifact(taskId, claimed.task, result.text);
           this.store.tasks.transition(taskId, 'completed', this.now(), {
             resultArtifactId: artifact.id,
           });
+          this.store.events.append(
+            'run.completed',
+            { taskId, runId: run.id },
+            this.now(),
+          );
           this.store.events.append(
             'task.completed',
             { taskId, runId: run.id, payload: { artifactId: artifact.id, steps } },
@@ -412,6 +482,8 @@ export class TaskExecutor {
       };
     } else if (err instanceof ProviderMissingError) {
       failure = { code: 'provider_missing', message: err.message, limitHit: null };
+    } else if (err instanceof ExecutorInternalError) {
+      failure = { code: 'internal', message: err.message, limitHit: null };
     } else {
       const message = err instanceof Error ? err.message : String(err);
       failure = { code: 'provider_error', message, limitHit: null };

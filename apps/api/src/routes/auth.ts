@@ -1,10 +1,10 @@
 import type { FastifyPluginAsync, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import type { AppContext } from '../types.js';
-import { SESSION_COOKIE, newCsrfToken } from '../app.js';
+import { SESSION_COOKIE, newCsrfToken, tokensMatch } from '../app.js';
 
 function csrfHeaderValid(token: unknown, expected: string): boolean {
-  return typeof token === 'string' && token === expected;
+  return typeof token === 'string' && tokensMatch(token, expected);
 }
 
 const setupRequestSchema = z.strictObject({
