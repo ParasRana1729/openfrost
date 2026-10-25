@@ -216,6 +216,7 @@ export interface Store {
     get(id: string): Approval | null;
     getForTask(taskId: string): Approval | null;
     listByStates(states: readonly ApprovalState[]): Approval[];
+    listAll(): Approval[];
     /** Owner decision or system expiry; validates the transition map. */
     decide(
       id: string,
@@ -781,6 +782,14 @@ export function createStore(db: Db, options: StoreOptions = {}): Store {
         .from(schema.approvals)
         .where(inArray(schema.approvals.state, states as ApprovalState[]))
         .orderBy(asc(schema.approvals.requestedAt), sql`rowid asc`)
+        .all()
+        .map(toApproval);
+    },
+    listAll(): Approval[] {
+      return db
+        .select()
+        .from(schema.approvals)
+        .orderBy(desc(schema.approvals.requestedAt), sql`rowid desc`)
         .all()
         .map(toApproval);
     },

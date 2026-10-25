@@ -141,3 +141,15 @@ export const exportDestinationSchema = z.strictObject({
   createdAt: z.string().min(1),
 });
 export type ExportDestination = z.infer<typeof exportDestinationSchema>;
+
+/** API body for granting an export destination. */
+export const exportDestinationRequestSchema = z.strictObject({
+  path: z.string().min(1).max(1000),
+});
+export type ExportDestinationRequest = z.infer<typeof exportDestinationRequestSchema>;
+
+/** Owner decision on a pending approval; v0.1 decides in the local web app. */
+export const grantDecisionSchema = z.strictObject({
+  decision: z.enum(['granted', 'rejected']),
+});
+export type GrantDecision = z.infer<typeof grantDecisionSchema>;

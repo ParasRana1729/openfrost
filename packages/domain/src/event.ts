@@ -21,6 +21,8 @@ export const eventTypeSchema = z.enum([
   'approval.rejected',
   'approval.canceled',
   'approval.expired',
+  'export.destination_added',
+  'export.destination_removed',
   'export.written',
   'dispatch.paused',
   'dispatch.resumed',
