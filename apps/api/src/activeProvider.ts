@@ -4,6 +4,7 @@ import {
   OpenAIProvider,
   OpenRouterProvider,
   PROJECT_FILE_INVENTORY_HEADING,
+  RECENT_UPDATES_HEADING,
   type LlmProvider,
   type ProviderStepRequest,
   type ProviderStepResult,
@@ -15,7 +16,11 @@ import {
   type Store,
 } from '@openfrost/db';
 import type { ApiConfig } from './config.js';
-import { fakeProjectUpdateScript, fakeResearchScript } from './fakeProviderScript.js';
+import {
+  fakeProjectUpdateScript,
+  fakeResearchScript,
+  fakeWeeklyPlanScript,
+} from './fakeProviderScript.js';
 
 const ACTIVE_PROVIDER_KEY = 'provider.active';
 const modelKey = (provider: ProviderId): string => `provider.model.${provider}`;
@@ -72,15 +77,19 @@ export class ActiveProvider implements LlmProvider {
   async step(request: ProviderStepRequest): Promise<ProviderStepResult> {
     if (this.#isFakeHook()) {
       // One fresh scripted run per agent run; the kind follows the task's
-      // first user message (project updates carry the granted-file inventory).
+      // first user message (weekly plans carry the recent-updates heading,
+      // project updates the granted-file inventory).
       if (request.step === 1 || this.#fake === null) {
-        const script = request.messages.some(
-          (message) =>
-            message.role === 'user' &&
-            message.content.includes(PROJECT_FILE_INVENTORY_HEADING),
-        )
-          ? fakeProjectUpdateScript()
-          : fakeResearchScript();
+        const hasHeading = (heading: string): boolean =>
+          request.messages.some(
+            (message) =>
+              message.role === 'user' && message.content.includes(heading),
+          );
+        const script = hasHeading(RECENT_UPDATES_HEADING)
+          ? fakeWeeklyPlanScript()
+          : hasHeading(PROJECT_FILE_INVENTORY_HEADING)
+            ? fakeProjectUpdateScript()
+            : fakeResearchScript();
         this.#fake = new FakeProvider(script);
       }
       return this.#fake.step(request);
