@@ -1,5 +1,6 @@
 import {
   ProviderError,
+  type AgentMessage,
   type LlmProvider,
   type ProviderStepRequest,
   type ProviderStepResult,
@@ -31,6 +32,36 @@ export type ScriptedStep =
   | { type: 'hang'; ms?: number };
 
 const NO_TOKENS: ProviderUsage = { inputTokens: null, outputTokens: null };
+
+/**
+ * Placeholder in a scripted call's argsJson: replaced with the first file
+ * path from the task message's granted-file inventory, so the fake
+ * project-update script can exercise a real read without knowing paths in
+ * advance. Unreplaced (no inventory), the literal token makes the tool fail
+ * visibly, which the scripted final text reports honestly.
+ */
+export const FIRST_FILE_TOKEN = '{{OPENFROST_FIRST_FILE}}';
+
+/** The executor's inventory heading; also how fake-mode routing detects a project update. */
+export const PROJECT_FILE_INVENTORY_HEADING = 'Granted project files';
+
+/** First `available` path in the newest project-file inventory line list. */
+export function firstInventoryPath(messages: AgentMessage[]): string | null {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (!message || message.role !== 'user') {
+      continue;
+    }
+    if (!message.content.includes(PROJECT_FILE_INVENTORY_HEADING)) {
+      continue;
+    }
+    const match = /^- (.+) \(\d+ bytes\)$/m.exec(message.content);
+    if (match?.[1]) {
+      return match[1];
+    }
+  }
+  return null;
+}
 
 function abortableSleep(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -101,7 +132,10 @@ export class FakeProvider implements LlmProvider {
           calls: step.calls.map((call) => ({
             id: `fake-call-${(this.#callCounter += 1)}`,
             name: call.name,
-            argsJson: call.argsJson,
+            argsJson: call.argsJson.replaceAll(
+              FIRST_FILE_TOKEN,
+              () => firstInventoryPath(request.messages) ?? 'C:\\no-project-file-inventory',
+            ),
           })),
           searches: step.searches ?? 0,
           usage: step.usage ?? NO_TOKENS,

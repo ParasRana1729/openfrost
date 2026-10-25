@@ -15,9 +15,27 @@ export interface RetrievalRecord {
   error?: string;
 }
 
-/** Collects per-run retrieval records; one instance per run. */
+/**
+ * One recorded access to the project's granted files (S03): enumeration
+ * outcomes (available/skipped/limit/root_error) and per-read outcomes
+ * (read/failed). These records form the runtime-written file appendix of a
+ * project update, so skipped sources stay visible and the model cannot
+ * fabricate the list.
+ */
+export interface FileAccessRecord {
+  path: string;
+  status: 'read' | 'available' | 'skipped' | 'failed' | 'root_error' | 'limit';
+  /** Human-readable reason for skipped/failed/root_error/limit entries. */
+  reason?: string;
+  sizeBytes?: number;
+  chars?: number;
+  ms?: number;
+}
+
+/** Collects per-run retrieval and file-access records; one instance per run. */
 export interface RunToolContext {
   recordRetrieval(r: RetrievalRecord): void;
+  recordFileAccess(r: FileAccessRecord): void;
 }
 
 /**
