@@ -7,13 +7,15 @@
 - **Platform:** Windows-first, local runtime
 - **Primary interface:** Local web app
 
-**Repository state: S02 research brief implemented.** The workspace, shared
+**Repository state: S03 projects implemented.** The workspace, shared
 Zod contracts, SQLite persistence, DPAPI secret storage, authenticated loopback
-API/UI, bounded single-run executor, and the research-brief workflow (OpenAI,
+API/UI, bounded single-run executor, the research-brief workflow (OpenAI,
 Gemini, and OpenRouter adapters with hosted web search, an SSRF-hardened fetch
-tool, saved Markdown reports) exist and are covered by CI. Project updates and weekly
-planning are not implemented yet: capabilities below that depend on them are
-requirements to implement, not existing functionality. The
+tool, saved Markdown reports), and the project-update workflow (project CRUD
+with explicitly granted folder roots, canonical-path checks, bounded
+text/Markdown reads, evidence-backed saved updates) exist and are covered by
+CI. Weekly planning is not implemented yet: capabilities below that depend on it
+are requirements to implement, not existing functionality. The
 [solo backlog](../backlog/solo-rebuild.md) is the delivery plan and per-slice
 progress record.
 

@@ -2,7 +2,7 @@
 
 - **Specification:** [v0.1 solo rebuild](../docs/ai-os-project-spec.md)
 - **Owner for every item:** ParasRana1729
-- **Current assignment:** S03 next; S02c complete (see its handoff)
+- **Current assignment:** S04 or S05 next; S03 complete (see its handoff)
 
 These are local backlog identifiers, not GitHub issue numbers. Only S00 is in
 scope for the current reset. S01–S07 are planned, unimplemented
@@ -348,7 +348,7 @@ provider selection and no plugin system — three built-in adapters only.
 
 ## S03 — Add project context and evidence-backed updates
 
-- **Status:** Planned
+- **Status:** Complete (real-model project update pending the owner's evaluation)
 - **Depends on:** S02
 
 Projects organize one assistant's context. Read granted text/Markdown notes and
@@ -356,15 +356,72 @@ produce dated updates without mutating a repository or invoking Git/shell tools.
 
 ### Acceptance criteria
 
-- [ ] Create/edit a project, explicitly grant/revoke folder roots, and scope a
+- [x] Create/edit a project, explicitly grant/revoke folder roots, and scope a
       conversation/task to it.
-- [ ] Canonical path checks reject traversal, junction/symlink escapes, and
+- [x] Canonical path checks reject traversal, junction/symlink escapes, and
       credential stores; file count/size/type limits and skipped sources are visible.
-- [ ] A saved update cites files/excerpts and separates documented progress,
+- [x] A saved update cites files/excerpts and separates documented progress,
       blockers, unknowns, and proposed work; notes do not become proof of shipping.
-- [ ] Two-project tests demonstrate that chats, files, and project facts do not
+- [x] Two-project tests demonstrate that chats, files, and project facts do not
       leak across scopes. Cross-project attachment requires owner action.
-- [ ] Revoked grants are rechecked at tool execution, including queued tasks.
+- [x] Revoked grants are rechecked at tool execution, including queued tasks.
+
+### Handoff
+
+- Implemented: `packages/domain` project contracts (`Project`,
+  `ProjectFolderGrant`, project CRUD/grant request schemas), a task `kind`
+  (`research_brief` | `project_update`) with optional `projectId` scoping on
+  tasks and conversations, a `project_update` artifact kind, a
+  `source_unavailable` run-failure code, and `project.*` event types.
+  `packages/db` migration `0002_projects` (projects + project_folder_grants
+  tables, `tasks.kind`/`tasks.project_id`/`conversations.project_id` columns,
+  existing rows default to `research_brief`) and the store `projects`
+  namespace (create/update/list, add/remove/list grants) plus scoping-aware
+  task/conversation creation. `packages/agent` gains `read_project_file`
+  (`tools/projectFiles.ts`), the file trust boundary: grant paths are
+  canonicalized with realpath at grant time and re-canonicalized at every
+  execution (a moved or junction-swapped root stops granting immediately);
+  reads require strict containment after resolution, refuse traversal,
+  junction/symlink escapes (lexical gate before any filesystem access so
+  outside paths cannot be probed), and credential/configuration stores by
+  name (.git/.ssh/.aws/.kube/.env/id_rsa/*.pem/node_modules/...); bounded at
+  50 files × 512 KB per run with .md/.markdown/.txt only. The executor runs
+  `project_update` tasks with a dedicated policy (Documented progress /
+  Stated blockers / Unknowns / Proposed next steps; notes are claims, not
+  proof of shipping), a run-start inventory whose skipped sources are visible
+  to both the model and the owner, a runtime-recorded `## Project files
+  consulted` appendix the model cannot alter, and honest `source_unavailable`
+  failure when nothing is readable (including grants revoked while the task
+  was queued). Grant re-reads happen at every tool call, so mid-run
+  revocation stops access at once. `apps/api` adds `/api/projects` CRUD +
+  grant/revoke (canonicalization, duplicate 409, home/data-dir and drive-root
+  refusals), task project validation, and kind-aware `OPENFROST_PROVIDER=fake`
+  scripts (the fake update reads the first inventory file). `apps/web` adds
+  the Projects page (create/edit, grant/revoke, transmission disclosure) and
+  the workflow/project selectors on the task form with kind/scope chips.
+- Verification: `pnpm lint`, `pnpm test`, `pnpm build` pass locally (199
+  tests: 41 domain, 32 db, 87 agent, 39 api — all fake-provider, zero paid
+  calls) — including two-project isolation (instructions, file listings, and
+  file content never cross scopes; a cross-project read is refused and shown
+  as FAILED in the appendix), queued-task and mid-run grant revocation, and a
+  full project update over HTTP. Browser-verified end to end on a temp home
+  with `OPENFROST_PROVIDER=fake`: onboarding → project created → notes folder
+  granted (canonical path echoed) → project-update task scoped on the tasks
+  page → completed → saved update rendered with the runtime appendix showing
+  `parser.md — read, 149 chars` and `run.log — skipped: unsupported file type`.
+- Not run/verified: a real model call for a project update (the owner
+  evaluates with their configured provider, as with S02's real-model
+  evaluation); the web UI has no automated browser tests (manual/automated
+  split as in S02).
+- Known limitations: research briefs scoped to a project receive the
+  project's instructions but not file tools (files are the project-update
+  workflow's sources); project deletion is not implemented (delete is not in
+  the acceptance criteria, so tasks never dangle); conversations are scoped
+  in the schema/store only — chat UI arrives later; directory-symlink escape
+  coverage uses junctions on Windows (file symlinks need privileges) with
+  POSIX symlinks covered on POSIX paths of the same logic.
+- Next: S04 (approval-bound report export) or S05 (owner-approved memory);
+  both depend on S03 only.
 
 ## S04 — Add approval-bound report export
 

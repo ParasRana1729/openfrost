@@ -3,15 +3,21 @@
 > One personal AI agent that turns requests and recurring responsibilities into
 > completed work, with useful memory, visible progress, and owner control.
 
-**Status: S02 research brief implemented — the first end-to-end workflow works.**
+**Status: S03 projects implemented — two of the three workflows work.**
 
 OpenFrost is a solo project owned by ParasRana1729. What ships today is the S01
-foundation plus the S02 research-brief workflow: with a provider key stored in
-Settings (OpenAI, Gemini, or OpenRouter — your choice in Settings), a submitted question (with optional constraints and starting URLs)
-runs as a bounded agent task — provider-backed web search plus a hardened
-public-page fetch — and saves a Markdown report with sources, retrieval times,
-uncertainties, and a runtime-recorded retrieval appendix. Project updates and
-weekly planning are **not implemented yet** (S03+).
+foundation plus the S02 research-brief workflow and the S03 project-update
+workflow. With a provider key stored in Settings (OpenAI, Gemini, or
+OpenRouter — your choice in Settings), a submitted question (with optional
+constraints and starting URLs) runs as a bounded agent task — provider-backed
+web search plus a hardened public-page fetch — and saves a Markdown report with
+sources, retrieval times, uncertainties, and a runtime-recorded retrieval
+appendix. Projects organize context: create one, grant it folder roots
+explicitly, and scope tasks to it — a project update reads only that project's
+granted text/Markdown notes (canonical-path checks, credential-store
+exclusions, bounded counts/sizes, skipped sources visible) and saves a dated,
+evidence-backed update citing file paths and excerpts. Weekly planning is
+**not implemented yet** (S06).
 
 ## The direction
 
@@ -25,7 +31,7 @@ The first release targets three useful jobs:
 | Workflow | Result | Status |
 | --- | --- | --- |
 | Research brief | A saved comparison and recommendation, with sources and uncertainties. | **Works** (S02) — real-model quality pending the owner's evaluation |
-| Project update | An evidence-backed summary of granted project notes, blockers, and next steps. | Planned (S03) |
+| Project update | An evidence-backed summary of granted project notes, blockers, and next steps. | **Works** (S03) — real-model quality pending the owner's evaluation |
 | Weekly planning | An owner-scheduled draft of priorities from project notes and recent updates. | Planned (S06) |
 
 The runtime is Windows-first and local, using SQLite + Drizzle, editable
@@ -70,8 +76,15 @@ real today.
   deny lists, per-address DNS validation re-checked at every connection, full
   redirect re-validation, size/time bounds), a policy system prompt that
   treats retrieved content as untrusted data, and a runtime-recorded
-  retrieval appendix. A deterministic fake provider covers all of this in
-  tests — no paid API calls anywhere in CI.
+  retrieval appendix. S03 adds the project-update loop: a `read_project_file`
+  tool bound to the task's project that re-reads the owner's grants at every
+  execution (revocation — including of queued tasks — and junction/symlink
+  escapes fail closed), canonical-path checks, credential-store exclusions,
+  bounded file counts/sizes/types with skipped sources visible, a policy that
+  separates documented progress / stated blockers / unknowns / proposed next
+  steps and treats notes as claims rather than proof of shipping, and a
+  runtime-recorded file appendix. A deterministic fake provider covers all of
+  this in tests — no paid API calls anywhere in CI.
 - **`apps/api`**: Fastify bound to `127.0.0.1` with first-run owner setup,
   scrypt passwords, HttpOnly SameSite=Strict sessions, session-bound CSRF
   tokens, origin allowlisting, an authenticated SSE activity stream, and
@@ -84,10 +97,13 @@ real today.
 - **`apps/web`:** local Next.js UI on `127.0.0.1:3000` with a frost visual
   identity — a dispatch status strip, a dark runtime-console activity log, and
   mono system data — onboarding with the required data-transmission and
-  availability disclosures, login, the task queue with constraints/starting
-  URLs, cancel/retry/run history, token usage with list-price cost estimates
-  (labeled as estimates; unknown when no price is on file), markdown report
-  rendering, dispatch-resume review, and provider settings — active provider (OpenAI, Gemini, or OpenRouter), per-provider
+  availability disclosures, login, the task queue with workflow and project
+  selectors, constraints/starting URLs, cancel/retry/run history, token usage
+  with list-price cost estimates (labeled as estimates; unknown when no price
+  is on file), markdown report/update rendering, dispatch-resume review, the
+  Projects page (create/edit projects, grant/revoke folder roots with
+  canonicalization, per-project transmission disclosure), and provider
+  settings — active provider (OpenAI, Gemini, or OpenRouter), per-provider
   DPAPI-protected keys and models — and execution limits.
 
 `packages/ui` is intentionally absent: nothing is shared enough to justify it
@@ -102,7 +118,7 @@ Requires Windows (DPAPI), Node.js 24+ (`24` line; 26 works), and pnpm 10
 pnpm install          # installs all workspace dependencies
 pnpm build            # builds all packages and the web app (do this first)
 pnpm lint             # eslint across the workspace
-pnpm test             # vitest in every package (93 tests; includes real
+pnpm test             # vitest in every package (199 tests; includes real
                       #   DPAPI round-trips on Windows)
 pnpm dev              # API on 127.0.0.1:8787 and web on 127.0.0.1:3000
 ```
@@ -140,7 +156,7 @@ AGENTS.md / CONTRIBUTING.md  Engineering, security, and landing workflow
 - [Developer guide](docs/AI_DEVELOPER_GUIDE.md): working one slice at a time.
 - [Contributing](CONTRIBUTING.md): branch, verification, and review conventions.
 
-The next assigned slice is **S03: projects** — granted-folder context and
-evidence-backed project updates. Implement only the assigned slice, never real
-credentials in `.env`, prompts, or repository files; the credential flow uses
-DPAPI.
+The next assigned slice is **S04 (approval-bound report export) or S05
+(owner-approved memory)** — both depend on S03 only. Implement only the
+assigned slice, never real credentials in `.env`, prompts, or repository
+files; the credential flow uses DPAPI.
