@@ -2,10 +2,10 @@
 
 - **Specification:** [v0.1 solo rebuild](../docs/ai-os-project-spec.md)
 - **Owner for every item:** ParasRana1729
-- **Current assignment:** S06 next; S05 complete (see its handoff)
+- **Current assignment:** S07 next; S06 complete (see its handoff)
 
-These are local backlog identifiers, not GitHub issue numbers. S00–S05 are
-complete (see each handoff); S06–S07 remain planned. Ownership is not permission
+These are local backlog identifiers, not GitHub issue numbers. S00–S06 are
+complete (see each handoff); S07 remains planned. Ownership is not permission
 for an agent to start all remaining items or publish anything. Implement the next
 explicitly assigned item in dependency order.
 
@@ -599,7 +599,7 @@ facts. Start with Markdown and straightforward retrieval, not embeddings.
 
 ## S06 — Add owner-confirmed weekly planning routines
 
-- **Status:** Planned
+- **Status:** Complete (real-model plan quality pending S07's working week)
 - **Depends on:** S03, S05
 
 Reuse the task executor to draft priorities from scoped notes and recent updates.
@@ -607,16 +607,124 @@ Do not add external notifications, calendar integration, or self-assigned work.
 
 ### Acceptance criteria
 
-- [ ] The owner reviews a task template, project/source scope, time zone, and
+- [x] The owner reviews a task template, project/source scope, time zone, and
       cadence before enabling; routines can be paused, edited, or removed.
-- [ ] The runtime runs due work without an open browser, honoring the global queue
+- [x] The runtime runs due work without an open browser, honoring the global queue
       and execution limits, and saves a source-backed weekly-plan artifact.
-- [ ] Persisted occurrence identifiers prevent duplicates across ticks/restarts,
+- [x] Persisted occurrence identifiers prevent duplicates across ticks/restarts,
       clock changes, and daylight-saving transitions.
-- [ ] Unavailable-runtime intervals produce one missed occurrence for review per
+- [x] Unavailable-runtime intervals produce one missed occurrence for review per
       routine, with “run once now”/“skip”, not an automatic replay burst.
-- [ ] Fake-clock integration tests cover due, missed, paused, edited, failed,
+- [x] Fake-clock integration tests cover due, missed, paused, edited, failed,
       overlapping, and restart cases.
+
+### Handoff
+
+- Implemented: routines are owner-confirmed weekly-planning templates scoped to
+  one project. Creation (`POST /api/routines`, validated by
+  `createRoutineRequestSchema`: name, project, IANA time zone verified through
+  Intl, weekly weekday+time or daily time schedule, task template) always
+  yields a **paused draft**; `POST /api/routines/:id/enable` is the separate
+  confirmation step, and the Routines page previews the computed next
+  occurrence (local-date key + UTC instant) before enabling. Routines can be
+  paused, edited (`PUT`; a schedule/time-zone edit moves the no-back-fill
+  anchor `windowStartAt` to now, so enabling or editing never produces an
+  instant miss or back-fill), or removed (`DELETE`; occurrence rows go with
+  the routine, dispatched tasks remain as history).
+- Implemented: `RoutineScheduler` (`apps/api/src/routineScheduler.ts`, tick
+  cadence `OPENFROST_ROUTINE_TICK_MS`, default 30 s) is constructed in
+  `buildApp` sharing the executor's clock and started by `main()` after
+  listen — no browser is involved. Each tick examines, per active routine,
+  only the **latest occurrence at or before now** (pure domain math in
+  `packages/domain/src/routine.ts`: local-date keys, offset-probing wall→UTC
+  conversion that resolves fall-back ambiguity to the first pass and
+  spring-forward gaps to the transition minute). A materialized
+  `routine_occurrences` row (UNIQUE `(routine_id, occurrence_key)`) ends the
+  examination, which is what deduplicates ticks, restarts, backward/forward
+  clock jumps, and DST shifts — the key is the scheduled local calendar
+  date, which does not move when the UTC instant does. Occurrences within
+  the 30-minute late grace dispatch one `weekly_plan` task through
+  `executor.enqueueRoutineOccurrence` (row first, then task, then task-id
+  back-link), honoring the global one-run queue and the same execution
+  limits as manual work; anything later surfaces exactly one `missed` row
+  (reason recorded) that only an owner decision resolves:
+  `POST …/occurrences/:key/run` (run once now → exactly one task;
+  duplicate decisions 409 via the `missed → scheduled|skipped` transition
+  map) or `…/skip`. Intermediate weeks the runtime also missed are never
+  replayed. `routine.*` events record the observable lifecycle.
+- Implemented: the `weekly_plan` task kind runs the project-update tool set
+  (`read_project_file`, grants re-read at every call) with a dedicated
+  policy (Draft priorities for next week / Unresolved questions / Suggested
+  next steps; notes and updates are evidence, never proof; the draft
+  commits the owner to nothing). The first user message carries the
+  granted-file inventory plus the project's two most recent saved
+  `project_update` artifacts (4,000 chars each, truncation disclosed),
+  joined through tasks so another project's updates cannot leak in; zero
+  updates is disclosed as such. A run with no readable files AND no saved
+  updates fails honestly `source_unavailable`. The saved `weekly_plan`
+  artifact appends two runtime-recorded sections the model cannot alter:
+  `## Project files consulted` and `## Updates consulted` (artifact/task
+  ids, dates, sizes, truncation). `OPENFROST_PROVIDER=fake` scripts a
+  weekly plan through the real file read (routing anchor: the
+  always-present `Recent saved updates` heading).
+- Fixed en route: a latent `TaskExecutor` race the scheduler's dispatch
+  loop exposed — `kick()` during a drain's resolution microtask returned an
+  already-resolved promise and left the newly queued task unprocessed.
+  Drain passes now serialize onto a chain that `whenIdle()`/`stop()` await.
+- Verification: `pnpm lint && pnpm test && pnpm build` passes locally (318
+  tests: 83 domain, 54 db, 111 agent, 70 API — all fake-provider, zero paid
+  calls); the production web build includes `/routines`. Fake-clock
+  scheduler integration tests cover due (once across ticks; next week is a
+  new key), missed (exactly one row; repeated ticks add nothing; run-once
+  now dispatches once and duplicates 409; skip never runs a task), the
+  30-minute grace boundary (one side runs, one side misses), paused (no
+  dispatch while paused; resume past the grace yields one missed review),
+  edited (new schedule honored, no back-fill, edits after the instant
+  ignored), enabling (creation anchor prevents back-fill), failed runs
+  (never re-dispatched or auto-retried), overlapping routines (one tick,
+  two tasks, one global queue, both complete), restart (fresh
+  executor/scheduler over the same store dispatches nothing), and clock
+  changes (backward then forward across a fired occurrence adds nothing).
+  HTTP tests cover the owner-session/CSRF surface: CRUD, draft-then-enable,
+  duplicate enable/pause 409, window anchor movement, due dispatch with a
+  completed artifact, missed run/skip with duplicate 409 and unknown-key
+  404, and removal.
+- Verification (fake-provider workflow exercise, throwaway home,
+  `OPENFROST_PROVIDER=fake`, tick 3 s, real clock): owner setup → project
+  with a granted notes folder (`notes.md` + a `run.log` that must be
+  skipped) → routine created as a paused draft with the next-occurrence
+  preview shown → enabled → **with no browser open**, the tick dispatched
+  the due occurrence through the global queue and the task completed,
+  saving a 1,314-char weekly-plan artifact containing the Draft priorities
+  section, `notes.md — read`, `run.log — skipped: unsupported file type`,
+  and the Updates consulted appendix (no web-retrieval appendix). A full
+  runtime restart on the same home left exactly one occurrence and one
+  completed task after several ticks (no duplicate dispatch), with the
+  routine and its last-occurrence record intact. A second routine paused
+  across its scheduled instant dispatched nothing while paused and ran
+  late-but-automatically ~45 s past the instant after resume (within the
+  30-minute grace — the designed brief-outage behavior); the >grace missed
+  path was not re-waited live (it needs 30+ minutes of real downtime) and
+  is covered by the fake-clock and HTTP tests above.
+- Not run/verified: a real-model routine run (the owner evaluates plan
+  quality during S07's working week with their configured provider); no
+  automated browser test of the Routines page (manual/automated split as in
+  S02–S05; the page is exercised through its API contract and the
+  production build type-checks it).
+- Known limitations: weekly and daily cadences only (the schema is a
+  discriminated union; other cadences need a contract change); the late
+  grace (30 min), tick interval default, update count (2), and per-update
+  cap (4,000 chars) are fixed constants, not owner-configurable; missed
+  occurrences are indistinguishable by cause (unavailable runtime vs.
+  paused) — both surface as one review row, which is deliberate; time-zone
+  wall→UTC conversion has minute resolution (HH:mm schedules, so exact);
+  a dispatched-then-failed occurrence keeps state `scheduled` with its
+  failed task linked (retry is the existing task retry, not a routine
+  concern); occurrence history is capped at the 20 most recent keys per
+  routine in the detail endpoint; if the run is interrupted mid-dispatch
+  after the occurrence row exists but before the task link lands, the row
+  stays `scheduled` with no task (visible, never duplicated).
+- Next: S07 — harden and validate the personal-use release.
 
 ## S07 — Harden and validate the personal-use release
 

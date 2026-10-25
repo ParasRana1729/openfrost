@@ -2,12 +2,12 @@
 
 ## Solo rebuild specification — v0.1
 
-- **Status:** Accepted product direction; S00–S05 implemented, S06–S07 planned
+- **Status:** Accepted product direction; S00–S06 implemented, S07 planned
 - **Owner and first user:** ParasRana1729
 - **Platform:** Windows-first, local runtime
 - **Primary interface:** Local web app
 
-**Repository state: S05 owner-approved memory implemented.** The workspace,
+**Repository state: S06 weekly planning implemented.** The workspace,
 shared Zod contracts, SQLite persistence, DPAPI secret storage, authenticated
 loopback API/UI, bounded single-run executor, the research-brief workflow
 (OpenAI, Gemini, and OpenRouter adapters with hosted web search, an
@@ -15,11 +15,13 @@ SSRF-hardened fetch tool, saved Markdown reports), the project-update workflow
 (project CRUD with explicitly granted folder roots, canonical-path checks,
 bounded text/Markdown reads, evidence-backed saved updates), the
 approval-bound export workflow (granted destinations, exact-proposal review
-with expiry and audit events, create-only guarded writes), and owner-approved
+with expiry and audit events, create-only guarded writes), owner-approved
 memory (canonical Markdown files, inspectable proposals, scope-isolated
-retrieval, external-edit detection) exist and are covered by CI. S06 weekly
-planning is not implemented yet: capabilities below that depend
-on it are requirements to implement, not existing functionality. The
+retrieval, external-edit detection), and owner-confirmed weekly planning
+routines (project-scoped templates, IANA time zones, weekly/daily cadences,
+deduplicated occurrences, missed-occurrence review) exist and are covered by
+CI. S07 release hardening is not implemented yet: capabilities below that
+depend on it are requirements to implement, not existing functionality. The
 [solo backlog](../backlog/solo-rebuild.md) is the delivery plan and per-slice
 progress record.
 

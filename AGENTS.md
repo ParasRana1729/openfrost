@@ -5,7 +5,7 @@ before changing the repository.
 
 ## 1. Current direction and authority
 
-**Current state: S05 owner-approved memory implemented.** The pnpm workspace,
+**Current state: S06 weekly planning implemented.** The pnpm workspace,
 shared Zod contracts, SQLite persistence, DPAPI secret storage, authenticated
 loopback API/UI, the bounded single-run executor, the research-brief workflow
 (OpenAI, Gemini, and OpenRouter adapters with hosted web search and an
@@ -13,12 +13,16 @@ SSRF-hardened fetch tool), the project-update workflow (project CRUD with
 explicitly granted folder roots, canonical-path checks, bounded text/Markdown
 reads, evidence-backed saved updates), the approval-bound export workflow
 (granted destinations, exact-proposal review with expiry and audit events,
-create-only guarded writes), and owner-approved memory (canonical Markdown
+create-only guarded writes), owner-approved memory (canonical Markdown
 files, inspectable proposals, scope-isolated retrieval, external-edit
-detection) exist and are covered by
-`pnpm lint && pnpm test && pnpm build` and CI. S06 weekly planning is not
-implemented; do not claim it works. Do not invent APIs, scripts, migrations,
-tools, or passing checks beyond what the repository actually contains.
+detection), and owner-confirmed weekly planning routines (project-scoped
+templates with IANA time zones and weekly/daily schedules, deduplicated
+local-date occurrences across ticks/restarts/clock changes/DST, one missed
+occurrence per routine for review with run-once-now/skip) exist and are
+covered by `pnpm lint && pnpm test && pnpm build` and CI. S07 release
+hardening is not implemented; do not claim it works. Do not invent APIs,
+scripts, migrations, tools, or passing checks beyond what the repository
+actually contains.
 
 OpenFrost is a Windows-first personal **AI OS** being rebuilt by one owner,
 ParasRana1729. One assistant completes research briefs, project updates, and

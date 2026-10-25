@@ -26,8 +26,12 @@ overwrites. The assistant can propose durable memory during a task, but nothing
 enters future context until the owner approves it on the Memory page: global
 preferences for every task plus only the active project's facts. Canonical
 memory is Markdown, edits and deletions take effect for future retrieval, and
-deleting an entry keeps the source task and report history. Weekly planning is
-**not implemented yet** (S06).
+deleting an entry keeps the source task and report history. Weekly planning
+routines draft next week's priorities from a project's granted notes and its
+two most recent saved updates on the owner's confirmed schedule; the runtime
+runs them without an open browser, deduplicates occurrences across restarts,
+clock changes, and DST, and surfaces one missed occurrence for review (run
+once now / skip) instead of replaying a backlog.
 
 ## The direction
 
@@ -43,7 +47,7 @@ The first release targets three useful jobs:
 | Research brief | A saved comparison and recommendation, with sources and uncertainties. | **Works** (S02) — real-model quality pending the owner's evaluation |
 | Project update | An evidence-backed summary of granted project notes, blockers, and next steps. | **Works** (S03) — real-model quality pending the owner's evaluation |
 | Report export | An approved copy of a saved report written into a granted folder. | **Works** (S04) — exercised with the fake provider; real use during S07 |
-| Weekly planning | An owner-scheduled draft of priorities from project notes and recent updates. | Planned (S06) |
+| Weekly planning | An owner-scheduled draft of priorities from project notes and recent updates. | **Works** (S06) — exercised with the fake provider; real-model quality pending S07 |
 
 The runtime is Windows-first and local, using SQLite + Drizzle, editable
 Markdown memory, and the owner's provider API keys (OpenAI, Gemini, or
@@ -62,7 +66,7 @@ See the [product one-pager](docs/product-one-pager.md) and
 release gates. They describe planned behavior; the table above tracks what is
 real today.
 
-## What is implemented (S01–S05)
+## What is implemented (S01–S06)
 
 - **Workspace and toolchain:** pnpm workspace with Node 24 LTS
   (`.nvmrc`; engines allow 24–26) and pnpm pinned in `packageManager`.
@@ -108,7 +112,11 @@ real today.
   duplicate- and credential-refusing), and task prompts receive only approved
   global preferences plus the active project's facts from Markdown, never
   pending proposals or another project's entries. A deterministic fake provider covers all
-  of this in tests — no paid API calls anywhere in CI.
+  of this in tests — no paid API calls anywhere in CI. S06 adds the weekly-plan
+  loop: routine occurrences dispatch `weekly_plan` tasks from the owner's
+  reviewed template (project scope, IANA time zone, weekly/daily schedule),
+  grounded in granted notes plus the project's two most recent saved updates
+  with runtime-recorded file and update appendices.
 - **`apps/api`**: Fastify bound to `127.0.0.1` with first-run owner setup,
   scrypt passwords, HttpOnly SameSite=Strict sessions, session-bound CSRF
   tokens, origin allowlisting, an authenticated SSE activity stream, and
@@ -119,7 +127,14 @@ real today.
   is chosen in Settings; `OPENFROST_PROVIDER=fake` is a documented dev/test hook that scripts a
   research run without any API key. Authenticated memory routes expose
   proposals, file state, hashes, and owner decisions; every mutation requires
-  the page's current file hash and CSRF token.
+  the page's current file hash and CSRF token. S06 adds the routine scheduler
+  (`OPENFROST_ROUTINE_TICK_MS`, default 30 s): per active routine it examines
+  only the latest occurrence at or before now — materialized local-date
+  occurrence keys deduplicate across ticks, restarts, clock changes, and DST;
+  occurrences within the 30-minute late grace dispatch through the global
+  executor, later ones surface exactly one missed row with run-once-now/skip.
+  Routines CRUD, enable/pause, and occurrence decisions ride the same
+  owner-session/CSRF surface.
 - **`apps/web`:** local Next.js UI on `127.0.0.1:3000` with a frost visual
   identity — a dispatch status strip, a dark runtime-console activity log, and
   mono system data — onboarding with the required data-transmission and
@@ -131,7 +146,9 @@ real today.
   canonicalization, per-project transmission disclosure), the Memory page
   (pending proposals with scope/source/date and editable approval, global and
   project entries with edit/delete, external-edit warnings, reload, decision
-  history), and provider
+  history), the Routines page (create-as-draft with next-occurrence preview,
+  enable/pause, edit, remove, missed-occurrence review with run-once-now/skip,
+  occurrence history with task outcomes), and provider
   settings — active provider (OpenAI, Gemini, or OpenRouter), per-provider
   DPAPI-protected keys and models — and execution limits.
 
@@ -147,7 +164,7 @@ Requires Windows (DPAPI), Node.js 24+ (`24` line; 26 works), and pnpm 10
 pnpm install          # installs all workspace dependencies
 pnpm build            # builds all packages and the web app (do this first)
 pnpm lint             # eslint across the workspace
-pnpm test             # vitest in every package (266 tests; includes real
+pnpm test             # vitest in every package (318 tests; includes real
                       #   DPAPI round-trips on Windows)
 pnpm dev              # API on 127.0.0.1:8787 and web on 127.0.0.1:3000
 ```
@@ -185,7 +202,7 @@ AGENTS.md / CONTRIBUTING.md  Engineering, security, and landing workflow
 - [Developer guide](docs/AI_DEVELOPER_GUIDE.md): working one slice at a time.
 - [Contributing](CONTRIBUTING.md): branch, verification, and review conventions.
 
-The next assigned slice is **S06: owner-confirmed weekly planning routines**.
-Implement only the
+The next assigned slice is **S07: harden and validate the personal-use
+release**. Implement only the
 assigned slice, never real credentials in `.env`, prompts, or repository
 files; the credential flow uses DPAPI.
