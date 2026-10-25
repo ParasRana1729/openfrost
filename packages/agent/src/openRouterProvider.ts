@@ -71,26 +71,32 @@ export class OpenRouterProvider implements LlmProvider {
 
     // Abort and network errors from fetch propagate unchanged; the executor
     // classifies AbortError against cancellation and the wall-clock limit.
+    // The hosted `web` plugin bills per executed search even on free models,
+    // so it is attached only to web-grounded workflows — on a creditless
+    // account any request carrying it fails outright (HTTP 402).
+    const requestBody: Record<string, unknown> = {
+      model: this.#model,
+      messages: toChatMessages(request.messages),
+      tools: request.tools.map((tool) => ({
+        type: 'function',
+        function: {
+          name: tool.name,
+          description: tool.description,
+          parameters: tool.parameters,
+        },
+      })),
+      max_tokens: this.#maxOutputTokens,
+    };
+    if (request.webSearch) {
+      requestBody.plugins = [{ id: 'web' }];
+    }
     const response = await this.#fetchImpl(OPENROUTER_CHAT_URL, {
       method: 'POST',
       headers: {
         authorization: `Bearer ${apiKey}`,
         'content-type': 'application/json',
       },
-      body: JSON.stringify({
-        model: this.#model,
-        messages: toChatMessages(request.messages),
-        tools: request.tools.map((tool) => ({
-          type: 'function',
-          function: {
-            name: tool.name,
-            description: tool.description,
-            parameters: tool.parameters,
-          },
-        })),
-        plugins: [{ id: 'web' }],
-        max_tokens: this.#maxOutputTokens,
-      }),
+      body: JSON.stringify(requestBody),
       signal: request.signal,
     });
 

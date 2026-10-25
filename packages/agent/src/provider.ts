@@ -56,6 +56,14 @@ export interface ProviderStepRequest {
   step: number;
   /** Honored by providers: resolves/rejects promptly when canceled. */
   signal: AbortSignal;
+  /**
+   * Whether hosted provider-side web search is offered this step. True only
+   * for web-grounded workflows (research briefs). File-grounded workflows
+   * (project updates, weekly plans) run without it: their policy grounds
+   * them in granted files and saved updates, and hosted search bills the
+   * owner's account per search even when the model itself is free.
+   */
+  webSearch: boolean;
 }
 
 export interface LlmProvider {

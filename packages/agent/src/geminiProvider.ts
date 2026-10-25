@@ -201,13 +201,16 @@ export class GeminiProvider implements LlmProvider {
   #buildRequestBody(request: ProviderStepRequest): Record<string, unknown> {
     const system = request.messages.find((message) => message.role === 'system');
     const contents = this.#buildContents(request.messages);
+    // Google Search grounding rides along only for web-grounded workflows.
+    const tools: Array<Record<string, unknown>> = [];
+    if (request.webSearch) {
+      tools.push({ google_search: {} });
+    }
+    tools.push({ function_declarations: request.tools.map((tool) => this.#declaration(tool)) });
     return {
       systemInstruction: { parts: [{ text: system?.content ?? '' }] },
       contents,
-      tools: [
-        { google_search: {} },
-        { function_declarations: request.tools.map((tool) => this.#declaration(tool)) },
-      ],
+      tools,
       generationConfig: { maxOutputTokens: this.#maxOutputTokens },
     };
   }

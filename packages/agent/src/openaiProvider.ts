@@ -70,7 +70,10 @@ export class OpenAIProvider implements LlmProvider {
 
     const instructions = request.messages.find((m) => m.role === 'system')?.content ?? '';
     const input = toResponseItems(request.messages);
-    const tools: Array<Record<string, unknown>> = [{ type: 'web_search' }];
+    // Hosted web search rides along only for web-grounded workflows.
+    const tools: Array<Record<string, unknown>> = request.webSearch
+      ? [{ type: 'web_search' }]
+      : [];
     for (const tool of request.tools) {
       tools.push({
         type: 'function',
