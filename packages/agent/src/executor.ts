@@ -780,6 +780,9 @@ export class TaskExecutor {
           'rejected',
         );
       }
+      // The owner decided; the run resumes (awaiting_approval → running is
+      // the resumption edge in the task transition map) before the write.
+      this.store.tasks.transition(task.id, 'running', this.now());
       if (decided.expiresAt <= this.now()) {
         // Granted, but the decision window closed before execution could run.
         this.store.approvals.decide(decided.id, 'expired', this.now());
@@ -838,6 +841,13 @@ export class TaskExecutor {
           return;
         }
         if (err.kind === 'expired') {
+          // The approval is still pending in the store; expire it explicitly.
+          this.store.approvals.decide(approval.id, 'expired', this.now());
+          this.store.events.append(
+            'approval.expired',
+            { taskId: task.id, runId, payload: { approvalId: approval.id } },
+            this.now(),
+          );
           const usage: RunUsage = { steps: 1, inputChars: task.request.length, outputChars: 0, inputTokens: null, outputTokens: null };
           this.store.runs.finish(runId, 'canceled', this.now(), { usage });
           this.store.tasks.transition(task.id, 'canceled', this.now(), {
