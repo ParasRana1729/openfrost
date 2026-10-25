@@ -60,21 +60,37 @@ maybeDescribe('provider key storage', () => {
     rmSync(home, { recursive: true, force: true });
   });
 
-  it('stores the key as a DPAPI blob and reads it back for the same user', async () => {
-    const key = 'sk-proj-realshape-0000000000000000';
-    await saveProviderKey(home, key);
+  it('stores each provider key as a DPAPI blob and reads it back for the same user', async () => {
+    const openaiKey = 'sk-proj-realshape-0000000000000000';
+    const geminiKey = 'AIza-realshape-0000000000000000000';
+    await saveProviderKey(home, 'openai', openaiKey);
+    await saveProviderKey(home, 'gemini', geminiKey);
 
-    const stored = readFileSync(providerKeyPath(home));
-    expect(stored.toString('binary')).not.toContain(key);
+    const stored = readFileSync(providerKeyPath(home, 'openai'));
+    expect(stored.toString('binary')).not.toContain(openaiKey);
     expect(stored.subarray(0, 4).toString('utf8')).toBe('OFDP');
-    expect(providerKeyExists(home)).toBe(true);
-    expect(await readProviderKey(home)).toBe(key);
+    expect(providerKeyExists(home, 'openai')).toBe(true);
+    expect(await readProviderKey(home, 'openai')).toBe(openaiKey);
+    expect(providerKeyExists(home, 'gemini')).toBe(true);
+    expect(await readProviderKey(home, 'gemini')).toBe(geminiKey);
   });
 
-  it('removes the stored key', async () => {
-    expect(removeProviderKey(home)).toBe(true);
-    expect(providerKeyExists(home)).toBe(false);
-    expect(removeProviderKey(home)).toBe(false);
+  it('cannot decrypt one provider blob under another purpose', async () => {
+    // Purpose-bound entropy: each provider blob carries its own label.
+    await expect(readProviderKey(home, 'gemini')).resolves.toBeDefined();
+    const openaiBlob = readFileSync(providerKeyPath(home, 'openai'));
+    const { open } = await import('../src/index.js');
+    await expect(open(openaiBlob, 'provider-key:gemini')).rejects.toThrowError(
+      SecretFormatError,
+    );
+  });
+
+  it('removes the stored key per provider', async () => {
+    expect(removeProviderKey(home, 'openai')).toBe(true);
+    expect(providerKeyExists(home, 'openai')).toBe(false);
+    expect(removeProviderKey(home, 'openai')).toBe(false);
+    expect(providerKeyExists(home, 'gemini')).toBe(true);
+    expect(removeProviderKey(home, 'gemini')).toBe(true);
   });
 });
 

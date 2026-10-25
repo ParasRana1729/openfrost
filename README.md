@@ -6,8 +6,8 @@
 **Status: S02 research brief implemented — the first end-to-end workflow works.**
 
 OpenFrost is a solo project owned by ParasRana1729. What ships today is the S01
-foundation plus the S02 research-brief workflow: with an OpenAI key stored in
-Settings, a submitted question (with optional constraints and starting URLs)
+foundation plus the S02 research-brief workflow: with a provider key stored in
+Settings (OpenAI or Gemini — your choice in Settings), a submitted question (with optional constraints and starting URLs)
 runs as a bounded agent task — provider-backed web search plus a hardened
 public-page fetch — and saves a Markdown report with sources, retrieval times,
 uncertainties, and a runtime-recorded retrieval appendix. Project updates and
@@ -29,7 +29,7 @@ The first release targets three useful jobs:
 | Weekly planning | An owner-scheduled draft of priorities from project notes and recent updates. | Planned (S06) |
 
 The runtime is Windows-first and local, using SQLite + Drizzle, editable
-Markdown memory, and the owner's OpenAI API key protected with Windows DPAPI.
+Markdown memory, and the owner's provider API keys (OpenAI or Gemini) protected with Windows DPAPI.
 Local-first does not mean offline: selected context is sent to the model/search
 provider. The PC must be awake and the runtime running; work can continue after
 the browser closes, but not while the PC is off.
@@ -62,8 +62,9 @@ real today.
   step/wall-clock/input/output limits, cancellation, explicit retries with
   visible attempt history, and restart recovery that marks unfinished runs
   `interrupted` and pauses dispatch for owner review. S02 adds the research
-  loop: an OpenAI adapter (Responses API with hosted web search and `url`
-  citations), an SSRF-hardened `fetch_page` tool (scheme/credential/host
+  loop: provider adapters — OpenAI (Responses API with hosted web search
+  and `url` citations) and Gemini (generateContent with Google Search
+  grounding surfaced as citations) — an SSRF-hardened `fetch_page` tool (scheme/credential/host
   deny lists, per-address DNS validation re-checked at every connection, full
   redirect re-validation, size/time bounds), a policy system prompt that
   treats retrieved content as untrusted data, and a runtime-recorded
@@ -73,8 +74,9 @@ real today.
   scrypt passwords, HttpOnly SameSite=Strict sessions, session-bound CSRF
   tokens, origin allowlisting, an authenticated SSE activity stream, and
   logging that drops headers/cookies/bodies so secrets never reach logs.
-  Provider configuration: `OPENFROST_OPENAI_MODEL` (default `gpt-4.1-mini`);
-  `OPENFROST_PROVIDER=fake` is a documented dev/test hook that scripts a
+  Provider configuration: `OPENFROST_OPENAI_MODEL` (default `gpt-4.1-mini`),
+  `OPENFROST_GEMINI_MODEL` (default `gemini-2.5-flash`); the active provider
+  is chosen in Settings; `OPENFROST_PROVIDER=fake` is a documented dev/test hook that scripts a
   research run without any API key.
 - **`apps/web`:** local Next.js UI on `127.0.0.1:3000` with a frost visual
   identity — a dispatch status strip, a dark runtime-console activity log, and
@@ -82,8 +84,8 @@ real today.
   availability disclosures, login, the task queue with constraints/starting
   URLs, cancel/retry/run history, token usage with list-price cost estimates
   (labeled as estimates; unknown when no price is on file), markdown report
-  rendering, dispatch-resume review, and settings for the DPAPI-protected
-  OpenAI key and execution limits.
+  rendering, dispatch-resume review, and provider settings — active provider (OpenAI or Gemini), per-provider
+  DPAPI-protected keys and models — and execution limits.
 
 `packages/ui` is intentionally absent: nothing is shared enough to justify it
 yet. It will be created when a slice actually reuses components.

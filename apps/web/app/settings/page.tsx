@@ -1,13 +1,31 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import type { AssistantSettings } from '@openfrost/domain';
+import type { AssistantSettings, ProviderId } from '@openfrost/domain';
 import { ApiError, getJson, mutate } from '../../lib/api';
 import { useSession } from '../../lib/useSession';
+
+const PROVIDER_LABEL: Record<ProviderId, string> = {
+  openai: 'OpenAI',
+  gemini: 'Gemini',
+};
+
+const PROVIDER_CHOICES: ReadonlyArray<ProviderId> = ['openai', 'gemini'];
+
+const MAX_MODEL_LENGTH = 100;
 
 export default function SettingsPage() {
   const { session, loading } = useSession();
   const [settings, setSettings] = useState<AssistantSettings | null>(null);
+  // The provider the owner is currently editing. Initialized once from the
+  // active provider on first load, then kept sticky across refreshes so a
+  // background reload cannot yank the form while the owner is mid-edit.
+  const [selected, setSelected] = useState<ProviderId | null>(null);
+  // Typed model text, tied to the provider it was typed for. Null = show that
+  // provider's effective model from settings instead of a draft.
+  const [modelDraft, setModelDraft] = useState<{ provider: ProviderId; value: string } | null>(
+    null,
+  );
   const [apiKey, setApiKey] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -15,7 +33,11 @@ export default function SettingsPage() {
 
   const refreshSettings = useCallback(async () => {
     try {
-      setSettings(await getJson<AssistantSettings>('/api/settings'));
+      const next = await getJson<AssistantSettings>('/api/settings');
+      setSettings(next);
+      // Under the fake dev hook no provider is active; default the editor to
+      // OpenAI so the panel still shows concrete model/key state.
+      setSelected((prev) => prev ?? (next.provider === 'fake' ? 'openai' : next.provider));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not load settings');
     }
@@ -29,6 +51,59 @@ export default function SettingsPage() {
 
   const csrf = session?.csrfToken ?? null;
 
+  const fakeActive = settings?.provider === 'fake';
+  const selectedProvider: ProviderId = selected ?? 'openai';
+  const selectedModel = settings?.models[selectedProvider] ?? null;
+  const selectedHasKey = settings
+    ? selectedProvider === 'openai'
+      ? settings.hasOpenAIKey
+      : settings.hasGeminiKey
+    : false;
+  // Show the typed draft only while it belongs to the selected provider;
+  // otherwise fall back to the loaded effective model.
+  const modelValue =
+    modelDraft && modelDraft.provider === selectedProvider
+      ? modelDraft.value
+      : (selectedModel ?? '');
+
+  const chooseProvider = (next: ProviderId) => {
+    setSelected(next);
+    setModelDraft(null);
+    setNotice(null);
+    setError(null);
+    void refreshSettings();
+  };
+
+  const saveProvider = async () => {
+    if (!csrf) {
+      return;
+    }
+    const trimmedModel = modelValue.trim();
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await mutate({
+        method: 'PUT',
+        path: '/api/settings/provider',
+        body: {
+          provider: selectedProvider,
+          model: trimmedModel === '' ? null : trimmedModel,
+        },
+        csrfToken: csrf,
+      });
+      setModelDraft(null);
+      setNotice(
+        `${PROVIDER_LABEL[selectedProvider]} saved as the active provider. It takes effect on the next task run.`,
+      );
+      await refreshSettings();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not save provider settings');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const saveKey = async () => {
     if (!csrf || apiKey.trim().length < 10) {
       return;
@@ -40,11 +115,13 @@ export default function SettingsPage() {
       await mutate({
         method: 'PUT',
         path: '/api/settings/provider-key',
-        body: { key: apiKey.trim() },
+        body: { provider: selectedProvider, key: apiKey.trim() },
         csrfToken: csrf,
       });
       setApiKey('');
-      setNotice('Key stored (DPAPI-protected). It is never shown again or logged.');
+      setNotice(
+        `${PROVIDER_LABEL[selectedProvider]} key stored (DPAPI-protected). It is never shown again or logged.`,
+      );
       await refreshSettings();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not store key');
@@ -53,7 +130,7 @@ export default function SettingsPage() {
     }
   };
 
-  const deleteKey = async () => {
+  const removeKey = async () => {
     if (!csrf) {
       return;
     }
@@ -61,8 +138,12 @@ export default function SettingsPage() {
     setError(null);
     setNotice(null);
     try {
-      await mutate({ method: 'DELETE', path: '/api/settings/provider-key', csrfToken: csrf });
-      setNotice('Stored key removed.');
+      await mutate({
+        method: 'DELETE',
+        path: `/api/settings/provider-key?provider=${selectedProvider}`,
+        csrfToken: csrf,
+      });
+      setNotice(`Stored ${PROVIDER_LABEL[selectedProvider]} key removed.`);
       await refreshSettings();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not remove key');
@@ -83,37 +164,85 @@ export default function SettingsPage() {
   return (
     <>
       <div className="panel">
-        <h1>Provider credentials</h1>
+        <h1>Provider</h1>
         <p>
-          OpenFrost uses OpenAI with your API key. The key is protected with
-          Windows DPAPI (current user) and stored under{' '}
-          <code>%USERPROFILE%\.openfrost\secrets</code>. It is decrypted only when
-          a run needs it, is never displayed again, and never enters logs,
-          reports, or memory.
+          OpenFrost runs tasks on one provider at a time. Each provider keeps its
+          own API key, protected with Windows DPAPI (current user) and stored
+          under <code>%USERPROFILE%\.openfrost\secrets</code>. Keys are decrypted
+          only when a run needs them, are never displayed again, and never enter
+          logs, reports, or memory.
         </p>
+
+        {fakeActive ? (
+          <p className="note">
+            OPENFROST_PROVIDER=fake is active — runs are scripted and provider
+            switching is disabled.
+          </p>
+        ) : null}
+
+        <div
+          className="segmented"
+          role="radiogroup"
+          aria-label="Model provider"
+          style={{ marginTop: 12 }}
+        >
+          {PROVIDER_CHOICES.map((id) => (
+            <button
+              key={id}
+              type="button"
+              role="radio"
+              aria-checked={selectedProvider === id}
+              disabled={busy || fakeActive}
+              onClick={() => chooseProvider(id)}
+            >
+              {PROVIDER_LABEL[id]}
+            </button>
+          ))}
+        </div>
+
+        <label htmlFor="provider-model">{PROVIDER_LABEL[selectedProvider]} model</label>
+        <input
+          id="provider-model"
+          type="text"
+          value={modelValue}
+          maxLength={MAX_MODEL_LENGTH}
+          onChange={(e) => setModelDraft({ provider: selectedProvider, value: e.target.value })}
+          placeholder={selectedModel ?? ''}
+          autoComplete="off"
+          disabled={fakeActive}
+        />
+        <p className="muted">Leave empty to use this provider&rsquo;s default model.</p>
+        <div className="row" style={{ marginTop: 12 }}>
+          <button
+            className="primary"
+            disabled={busy || !csrf || fakeActive}
+            onClick={() => void saveProvider()}
+          >
+            Save provider
+          </button>
+        </div>
         <p className="muted">
-          Status:{' '}
-          {settings?.hasProviderKey ? (
-            <strong>a key is configured</strong>
-          ) : (
-            'no key configured'
-          )}
-          .{' '}
-          {settings?.model ? (
-            <>
-              Model: {settings.model}.
-            </>
-          ) : (
-            'Model: not configured — set OPENFROST_OPENAI_MODEL.'
-          )}
+          Status: {PROVIDER_LABEL[selectedProvider]} · Model: {selectedModel ?? '—'} ·{' '}
+          {selectedHasKey ? 'key stored' : 'no key'}. Switching providers and
+          saved keys take effect on the next task run — no restart needed.
         </p>
-        <label htmlFor="apikey">{settings?.hasProviderKey ? 'Replace key' : 'OpenAI API key'}</label>
+
+        <h2>API keys</h2>
+        <p className="muted">
+          OpenAI: {settings?.hasOpenAIKey ? 'key stored' : 'no key'} · Gemini:{' '}
+          {settings?.hasGeminiKey ? 'key stored' : 'no key'}.
+        </p>
+        <label htmlFor="apikey">
+          {selectedHasKey
+            ? `Replace ${PROVIDER_LABEL[selectedProvider]} key`
+            : `${PROVIDER_LABEL[selectedProvider]} API key`}
+        </label>
         <input
           id="apikey"
           type="password"
           value={apiKey}
           onChange={(e) => setApiKey(e.target.value)}
-          placeholder="sk-…"
+          placeholder="API key…"
           autoComplete="off"
         />
         <div className="row" style={{ marginTop: 12 }}>
@@ -124,11 +253,9 @@ export default function SettingsPage() {
           >
             Save key
           </button>
-          {settings?.hasProviderKey ? (
-            <button disabled={busy || !csrf} onClick={() => void deleteKey()}>
-              Remove stored key
-            </button>
-          ) : null}
+          <button disabled={busy || !csrf || !selectedHasKey} onClick={() => void removeKey()}>
+            Remove stored key
+          </button>
         </div>
         {notice ? <p style={{ color: 'var(--ok)' }}>{notice}</p> : null}
         {error ? <p className="error">{error}</p> : null}

@@ -51,7 +51,7 @@ is no cloud failover or promise of uninterrupted 24/7 execution.
 | Assistant | One persistent assistant; projects organize context, not personalities. |
 | Interface | Local web app for conversation, tasks, results, memory, and approvals. |
 | Hosting | Native Windows runtime; no Docker, cloud database, or hosted worker. |
-| Models | OpenAI API with the owner's API key; one provider and one configured model initially. |
+| Models | Owner-chosen provider: OpenAI or Gemini (Google AI), one active at a time with its own DPAPI-protected key and configured model; no per-task provider selection. |
 | First workflows | Research briefs, project updates, weekly planning. |
 | Execution | One active agent run globally; additional tasks queue visibly. |
 | Tools | Public web search/fetch, granted-folder reads, and narrowly scoped report export. |
@@ -281,7 +281,9 @@ reset user data implicitly during setup, upgrades, or recovery.
 - Managed browser profiles, authenticated-site automation, or demonstration recording.
 - Email, calendars, payments, external publishing, or broad connector catalogs.
 - A plugin marketplace, untrusted scripts, MCP integrations, or a workflow builder.
-- Voice, avatars, local model hosting, vector search, or multiple model providers.
+- Voice, avatars, local model hosting, vector search, per-task provider or
+  model selection, or a provider/plugin system (the two built-in adapters are
+  the whole surface).
 - Self-directed proactive work, automatic sign-in installation, or a backup subsystem.
 
 ## 9. Delivery and release gates

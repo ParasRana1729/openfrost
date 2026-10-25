@@ -2,7 +2,7 @@
 
 - **Specification:** [v0.1 solo rebuild](../docs/ai-os-project-spec.md)
 - **Owner for every item:** ParasRana1729
-- **Current assignment:** S03 next; S02 complete (see its handoff)
+- **Current assignment:** S03 next; S02b complete (see its handoff)
 
 These are local backlog identifiers, not GitHub issue numbers. Only S00 is in
 scope for the current reset. S01–S07 are planned, unimplemented
@@ -217,6 +217,65 @@ page retrieval. No shell, managed browser, or connector catalog.
   events but not their raw contents; conversations/messages remain unwired
   (tasks only); NAT64 `64:ff9b::/96` is not in the denied IP ranges.
 - Next: S03 — projects: granted-folder context and evidence-backed updates.
+
+## S02b — Provider choice: OpenAI or Gemini
+
+- **Status:** Complete (real Gemini call pending the owner's evaluation)
+- **Depends on:** S02
+
+Owner-approved spec change (2026-10-25): the one-provider decision became
+provider choice. OpenAI or Gemini, one active at a time, each with its own
+DPAPI-protected key and configured model. No per-task provider selection and
+no plugin system — two built-in adapters only.
+
+### Acceptance criteria
+
+- [x] The owner can choose the active provider (OpenAI or Gemini) in Settings;
+      the choice and per-provider models persist and take effect on the next
+      run without a restart.
+- [x] Each provider's key is stored DPAPI-protected under its own purpose, so
+      one provider's blob cannot be decrypted as another's; keys are never
+      echoed or logged.
+- [x] Gemini runs use the native generateContent API with Google Search
+      grounding surfaced as search counts and web citations, function calling
+      mapped to the shared tool seam, and honest failures (blocks, truncation,
+      empty responses, invalid keys) that never leak the key.
+- [x] Fake-provider tests cover both adapters and the switching flow with no
+      real API keys; settings switching works while the fake dev hook is
+      documented as disabled (409).
+- [ ] The owner separately evaluates one real research task on their chosen
+      provider (shared with S02's real-model evaluation; no key has been
+      provided to the runtime yet).
+
+### Handoff
+
+- Implemented: `GeminiProvider` (`packages/agent/src/geminiProvider.ts`) over
+  `POST /v1beta/models/{model}:generateContent` — `google_search` grounding
+  maps to searches/citations (groundingChunks → web uri/title), function
+  calls map to the shared tool seam, consecutive tool results merge into one
+  user turn as the API expects, usage maps to token rows. Per-provider DPAPI
+  secrets (`provider-<id>-key.bin`, purpose `provider-key:<id>`).
+  `ActiveProvider` (`apps/api/src/activeProvider.ts`) routes each run to the
+  owner's active provider from Settings, caching adapters and memoized keys
+  per provider with invalidation on key save/remove (no restart needed).
+  Settings API: `PUT /settings/provider` (switch + per-provider model
+  override; 409 while the fake hook is active), per-provider key
+  save/remove. Config: `OPENFROST_GEMINI_MODEL` (default `gemini-2.5-flash`)
+  alongside `OPENFROST_OPENAI_MODEL`. Web settings UI: provider choice,
+  per-provider model/key management, pricing map extended.
+- Verification: `pnpm lint`/`pnpm build`/`pnpm test` pass (139 tests: 31
+  domain, 27 db, 49 agent, 32 api) locally; CI on `windows-latest` runs the
+  same. Gemini adapter covered by injected-transport tests (request shape,
+  function-call mapping, grounding citations/searches, usage, no-key-leak,
+  block/finish reasons, aborts); per-provider secrets covered including
+  cross-purpose rejection; settings switching covered over the API.
+- Not run/verified: a real Gemini call (same status as S02's OpenAI call —
+  the owner evaluates with their key; none has been provided to the runtime).
+- Known limitations: combining `google_search` with function calling
+  requires a Gemini 2.5-class model (the default); grounding citations are
+  chunk-level (not sentence-level attributions); token usage excludes
+  thinking tokens on thinking models.
+- Next: S03 — projects, unchanged.
 
 ## S03 — Add project context and evidence-backed updates
 

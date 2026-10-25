@@ -11,6 +11,7 @@ export const eventTypeSchema = z.enum([
   'auth.login_failed',
   'settings.provider_key_set',
   'settings.provider_key_removed',
+  'settings.provider_changed',
   'dispatch.paused',
   'dispatch.resumed',
   'task.created',
