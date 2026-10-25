@@ -63,8 +63,8 @@ describe('executor error paths', () => {
       now: () => at(0),
     });
 
-    const doomed = await executor.enqueue('Doomed', 'request');
-    const survivor = await executor.enqueue('Survivor', 'request');
+    const doomed = await executor.enqueue({ title: 'Doomed', request: 'request' });
+    const survivor = await executor.enqueue({ title: 'Survivor', request: 'request' });
     await executor.whenIdle();
 
     expect(store.tasks.get(doomed.id)?.state).toBe('interrupted');
@@ -90,7 +90,7 @@ describe('executor error paths', () => {
       now: () => at(0),
     });
 
-    const task = await executor.enqueue('Artifact', 'request');
+    const task = await executor.enqueue({ title: 'Artifact', request: 'request' });
     await executor.whenIdle();
 
     const run = store.runs.listForTask(task.id)[0];
@@ -120,7 +120,7 @@ describe('executor error paths', () => {
       now: () => at(0),
     });
 
-    const task = await executor.enqueue('Hung call', 'request');
+    const task = await executor.enqueue({ title: 'Hung call', request: 'request' });
     await executor.whenIdle();
 
     expect(provider.abortedCalls).toBe(1);

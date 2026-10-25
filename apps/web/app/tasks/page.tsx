@@ -3,9 +3,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AgentRun, Event, Task } from '@openfrost/domain';
 import { ApiError, getJson, mutate } from '../../lib/api';
+import { estimateCost, formatCost, loadConfiguredModel } from '../../lib/pricing';
 import { formatTimestamp } from '../../lib/format';
 import { useSession } from '../../lib/useSession';
 import { DispatchStrip } from '../../components/DispatchStrip';
+import { MarkdownView } from '../../components/MarkdownView';
 
 interface ExecutorStatus {
   busy: boolean;
@@ -27,13 +29,52 @@ interface TaskDetail {
 
 const REQUEUEABLE: ReadonlySet<string> = new Set(['failed', 'canceled', 'interrupted']);
 
+/** Detail states where the panel polls so live progress stays visible. */
+const LIVE_STATES: ReadonlySet<string> = new Set([
+  'queued',
+  'running',
+  'awaiting_approval',
+]);
+
+const MAX_STARTING_URLS = 5;
+
+interface ParsedStartingUrls {
+  urls: string[];
+  invalid: string[];
+}
+
+/** Client-side convenience check only; the API revalidates every field. */
+function parseStartingUrls(raw: string): ParsedStartingUrls {
+  const urls: string[] = [];
+  const invalid: string[] = [];
+  for (const line of raw.split(/\r?\n/)) {
+    const url = line.trim();
+    if (url.length === 0) {
+      continue;
+    }
+    if (/^https?:\/\//i.test(url)) {
+      urls.push(url);
+    } else {
+      invalid.push(url);
+    }
+  }
+  return { urls, invalid };
+}
+
+function isHttpUrl(url: string): boolean {
+  return url.startsWith('http://') || url.startsWith('https://');
+}
+
 export default function TasksPage() {
   const { session, loading, refresh } = useSession();
   const [data, setData] = useState<TasksResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [title, setTitle] = useState('');
   const [request, setRequest] = useState('');
+  const [constraints, setConstraints] = useState('');
+  const [startingUrlsText, setStartingUrlsText] = useState('');
   const [detail, setDetail] = useState<TaskDetail | null>(null);
+  const [model, setModel] = useState<string | null>(null);
   const inFlight = useRef(false);
 
   const refreshTasks = useCallback(async () => {
@@ -73,21 +114,83 @@ export default function TasksPage() {
     };
   }, [session?.authenticated, refreshTasks]);
 
-  const csrf = session?.csrfToken ?? null;
-
-  const submitTask = async () => {
-    if (!csrf || title.trim().length === 0 || request.trim().length === 0) {
+  // Cost estimates need the configured model; loaded once per session.
+  useEffect(() => {
+    if (!session?.authenticated) {
       return;
     }
+    let canceled = false;
+    void loadConfiguredModel().then((value) => {
+      if (!canceled) {
+        setModel(value);
+      }
+    });
+    return () => {
+      canceled = true;
+    };
+  }, [session?.authenticated]);
+
+  // While the opened task is still in flight, poll its detail every 3 s so
+  // progress shows without reopening. Cleanup runs on close/unmount/state change.
+  const detailTaskId = detail?.task.id ?? null;
+  const detailLive = detail !== null && LIVE_STATES.has(detail.task.state);
+
+  useEffect(() => {
+    if (!detailTaskId || !detailLive) {
+      return;
+    }
+    let canceled = false;
+    const poll = setInterval(() => {
+      void (async () => {
+        try {
+          const next = await getJson<TaskDetail>(`/api/tasks/${detailTaskId}`);
+          if (!canceled) {
+            setDetail(next);
+          }
+        } catch {
+          // A missed poll is harmless; the next tick retries.
+        }
+      })();
+    }, 3000);
+    return () => {
+      canceled = true;
+      clearInterval(poll);
+    };
+  }, [detailTaskId, detailLive]);
+
+  const csrf = session?.csrfToken ?? null;
+
+  const parsedUrls = parseStartingUrls(startingUrlsText);
+  const startingUrlsInvalid =
+    parsedUrls.invalid.length > 0 || parsedUrls.urls.length > MAX_STARTING_URLS;
+
+  const submitTask = async () => {
+    if (
+      !csrf ||
+      title.trim().length === 0 ||
+      request.trim().length === 0 ||
+      startingUrlsInvalid
+    ) {
+      return;
+    }
+    const body: {
+      title: string;
+      request: string;
+      constraints?: string;
+      startingUrls?: string[];
+    } = { title: title.trim(), request: request.trim() };
+    if (constraints.trim().length > 0) {
+      body.constraints = constraints.trim();
+    }
+    if (parsedUrls.urls.length > 0) {
+      body.startingUrls = parsedUrls.urls;
+    }
     try {
-      await mutate({
-        method: 'POST',
-        path: '/api/tasks',
-        body: { title: title.trim(), request: request.trim() },
-        csrfToken: csrf,
-      });
+      await mutate({ method: 'POST', path: '/api/tasks', body, csrfToken: csrf });
       setTitle('');
       setRequest('');
+      setConstraints('');
+      setStartingUrlsText('');
       await refreshTasks();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not create task');
@@ -174,6 +277,33 @@ export default function TasksPage() {
           onChange={(e) => setRequest(e.target.value)}
           placeholder="What should the assistant work on?"
         />
+        <label htmlFor="constraints">Constraints (optional)</label>
+        <textarea
+          id="constraints"
+          value={constraints}
+          maxLength={2000}
+          onChange={(e) => setConstraints(e.target.value)}
+          placeholder="Prefer local-first tools; budget under $20/month"
+        />
+        <label htmlFor="starting-urls">
+          Starting URLs (optional, one per line, max {MAX_STARTING_URLS})
+        </label>
+        <textarea
+          id="starting-urls"
+          value={startingUrlsText}
+          onChange={(e) => setStartingUrlsText(e.target.value)}
+          placeholder={'https://example.com/overview\nhttps://example.com/pricing'}
+        />
+        {startingUrlsInvalid ? (
+          <p className="error">
+            {parsedUrls.invalid.length > 0
+              ? `These lines do not start with http:// or https://: ${parsedUrls.invalid.join(', ')}. `
+              : ''}
+            {parsedUrls.urls.length > MAX_STARTING_URLS
+              ? `At most ${MAX_STARTING_URLS} starting URLs are allowed (${parsedUrls.urls.length} given).`
+              : ''}
+          </p>
+        ) : null}
         <p className="muted">
           One run executes at a time; everything else queues here. Requests are
           bounded by the execution limits shown in Settings.
@@ -181,7 +311,12 @@ export default function TasksPage() {
         <div className="row">
           <button
             className="primary"
-            disabled={!csrf || title.trim().length === 0 || request.trim().length === 0}
+            disabled={
+              !csrf ||
+              title.trim().length === 0 ||
+              request.trim().length === 0 ||
+              startingUrlsInvalid
+            }
             onClick={() => void submitTask()}
           >
             Add to queue
@@ -247,10 +382,32 @@ export default function TasksPage() {
             </span>
           </h2>
           <p className="muted">{detail.task.request}</p>
+          {detail.task.constraints ? (
+            <p className="muted">
+              <strong>Constraints:</strong> {detail.task.constraints}
+            </p>
+          ) : null}
+          {detail.task.startingUrls && detail.task.startingUrls.length > 0 ? (
+            <p className="muted">
+              <strong>Starting URLs:</strong>{' '}
+              {detail.task.startingUrls.map((url, index) => (
+                <span key={`${index}-${url}`}>
+                  {index > 0 ? ' · ' : ''}
+                  {isHttpUrl(url) ? (
+                    <a href={url} target="_blank" rel="noopener noreferrer nofollow">
+                      {url}
+                    </a>
+                  ) : (
+                    url
+                  )}
+                </span>
+              ))}
+            </p>
+          ) : null}
           {detail.artifact ? (
             <>
               <h2>Saved report</h2>
-              <pre>{detail.artifact.markdown}</pre>
+              <MarkdownView markdown={detail.artifact.markdown} />
             </>
           ) : null}
           <h2>Run attempts</h2>
@@ -260,26 +417,57 @@ export default function TasksPage() {
                 <th>#</th>
                 <th>State</th>
                 <th>Usage</th>
+                <th>Tokens</th>
                 <th>Failure</th>
               </tr>
             </thead>
             <tbody>
-              {detail.runs.map((run) => (
-                <tr key={run.id}>
-                  <td className="mono">#{run.attempt}</td>
-                  <td className="mono">{run.state}</td>
-                  <td className="mono">
-                    {run.usage
-                      ? `${run.usage.steps} steps · ${run.usage.outputChars} chars out`
-                      : '—'}
-                  </td>
-                  <td>
-                    {run.failure
-                      ? `${run.failure.code}${run.failure.limitHit ? ` (${run.failure.limitHit})` : ''}: ${run.failure.message}`
-                      : '—'}
-                  </td>
-                </tr>
-              ))}
+              {detail.runs.map((run) => {
+                const usage = run.usage;
+                const inputTokens = usage?.inputTokens ?? null;
+                const outputTokens = usage?.outputTokens ?? null;
+                const cost =
+                  inputTokens !== null && outputTokens !== null
+                    ? estimateCost(model ?? '', inputTokens, outputTokens)
+                    : null;
+                return (
+                  <tr key={run.id}>
+                    <td className="mono">#{run.attempt}</td>
+                    <td className="mono">{run.state}</td>
+                    <td className="mono">
+                      {usage
+                        ? `${usage.steps} steps · ${usage.outputChars} chars out`
+                        : '—'}
+                    </td>
+                    <td className="mono">
+                      {inputTokens !== null && outputTokens !== null ? (
+                        <>
+                          <div>
+                            {inputTokens.toLocaleString()} in /{' '}
+                            {outputTokens.toLocaleString()} out tok
+                          </div>
+                          {cost !== null ? (
+                            <div className="muted">
+                              ~{formatCost(cost)} (list-price estimate, may change)
+                            </div>
+                          ) : (
+                            <div className="muted">
+                              cost: no list price on file for this model
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        '—'
+                      )}
+                    </td>
+                    <td>
+                      {run.failure
+                        ? `${run.failure.code}${run.failure.limitHit ? ` (${run.failure.limitHit})` : ''}: ${run.failure.message}`
+                        : '—'}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
           <h2>Activity</h2>

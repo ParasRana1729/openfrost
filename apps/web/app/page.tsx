@@ -90,10 +90,10 @@ export default function HomePage() {
           background. Closing this browser does not stop them.
         </p>
         <p className="note">
-          Model-backed execution arrives with the S02 research slice. Until a
-          provider is wired, submitted tasks fail with a clear &ldquo;no provider
-          configured&rdquo; message — the queue, limits, cancellation, and recovery
-          machinery is live.
+          Research briefs are the first supported workflow: a run performs
+          public web search plus page retrieval and saves a Markdown report —
+          one run at a time. Without an OpenAI key configured in Settings,
+          tasks fail with a clear message instead of running.
         </p>
         <div className="row">
           <Link href="/tasks">

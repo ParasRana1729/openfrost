@@ -75,7 +75,15 @@ export interface Store {
     purgeExpired(now: string): void;
   };
   tasks: {
-    create(input: { title: string; request: string }, now: string): Task;
+    create(
+      input: {
+        title: string;
+        request: string;
+        constraints?: string | null;
+        startingUrls?: string[] | null;
+      },
+      now: string,
+    ): Task;
     get(id: string): Task | null;
     list(): Task[];
     listByStates(states: readonly TaskState[]): Task[];
@@ -217,11 +225,24 @@ export function createStore(db: Db, options: StoreOptions = {}): Store {
   };
 
   const tasks = {
-    create(input: { title: string; request: string }, now: string): Task {
+    create(
+      input: {
+        title: string;
+        request: string;
+        constraints?: string | null;
+        startingUrls?: string[] | null;
+      },
+      now: string,
+    ): Task {
       const row = {
         id: randomUUID(),
         title: input.title,
         request: input.request,
+        constraints: input.constraints ?? null,
+        startingUrls:
+          input.startingUrls === undefined || input.startingUrls === null
+            ? null
+            : JSON.stringify(input.startingUrls),
         state: 'queued' as const,
         attemptCount: 0,
         lastRunId: null,

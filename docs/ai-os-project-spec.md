@@ -7,13 +7,15 @@
 - **Platform:** Windows-first, local runtime
 - **Primary interface:** Local web app
 
-**Repository state: S01 local foundation implemented.** The workspace, shared
+**Repository state: S02 research brief implemented.** The workspace, shared
 Zod contracts, SQLite persistence, DPAPI secret storage, authenticated loopback
-API/UI, and the bounded single-run task executor exist and are covered by CI.
-No model provider or product workflow is implemented yet: capabilities below
-that depend on the provider are requirements to implement, not existing
-functionality. The [solo backlog](../backlog/solo-rebuild.md) is the delivery
-plan and per-slice progress record.
+API/UI, bounded single-run executor, and the research-brief workflow (OpenAI
+via the Responses API, hosted web search, an SSRF-hardened fetch tool, saved
+Markdown reports) exist and are covered by CI. Project updates and weekly
+planning are not implemented yet: capabilities below that depend on them are
+requirements to implement, not existing functionality. The
+[solo backlog](../backlog/solo-rebuild.md) is the delivery plan and per-slice
+progress record.
 
 ## 1. Product promise
 

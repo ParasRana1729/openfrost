@@ -15,6 +15,9 @@ export const runUsageSchema = z.strictObject({
   steps: z.number().int().nonnegative(),
   inputChars: z.number().int().nonnegative(),
   outputChars: z.number().int().nonnegative(),
+  /** Token counts when the provider reports them; null otherwise. */
+  inputTokens: z.number().int().nonnegative().nullable().default(null),
+  outputTokens: z.number().int().nonnegative().nullable().default(null),
 });
 export type RunUsage = z.infer<typeof runUsageSchema>;
 

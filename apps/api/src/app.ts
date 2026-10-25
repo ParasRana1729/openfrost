@@ -13,12 +13,15 @@ import {
   TaskNotFoundError,
   createStore,
   openDatabase,
+  providerKeyExists,
+  readProviderKey,
   type OpenDatabaseResult,
   type Store,
 } from '@openfrost/db';
-import { TaskExecutor } from '@openfrost/agent';
+import { FakeProvider, OpenAIProvider, TaskExecutor } from '@openfrost/agent';
 import type { ZodError, ZodIssue } from 'zod';
 import { EventBus } from './bus.js';
+import { fakeResearchScript } from './fakeProviderScript.js';
 import type { AppContext, BuildAppOptions } from './types.js';
 import { makeAuthRoutes } from './routes/auth.js';
 import { makeSettingsRoutes } from './routes/settings.js';
@@ -97,9 +100,31 @@ export async function buildApp(options: BuildAppOptions, logger?: Logger | false
     store = createStore(opened.db, { onEvent: (event) => bus.publish(event) });
   }
 
+  // The provider is built per configuration. The OpenAI adapter reads the
+  // DPAPI-protected key once per process and keeps it in memory only (it is
+  // already held in memory during any authorized call).
+  let cachedKey: string | null | undefined;
+  const builtProvider =
+    options.provider !== undefined
+      ? options.provider
+      : config.provider === 'fake'
+        ? new FakeProvider(fakeResearchScript())
+        : new OpenAIProvider({
+            model: config.openaiModel,
+            getApiKey: async () => {
+              if (cachedKey === undefined) {
+                cachedKey = providerKeyExists(config.homeDir)
+                  ? await readProviderKey(config.homeDir)
+                  : null;
+              }
+              return cachedKey;
+            },
+          });
+  const providerModel = config.provider === 'fake' ? null : config.openaiModel;
+
   const executor = new TaskExecutor({
     store,
-    provider: options.provider ?? null,
+    provider: builtProvider,
     limits: options.limits ?? DEFAULT_EXECUTION_LIMITS,
     now,
   });
@@ -166,7 +191,7 @@ export async function buildApp(options: BuildAppOptions, logger?: Logger | false
     credentials: true,
   });
 
-  const ctx: AppContext = { store, executor, bus, config, now };
+  const ctx: AppContext = { store, executor, bus, config, providerModel, now };
 
   await app.register(makeAuthRoutes(ctx));
   await app.register(

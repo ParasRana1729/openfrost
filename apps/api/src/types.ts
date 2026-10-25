@@ -9,6 +9,8 @@ export interface AppContext {
   executor: TaskExecutor;
   bus: EventBus;
   config: ApiConfig;
+  /** The configured model, or null for the fake dev provider. */
+  providerModel: string | null;
   now(): string;
 }
 

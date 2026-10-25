@@ -16,7 +16,7 @@ export const makeSettingsRoutes = (ctx: AppContext): FastifyPluginAsync => async
   app.get('/settings', async () => {
     return assistantSettingsSchema.parse({
       provider: 'openai',
-      model: null, // configured with the S02 research slice
+      model: ctx.providerModel,
       hasProviderKey: providerKeyExists(ctx.config.homeDir),
       executionLimits: ctx.executor.limits,
       onboardingCompletedAt: ctx.store.state.getValue('onboarding.completedAt'),

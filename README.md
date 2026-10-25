@@ -3,15 +3,15 @@
 > One personal AI agent that turns requests and recurring responsibilities into
 > completed work, with useful memory, visible progress, and owner control.
 
-**Status: S01 local foundation implemented. No model-backed workflows exist yet.**
+**Status: S02 research brief implemented — the first end-to-end workflow works.**
 
-OpenFrost is a solo project owned by ParasRana1729. What ships today is the
-S01 foundation: a pnpm workspace, shared Zod contracts, SQLite persistence,
-DPAPI-protected secrets, an authenticated loopback API, a local web UI, and a
-bounded single-run task executor verified by automated tests. The OpenAI
-provider and the three product workflows (research briefs, project updates,
-weekly planning) are **not implemented yet** — they land with S02+. Tasks
-submitted today fail honestly with "no model provider is configured".
+OpenFrost is a solo project owned by ParasRana1729. What ships today is the S01
+foundation plus the S02 research-brief workflow: with an OpenAI key stored in
+Settings, a submitted question (with optional constraints and starting URLs)
+runs as a bounded agent task — provider-backed web search plus a hardened
+public-page fetch — and saves a Markdown report with sources, retrieval times,
+uncertainties, and a runtime-recorded retrieval appendix. Project updates and
+weekly planning are **not implemented yet** (S03+).
 
 ## The direction
 
@@ -24,7 +24,7 @@ The first release targets three useful jobs:
 
 | Workflow | Result | Status |
 | --- | --- | --- |
-| Research brief | A saved comparison and recommendation, with sources and uncertainties. | Planned (S02) |
+| Research brief | A saved comparison and recommendation, with sources and uncertainties. | **Works** (S02) — real-model quality pending the owner's evaluation |
 | Project update | An evidence-backed summary of granted project notes, blockers, and next steps. | Planned (S03) |
 | Weekly planning | An owner-scheduled draft of priorities from project notes and recent updates. | Planned (S06) |
 
@@ -58,20 +58,31 @@ real today.
   Provider keys are sealed with real Windows DPAPI
   (CryptProtectData/CryptUnprotectData, CurrentUser scope) and fail closed
   off Windows.
-- **`packages/agent`:** one global executor; one run at a time, finite
+- **`packages/agent`** — one global executor; one run at a time, finite
   step/wall-clock/input/output limits, cancellation, explicit retries with
   visible attempt history, and restart recovery that marks unfinished runs
-  `interrupted` and pauses dispatch for owner review. A deterministic fake
-  provider covers all of this in tests — no paid API calls anywhere in CI.
-- **`apps/api`:** Fastify bound to `127.0.0.1` with first-run owner setup,
+  `interrupted` and pauses dispatch for owner review. S02 adds the research
+  loop: an OpenAI adapter (Responses API with hosted web search and `url`
+  citations), an SSRF-hardened `fetch_page` tool (scheme/credential/host
+  deny lists, per-address DNS validation re-checked at every connection, full
+  redirect re-validation, size/time bounds), a policy system prompt that
+  treats retrieved content as untrusted data, and a runtime-recorded
+  retrieval appendix. A deterministic fake provider covers all of this in
+  tests — no paid API calls anywhere in CI.
+- **`apps/api`**: Fastify bound to `127.0.0.1` with first-run owner setup,
   scrypt passwords, HttpOnly SameSite=Strict sessions, session-bound CSRF
   tokens, origin allowlisting, an authenticated SSE activity stream, and
   logging that drops headers/cookies/bodies so secrets never reach logs.
+  Provider configuration: `OPENFROST_OPENAI_MODEL` (default `gpt-4.1-mini`);
+  `OPENFROST_PROVIDER=fake` is a documented dev/test hook that scripts a
+  research run without any API key.
 - **`apps/web`:** local Next.js UI on `127.0.0.1:3000` with a frost visual
   identity — a dispatch status strip, a dark runtime-console activity log, and
   mono system data — onboarding with the required data-transmission and
-  availability disclosures, login, the task queue with cancel/retry/run
-  history, dispatch-resume review, and settings for the DPAPI-protected
+  availability disclosures, login, the task queue with constraints/starting
+  URLs, cancel/retry/run history, token usage with list-price cost estimates
+  (labeled as estimates; unknown when no price is on file), markdown report
+  rendering, dispatch-resume review, and settings for the DPAPI-protected
   OpenAI key and execution limits.
 
 `packages/ui` is intentionally absent: nothing is shared enough to justify it
@@ -124,7 +135,7 @@ AGENTS.md / CONTRIBUTING.md  Engineering, security, and landing workflow
 - [Developer guide](docs/AI_DEVELOPER_GUIDE.md): working one slice at a time.
 - [Contributing](CONTRIBUTING.md): branch, verification, and review conventions.
 
-The next assigned slice is **S02: the research-brief vertical slice** — one
-configured OpenAI model, provider-backed web search, and bounded public page
-retrieval. Implement only the assigned slice, never real credentials in
-`.env`, prompts, or repository files; the credential flow uses DPAPI.
+The next assigned slice is **S03: projects** — granted-folder context and
+evidence-backed project updates. Implement only the assigned slice, never real
+credentials in `.env`, prompts, or repository files; the credential flow uses
+DPAPI.

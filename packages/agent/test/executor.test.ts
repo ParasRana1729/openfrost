@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { ExecutionLimits } from '@openfrost/domain';
 import { createStore, openDatabase, type OpenDatabaseResult, type Store } from '@openfrost/db';
-import { FakeProvider, TaskExecutor } from '../src/index.js';
+import { FakeProvider, TaskExecutor, type AgentTool } from '../src/index.js';
 
 const T0 = Date.parse('2026-10-23T12:00:00.000Z');
 const at = (offsetMs: number): string => new Date(T0 + offsetMs).toISOString();
@@ -31,12 +31,17 @@ afterAll(() => {
   rmSync(home, { recursive: true, force: true });
 });
 
-function makeExecutor(steps: ConstructorParameters<typeof FakeProvider>[0], limits?: ExecutionLimits): TaskExecutor {
+function makeExecutor(
+  steps: ConstructorParameters<typeof FakeProvider>[0],
+  limits?: ExecutionLimits,
+  tools?: AgentTool[],
+): TaskExecutor {
   return new TaskExecutor({
     store,
     provider: new FakeProvider(steps),
     limits: limits ?? tightLimits,
     now: () => at(0),
+    tools,
   });
 }
 
@@ -47,9 +52,9 @@ describe('queue ordering and completion', () => {
       { type: 'final', text: 'result for beta' },
       { type: 'final', text: 'result for gamma' },
     ]);
-    const alpha = await executor.enqueue('Alpha', 'request alpha');
-    const beta = await executor.enqueue('Beta', 'request beta');
-    const gamma = await executor.enqueue('Gamma', 'request gamma');
+    const alpha = await executor.enqueue({ title: 'Alpha', request: 'request alpha' });
+    const beta = await executor.enqueue({ title: 'Beta', request: 'request beta' });
+    const gamma = await executor.enqueue({ title: 'Gamma', request: 'request gamma' });
     await executor.whenIdle();
 
     expect(store.tasks.get(alpha.id)?.state).toBe('completed');
@@ -72,14 +77,30 @@ describe('queue ordering and completion', () => {
   });
 
   it('records tool executions at the auto risk tier', async () => {
-    const executor = makeExecutor([{ type: 'final', text: 'ok' }]);
-    const task = await executor.enqueue('Tools', 'request');
+    const echoTool: AgentTool = {
+      definition: {
+        name: 'fake.echo',
+        description: 'echoes its arguments',
+        parameters: { type: 'object' },
+      },
+      execute: async (argsJson) => ({ ok: true, content: argsJson }),
+    };
+    const executor = makeExecutor(
+      [
+        { type: 'tool_calls', calls: [{ name: 'fake.echo', argsJson: '{"x":1}' }] },
+        { type: 'final', text: 'ok' },
+      ],
+      tightLimits,
+      [echoTool],
+    );
+    const task = await executor.enqueue({ title: 'Tools', request: 'request' });
     await executor.whenIdle();
     const toolEvents = store.events
       .listForTask(task.id)
       .filter((e) => e.type === 'tool.executed');
     expect(toolEvents).toHaveLength(1);
-    expect(toolEvents[0]?.payload).toMatchObject({ tool: 'fake.echo', riskTier: 'auto', step: 1 });
+    expect(toolEvents[0]?.payload).toMatchObject({ tool: 'fake.echo', riskTier: 'auto', step: 1, ok: true });
+    expect(typeof toolEvents[0]?.payload.durationMs).toBe('number');
   });
 
   it('keeps retry history visible across explicit attempts', async () => {
@@ -87,7 +108,7 @@ describe('queue ordering and completion', () => {
       { type: 'error', message: 'transient failure' },
       { type: 'final', text: 'second attempt works' },
     ]);
-    const task = await executor.enqueue('Retry', 'request');
+    const task = await executor.enqueue({ title: 'Retry', request: 'request' });
     await executor.whenIdle();
     expect(store.tasks.get(task.id)?.state).toBe('failed');
 
@@ -107,8 +128,8 @@ describe('failures do not wedge the queue', () => {
       { type: 'error', message: 'provider exploded' },
       { type: 'final', text: 'still works' },
     ]);
-    const doomed = await executor.enqueue('Doomed', 'request');
-    const survivor = await executor.enqueue('Survivor', 'request');
+    const doomed = await executor.enqueue({ title: 'Doomed', request: 'request' });
+    const survivor = await executor.enqueue({ title: 'Survivor', request: 'request' });
     await executor.whenIdle();
 
     const failedTask = store.tasks.get(doomed.id);
@@ -118,14 +139,14 @@ describe('failures do not wedge the queue', () => {
     expect(store.tasks.get(survivor.id)?.state).toBe('completed');
   });
 
-  it('fails honestly when no provider is configured (S02 wires OpenAI)', async () => {
+  it('fails honestly when no provider is configured', async () => {
     const executor = new TaskExecutor({ store, provider: null, limits: tightLimits, now: () => at(0) });
-    const task = await executor.enqueue('No provider', 'request');
+    const task = await executor.enqueue({ title: 'No provider', request: 'request' });
     await executor.whenIdle();
     const run = store.runs.listForTask(task.id)[0];
     expect(run?.failure?.code).toBe('provider_missing');
     expect(store.tasks.get(task.id)?.state).toBe('failed');
-    expect(store.tasks.get(task.id)?.error).toContain('S02');
+    expect(store.tasks.get(task.id)?.error).toContain('Store an OpenAI key in Settings');
   });
 });
 
@@ -137,7 +158,7 @@ describe('finite limits stop runs with a clear result', () => {
       { type: 'continue' },
       { type: 'continue' },
     ]);
-    const task = await executor.enqueue('Steps', 'request');
+    const task = await executor.enqueue({ title: 'Steps', request: 'request' });
     await executor.whenIdle();
     const run = store.runs.listForTask(task.id)[0];
     expect(run?.failure).toMatchObject({ code: 'limit_reached', limitHit: 'max_steps' });
@@ -148,12 +169,12 @@ describe('finite limits stop runs with a clear result', () => {
   it('stops at the wall-clock limit', async () => {
     const executor = makeExecutor(
       [
-        { type: 'continue', delayMs: 120 },
+        { type: 'hang', ms: 120 },
         { type: 'continue' },
       ],
       { ...tightLimits, maxWallClockMs: 40 },
     );
-    const task = await executor.enqueue('Clock', 'request');
+    const task = await executor.enqueue({ title: 'Clock', request: 'request' });
     await executor.whenIdle();
     const run = store.runs.listForTask(task.id)[0];
     expect(run?.failure).toMatchObject({ code: 'limit_reached', limitHit: 'wall_clock' });
@@ -168,7 +189,7 @@ describe('finite limits stop runs with a clear result', () => {
       limits: { ...tightLimits, maxInputChars: 50 },
       now: () => at(0),
     });
-    const task = await executor.enqueue('Too big', 'x'.repeat(120));
+    const task = await executor.enqueue({ title: 'Too big', request: 'x'.repeat(120) });
     await executor.whenIdle();
     expect(provider.calls).toHaveLength(0);
     const run = store.runs.listForTask(task.id)[0];
@@ -180,7 +201,7 @@ describe('finite limits stop runs with a clear result', () => {
       [{ type: 'final', text: 'y'.repeat(6_000) }],
       tightLimits,
     );
-    const task = await executor.enqueue('Big output', 'request');
+    const task = await executor.enqueue({ title: 'Big output', request: 'request' });
     await executor.whenIdle();
     const run = store.runs.listForTask(task.id)[0];
     expect(run?.failure).toMatchObject({ code: 'limit_reached', limitHit: 'max_output' });
@@ -194,8 +215,8 @@ describe('one run owns the executor at a time', () => {
       { type: 'hang', ms: 5_000 },
       { type: 'final', text: 'after' },
     ]);
-    const hanging = await executor.enqueue('Hanging', 'request');
-    const waiting = await executor.enqueue('Waiting', 'request');
+    const hanging = await executor.enqueue({ title: 'Hanging', request: 'request' });
+    const waiting = await executor.enqueue({ title: 'Waiting', request: 'request' });
 
     // Let the drain loop start the hanging run.
     await new Promise((resolve) => setTimeout(resolve, 50));
