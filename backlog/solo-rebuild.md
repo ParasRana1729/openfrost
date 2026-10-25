@@ -302,8 +302,16 @@ provider selection and no plugin system — three built-in adapters only.
       responses, invalid keys) that never leak the key.
 - [x] Injected-transport tests cover the adapter and the settings flow with
       no real API keys or paid calls.
-- [ ] The owner separately evaluates one real research task on OpenRouter
-      (no key has been provided to the runtime yet).
+- [x] Real-model evaluation (owner-provided time-limited key, 2026-10-25,
+      throwaway data home, key deleted after the test): a submitted research
+      brief ran end-to-end on OpenRouter — completed in ~37 s over 4 steps
+      with 10 bounded `fetch_page` calls, a 2,743-char report artifact saved
+      with source URLs, uncertainties, and the runtime-recorded retrieval
+      appendix, and real token usage recorded (40,070 in / 1,576 out). The
+      hosted `web` plugin was verified separately through the adapter with
+      the same DPAPI-sealed key: 5 live `url_citation` annotations mapped to
+      citations with titles. The key was never echoed by the API and never
+      appeared in logs.
 
 ### Handoff
 
@@ -325,12 +333,17 @@ provider selection and no plugin system — three built-in adapters only.
   plugin/tools/message mapping, tool-call and citation mapping, usage,
   no-key-leak, length/content_filter/empty handling, aborts); settings
   switching and per-provider DPAPI keys covered over the API.
-- Not run/verified: a real OpenRouter call (the owner evaluates with their
-  key; none has been provided to the runtime).
+- Not run/verified: a real OpenRouter call — **resolved 2026-10-25** in the
+  owner's real-model evaluation above (one brief through the full app plus
+  one direct adapter probe of the web plugin; both succeeded; the test home
+  with the DPAPI-sealed key was deleted afterward).
 - Known limitations: `openrouter/auto` routes across upstream models, so the
   UI's list-price cost estimate stays unknown for it (already labeled
   honestly); the web plugin bills per search on top of token costs; requests
-  transit OpenRouter to the chosen model's upstream provider.
+  transit OpenRouter to the chosen model's upstream provider; in the
+  evaluated brief the model answered entirely through `fetch_page` (no
+  hosted-search annotations in-run), so in-task citation behavior depends on
+  the routed model.
 - Next: S03 — projects, unchanged.
 
 ## S03 — Add project context and evidence-backed updates
