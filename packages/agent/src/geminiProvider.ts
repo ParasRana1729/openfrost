@@ -54,6 +54,26 @@ function truncate(text: string): string {
   return text.length > ERROR_MESSAGE_MAX_CHARS ? `${text.slice(0, ERROR_MESSAGE_MAX_CHARS)}...` : text;
 }
 
+/** Keys the OpenAI/JSON-Schema world accepts that Gemini's function
+ * declaration subset rejects with HTTP 400. */
+const UNSUPPORTED_SCHEMA_KEYS = new Set(['additionalProperties', '$schema']);
+
+function stripUnsupportedSchemaKeys(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(stripUnsupportedSchemaKeys);
+  }
+  if (typeof value === 'object' && value !== null) {
+    const cleaned: Record<string, unknown> = {};
+    for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+      if (!UNSUPPORTED_SCHEMA_KEYS.has(key)) {
+        cleaned[key] = stripUnsupportedSchemaKeys(item);
+      }
+    }
+    return cleaned;
+  }
+  return value;
+}
+
 /**
  * Google Gemini adapter over the native `generateContent` API. Web search is
  * Gemini's hosted Google Search grounding; grounding chunks surface as
@@ -196,7 +216,9 @@ export class GeminiProvider implements LlmProvider {
     return {
       name: tool.name,
       description: tool.description,
-      parameters: tool.parameters,
+      // Gemini's function-declaration schema subset rejects keys like
+      // `additionalProperties` that OpenAI accepts; strip them per call.
+      parameters: stripUnsupportedSchemaKeys(tool.parameters),
     };
   }
 

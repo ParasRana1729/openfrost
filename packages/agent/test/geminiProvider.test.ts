@@ -9,7 +9,12 @@ const tools: ToolDefinition[] = [
   {
     name: 'fetch_page',
     description: 'Retrieve one public http(s) page as plain text.',
-    parameters: { type: 'object', properties: { url: { type: 'string' } }, required: ['url'] },
+    parameters: {
+      type: 'object',
+      properties: { url: { type: 'string' } },
+      required: ['url'],
+      additionalProperties: false,
+    },
   },
 ];
 
@@ -95,7 +100,12 @@ describe('GeminiProvider', () => {
       { google_search: {} },
       {
         function_declarations: [
-          { name: 'fetch_page', description: tools[0]?.description, parameters: tools[0]?.parameters },
+          {
+            name: 'fetch_page',
+            description: tools[0]?.description,
+            // additionalProperties is stripped: Gemini rejects it with HTTP 400.
+            parameters: { type: 'object', properties: { url: { type: 'string' } }, required: ['url'] },
+          },
         ],
       },
     ]);
