@@ -92,7 +92,8 @@ export default function HomePage() {
         <p className="note">
           Research briefs are the first supported workflow: a run performs
           public web search plus page retrieval and saves a Markdown report —
-          one run at a time. The model provider (OpenAI or Gemini) is chosen in
+          one run at a time. The model provider (OpenAI, Gemini, or OpenRouter)
+          is chosen in
           Settings; without a key configured there, tasks fail with a clear
           message instead of running.
         </p>

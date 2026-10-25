@@ -8,9 +8,10 @@ import { useSession } from '../../lib/useSession';
 const PROVIDER_LABEL: Record<ProviderId, string> = {
   openai: 'OpenAI',
   gemini: 'Gemini',
+  openrouter: 'OpenRouter',
 };
 
-const PROVIDER_CHOICES: ReadonlyArray<ProviderId> = ['openai', 'gemini'];
+const PROVIDER_CHOICES: ReadonlyArray<ProviderId> = ['openai', 'gemini', 'openrouter'];
 
 const MAX_MODEL_LENGTH = 100;
 
@@ -54,11 +55,12 @@ export default function SettingsPage() {
   const fakeActive = settings?.provider === 'fake';
   const selectedProvider: ProviderId = selected ?? 'openai';
   const selectedModel = settings?.models[selectedProvider] ?? null;
-  const selectedHasKey = settings
-    ? selectedProvider === 'openai'
-      ? settings.hasOpenAIKey
-      : settings.hasGeminiKey
-    : false;
+  const hasKeyByProvider: Record<ProviderId, boolean> = {
+    openai: settings?.hasOpenAIKey ?? false,
+    gemini: settings?.hasGeminiKey ?? false,
+    openrouter: settings?.hasOpenRouterKey ?? false,
+  };
+  const selectedHasKey = hasKeyByProvider[selectedProvider];
   // Show the typed draft only while it belongs to the selected provider;
   // otherwise fall back to the loaded effective model.
   const modelValue =
@@ -238,7 +240,8 @@ export default function SettingsPage() {
         <h2>API keys</h2>
         <p className="muted">
           OpenAI: {settings?.hasOpenAIKey ? 'key stored' : 'no key'} · Gemini:{' '}
-          {settings?.hasGeminiKey ? 'key stored' : 'no key'}.
+          {settings?.hasGeminiKey ? 'key stored' : 'no key'} · OpenRouter:{' '}
+          {settings?.hasOpenRouterKey ? 'key stored' : 'no key'}.
         </p>
         <label htmlFor="apikey">
           {selectedHasKey

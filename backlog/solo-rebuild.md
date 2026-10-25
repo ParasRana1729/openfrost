@@ -2,7 +2,7 @@
 
 - **Specification:** [v0.1 solo rebuild](../docs/ai-os-project-spec.md)
 - **Owner for every item:** ParasRana1729
-- **Current assignment:** S03 next; S02b complete (see its handoff)
+- **Current assignment:** S03 next; S02c complete (see its handoff)
 
 These are local backlog identifiers, not GitHub issue numbers. Only S00 is in
 scope for the current reset. S01–S07 are planned, unimplemented
@@ -275,6 +275,62 @@ no plugin system — two built-in adapters only.
   requires a Gemini 2.5-class model (the default); grounding citations are
   chunk-level (not sentence-level attributions); token usage excludes
   thinking tokens on thinking models.
+- Next: S03 — projects, unchanged.
+
+## S02c — Provider choice: add OpenRouter
+
+- **Status:** Complete (real OpenRouter call pending the owner's evaluation)
+- **Depends on:** S02b
+
+Owner-approved spec change (2026-10-25): the built-in provider set extends
+from two to three. OpenAI, Gemini, or OpenRouter, one active at a time, each
+with its own DPAPI-protected key and configured model. Still no per-task
+provider selection and no plugin system — three built-in adapters only.
+
+### Acceptance criteria
+
+- [x] The owner can choose OpenRouter as the active provider in Settings;
+      the choice and its model persist and take effect on the next run
+      without a restart.
+- [x] OpenRouter's key is stored DPAPI-protected under its own purpose, so
+      one provider's blob cannot be decrypted as another's; the key is never
+      echoed or logged.
+- [x] OpenRouter runs use the OpenAI-compatible chat completions API with
+      the hosted `web` search plugin surfaced as search counts and
+      `url_citation` citations, function calling mapped to the shared tool
+      seam, and honest failures (truncation, content filters, empty
+      responses, invalid keys) that never leak the key.
+- [x] Injected-transport tests cover the adapter and the settings flow with
+      no real API keys or paid calls.
+- [ ] The owner separately evaluates one real research task on OpenRouter
+      (no key has been provided to the runtime yet).
+
+### Handoff
+
+- Implemented: `OpenRouterProvider` (`packages/agent/src/openRouterProvider.ts`)
+  over `POST https://openrouter.ai/api/v1/chat/completions` — the `web`
+  plugin's message annotations map to citations and search counts, tool
+  calls map to the shared seam, usage maps `prompt_tokens`/
+  `completion_tokens`. Default model `openrouter/auto` via
+  `OPENFROST_OPENROUTER_MODEL`. `ActiveProvider` routes to it and now keys
+  its adapter cache by provider+model, fixing a latent S02b defect where a
+  saved model override kept using the first-run model until restart. The
+  DELETE key route now validates the provider (unknown → 400 instead of
+  silently removing the OpenAI key). Web settings/onboarding/home copy
+  includes OpenRouter; spec, README, one-pager, and AGENTS.md record the
+  three-adapter baseline.
+- Verification: `pnpm lint`/`pnpm build`/`pnpm test` pass (151 tests: 31
+  domain, 27 db, 60 agent, 33 api) locally; CI runs the same. OpenRouter
+  adapter covered by injected-transport tests (request shape incl. web
+  plugin/tools/message mapping, tool-call and citation mapping, usage,
+  no-key-leak, length/content_filter/empty handling, aborts); settings
+  switching and per-provider DPAPI keys covered over the API.
+- Not run/verified: a real OpenRouter call (the owner evaluates with their
+  key; none has been provided to the runtime).
+- Known limitations: `openrouter/auto` routes across upstream models, so the
+  UI's list-price cost estimate stays unknown for it (already labeled
+  honestly); the web plugin bills per search on top of token costs; requests
+  transit OpenRouter to the chosen model's upstream provider.
 - Next: S03 — projects, unchanged.
 
 ## S03 — Add project context and evidence-backed updates

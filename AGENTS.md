@@ -38,7 +38,7 @@ apps/web          Next.js App Router / React local assistant UI
 apps/api          Fastify API, owner auth, SSE, task worker, routine tick
 packages/domain   Shared Zod schemas and inferred TypeScript contracts
 packages/db       SQLite + Drizzle, migrations, DPAPI-backed secret storage
-packages/agent    Provider adapters (OpenAI, Gemini), bounded tools, execution policy
+packages/agent    Provider adapters (OpenAI, Gemini, OpenRouter), bounded tools, execution policy
 packages/ui       Shared components where reuse is justified
 ```
 
@@ -145,7 +145,7 @@ from verified work instead of reconstructing earlier conversations.
 
 Do not add Telegram, native/mobile clients, remote access, agent teams, cloud
 workers, plugin/MCP infrastructure, per-task provider or model selection, a
-provider/plugin system beyond the two built-in adapters (OpenAI, Gemini),
-arbitrary shell, browser/OS computer use, self-directed work, or an
+provider/plugin system beyond the three built-in adapters (OpenAI, Gemini,
+OpenRouter), arbitrary shell, browser/OS computer use, self-directed work, or an
 autostart/backup subsystem to v0.1. If a requested change needs one of these,
 discuss a spec change first.

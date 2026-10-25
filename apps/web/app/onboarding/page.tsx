@@ -64,8 +64,8 @@ export default function OnboardingPage() {
           <strong>Data transmission.</strong> Local-first means the app and your
           data live on this PC — not that nothing leaves it. Your requests,
           granted context, and retrieved source excerpts are sent to the
-          configured model/search provider (OpenAI or Gemini, using your API
-          key) for
+          configured model/search provider (OpenAI, Gemini, or OpenRouter,
+          using your API key) for
           processing. Secrets are stored DPAPI-protected and are never sent
           anywhere other than to that provider as authentication.
         </div>

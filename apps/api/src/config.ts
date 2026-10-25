@@ -12,6 +12,7 @@ export interface ApiConfig {
   provider: 'openai' | 'fake';
   openaiModel: string;
   geminiModel: string;
+  openrouterModel: string;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
@@ -33,5 +34,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     provider,
     openaiModel: env.OPENFROST_OPENAI_MODEL ?? 'gpt-4.1-mini',
     geminiModel: env.OPENFROST_GEMINI_MODEL ?? 'gemini-3.8-flash',
+    openrouterModel: env.OPENFROST_OPENROUTER_MODEL ?? 'openrouter/auto',
   };
 }

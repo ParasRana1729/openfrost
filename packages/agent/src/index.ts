@@ -2,6 +2,7 @@ export * from './provider.js';
 export * from './fakeProvider.js';
 export * from './openaiProvider.js';
 export * from './geminiProvider.js';
+export * from './openRouterProvider.js';
 export * from './executor.js';
 export * from './tools/types.js';
 export * from './tools/ipGuard.js';
