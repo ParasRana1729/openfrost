@@ -554,7 +554,9 @@ facts. Start with Markdown and straightforward retrieval, not embeddings.
   External edits surface as `externalChange`, parse/format problems are shown,
   and "Reload from disk" reindexes without deleting owner prose. Limits are
   4,000 characters per entry, 50 entries per file, 256 KiB per file, and a
-  6,000-character approved-memory budget for one task context.
+  6,000-character approved-memory budget for one task context. File reads stop
+  at 256 KiB plus one byte, including if a file grows after its initial size
+  check; oversized files are rejected without parsing.
 - Implemented: the assistant gets `propose_memory` on every model-backed run:
   at most three proposals per run, project scope only for project-scoped tasks,
   duplicates refused, and pattern-based credential scanning
@@ -566,8 +568,8 @@ facts. Start with Markdown and straightforward retrieval, not embeddings.
   IDs, truncation, and problems but never memory text. The API and UI reuse the
   existing owner-session, origin, and CSRF protections; errors map to
   404/400/409 as appropriate.
-- Verification: `pnpm lint && pnpm test && pnpm build` passes locally (265 tests:
-  65 domain, 43 db, 106 agent, 51 API). Coverage includes approval/edit/delete,
+- Verification: `pnpm lint && pnpm test && pnpm build` passes locally (266 tests:
+  65 domain, 44 db, 106 agent, 51 API). Coverage includes approval/edit/delete,
   pending-vs-approved retrieval, project isolation, restart, external edits and
   stale-hash conflicts, malformed files, duplicate/limit/secret refusal, source
   retention, proposal-to-prompt flow, `memory.used` metadata, and the HTTP
