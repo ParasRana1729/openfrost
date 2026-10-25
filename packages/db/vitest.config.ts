@@ -13,5 +13,10 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['test/**/*.test.ts'],
+    // DPAPI round-trips spawn real PowerShell subprocesses, which can take
+    // several seconds on CI runners; Vitest's 5s default made main's push
+    // runs flake while PR runs passed. Match apps/api's generous budget.
+    testTimeout: 20_000,
+    hookTimeout: 20_000,
   },
 });
