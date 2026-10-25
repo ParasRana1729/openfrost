@@ -52,7 +52,11 @@ export async function startApp(options: TestAppOptions = {}): Promise<TestApp> {
   const opened = options.withDatabase ?? openDatabase(home);
   const bus = new EventBus();
   const store =
-    options.store ?? createStore(opened.db, { onEvent: (event) => bus.publish(event) });
+    options.store ??
+    createStore(opened.db, {
+      home: opened.home,
+      onEvent: (event) => bus.publish(event),
+    });
   const provider = new FakeProvider(options.steps ?? [{ type: 'final', text: 'api result' }]);
   const logs = new LogCapture();
   const config = { ...loadConfig({}), homeDir: home, port: 0 };

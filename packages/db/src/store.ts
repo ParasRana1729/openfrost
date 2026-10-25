@@ -39,6 +39,7 @@ import {
   toProjectFolderGrant,
   toTask,
 } from './mappers.js';
+import { createMemoryStore, type MemoryStore } from './memory.js';
 import { hashPassword, verifyPassword } from './passwords.js';
 import * as schema from './schema.js';
 
@@ -246,14 +247,21 @@ export interface Store {
     getValue(key: string): string | null;
     setValue(key: string, value: string): void;
   };
+  memory: MemoryStore;
 }
 
 export interface StoreOptions {
+  /**
+   * OpenFrost home directory. Canonical memory Markdown lives under
+   * `memory/owner.md` and `projects/<id>/memory.md` here. Required so tests
+   * and the app never fall back to reading the real user profile by accident.
+   */
+  home: string;
   /** Invoked after every append; used by the API to feed authenticated SSE streams. */
   onEvent?: (event: Event) => void;
 }
 
-export function createStore(db: Db, options: StoreOptions = {}): Store {
+export function createStore(db: Db, options: StoreOptions): Store {
   const users = {
     count(): number {
       return db.select().from(schema.users).all().length;
@@ -940,6 +948,8 @@ export function createStore(db: Db, options: StoreOptions = {}): Store {
     },
   };
 
+  const memory = createMemoryStore(db, options.home);
+
   return {
     users,
     sessions,
@@ -953,5 +963,6 @@ export function createStore(db: Db, options: StoreOptions = {}): Store {
     conversations,
     messages,
     state,
+    memory,
   };
 }

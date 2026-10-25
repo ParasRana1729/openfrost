@@ -2,15 +2,16 @@
 
 - **Specification:** [v0.1 solo rebuild](../docs/ai-os-project-spec.md)
 - **Owner for every item:** ParasRana1729
-- **Current assignment:** S05 next; S04 complete (see its handoff)
+- **Current assignment:** S06 next; S05 complete (see its handoff)
 
-These are local backlog identifiers, not GitHub issue numbers. Only S00 is in
-scope for the current reset. S01–S07 are planned, unimplemented
-work; ownership is not permission for an agent to start all of them or publish
-anything. Implement the next explicitly assigned item in dependency order.
+These are local backlog identifiers, not GitHub issue numbers. S00–S05 are
+complete (see each handoff); S06–S07 remain planned. Ownership is not permission
+for an agent to start all remaining items or publish anything. Implement the next
+explicitly assigned item in dependency order.
 
-There is no implementation or runnable toolchain in this baseline. Documentation
-describes intended behavior; verify actual code and checks before claiming progress.
+The repository contains a runnable toolchain and implemented workflows. Verify
+actual code and checks before claiming progress; a plan or checklist is not proof
+that a capability exists.
 
 ## S00 — Establish the clean specification-only baseline
 
@@ -513,7 +514,7 @@ this feature.
 
 ## S05 — Add inspectable, owner-approved memory
 
-- **Status:** Planned
+- **Status:** Complete (real-use quality pending S07's working week)
 - **Depends on:** S03
 
 Keep conversation history separate from durable global preferences and project
@@ -521,14 +522,80 @@ facts. Start with Markdown and straightforward retrieval, not embeddings.
 
 ### Acceptance criteria
 
-- [ ] The owner can confirm a proposed memory, inspect its scope/source/date,
+- [x] The owner can confirm a proposed memory, inspect its scope/source/date,
       edit it, and delete it from future memory retrieval.
-- [ ] Only approved global preferences and the active project's approved facts
+- [x] Only approved global preferences and the active project's approved facts
       enter a task's context; source history is not silently deleted with memory.
-- [ ] Markdown is canonical memory content; SQLite metadata/indexes do not become
+- [x] Markdown is canonical memory content; SQLite metadata/indexes do not become
       a competing copy. External edits are detected before overwrite.
-- [ ] Tests cover approval, deletion, project isolation, restart, external edits,
+- [x] Tests cover approval, deletion, project isolation, restart, external edits,
       and exclusion of secrets from memory proposals.
+
+### Handoff
+
+- Implemented: approved memory is Markdown-canonical. Global entries live in
+  `<home>\memory\owner.md` and project facts in
+  `<home>\projects\<project-id>\memory.md`. Each entry is a plain-Markdown body
+  inside HTML-comment fences whose base64url JSON metadata carries the entry id,
+  scope, project, source (task id/label), and created/updated timestamps; owner
+  prose outside the fences is preserved on approval, edit, and delete. SQLite
+  stores pending proposals (review text is cleared after a decision, while source
+  metadata and content hashes remain) plus rebuildable metadata indexes with no
+  content column. The Memory page lists pending proposals with scope, project,
+  source task/run, and proposal date; the owner can edit the proposed text,
+  approve it, or reject it. Approved entries show scope, source, approved and
+  updated dates, and are editable or deletable. Deletion removes the Markdown
+  entry from future retrieval; proposal/source history and the originating
+  task/report are not deleted. Decision history stays visible with hashes, and
+  proposal text is not retained after a decision.
+- Implemented: every approval, edit, and delete carries the exact Markdown
+  sha256 the owner loaded (null when the file does not exist). The store re-reads
+  the file and returns 409 with `currentSha256` without writing when it changed.
+  External edits surface as `externalChange`, parse/format problems are shown,
+  and "Reload from disk" reindexes without deleting owner prose. Limits are
+  4,000 characters per entry, 50 entries per file, 256 KiB per file, and a
+  6,000-character approved-memory budget for one task context. File reads stop
+  at 256 KiB plus one byte, including if a file grows after its initial size
+  check; oversized files are rejected without parsing.
+- Implemented: the assistant gets `propose_memory` on every model-backed run:
+  at most three proposals per run, project scope only for project-scoped tasks,
+  duplicates refused, and pattern-based credential scanning
+  (OpenAI/Google/GitHub/AWS keys, private-key blocks, bearer tokens, credential
+  assignments) before storage. Approved global preferences plus only the active
+  project's facts are loaded from Markdown at run start into research-brief and
+  project-update prompts; pending proposals, other projects, and deleted entries
+  never enter context. `memory.*` events record metadata, hashes, counts, entry
+  IDs, truncation, and problems but never memory text. The API and UI reuse the
+  existing owner-session, origin, and CSRF protections; errors map to
+  404/400/409 as appropriate.
+- Verification: `pnpm lint && pnpm test && pnpm build` passes locally (266 tests:
+  65 domain, 44 db, 106 agent, 51 API). Coverage includes approval/edit/delete,
+  pending-vs-approved retrieval, project isolation, restart, external edits and
+  stale-hash conflicts, malformed files, duplicate/limit/secret refusal, source
+  retention, proposal-to-prompt flow, `memory.used` metadata, and the HTTP
+  401/403/404/400/409 surface. The production web build includes `/memory` and
+  type-checks the page.
+- Not run/verified: no real-model run proposed or used memory (deterministic fake
+  and injected providers cover the paths); real-model usefulness is part of S07's
+  working week. No automated browser test; a manual browser pass on a throwaway
+  home with seeded pending proposals covered approve-with-edit, project approval,
+  entry edit and delete, the external-edit warning, and reload preserving owner
+  prose. The fake provider was running, but the proposals were seeded directly so
+  the review UI could be exercised; proposal generation itself is covered by the
+  agent tests.
+- Known limitations: retrieval is not embedded or relevance-ranked; all approved
+  global entries and all active-project entries are placed in file order until
+  the 6,000-character cap. Truncation is disclosed in the `memory.used` event but
+  the UI does not preview the exact prompt. Scope, source, and original approval
+  date are immutable after approval; editing changes content and `updatedAt`, and
+  there is no move/copy action between scopes. Credential scanning is best-effort
+  pattern matching over text (the store supports exact-value matches, but the
+  current routes and tool do not pass stored provider keys), so it can reject
+  false positives and cannot guarantee detection of unusual secret
+  formats. Memory files are plaintext Markdown under the user profile with no
+  separate encryption; external changes are detected on read/mutation, not by a
+  filesystem watcher. Limits are fixed rather than configurable.
+- Next: S06 — owner-confirmed weekly planning routines.
 
 ## S06 — Add owner-confirmed weekly planning routines
 

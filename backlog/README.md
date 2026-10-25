@@ -20,8 +20,10 @@ All items belong to ParasRana1729. IDs are local planning identifiers, **not**
 GitHub issue numbers. Work one assigned slice at a time; each entry contains its
 acceptance criteria. There are no team role assignments or fixed iteration dates.
 
-**Current state:** S00 and S01 are complete. The S01 local foundation exists on
-`main`: pnpm workspace, Zod contracts, SQLite persistence, DPAPI secrets,
-authenticated loopback API/UI, and the bounded single-run executor. S02–S07
-are unimplemented; no model provider or product workflow exists yet, so
-completing a planning item is not evidence that a product feature works.
+**Current state:** S00–S05 are complete. `main` has the pnpm workspace, shared
+Zod contracts, SQLite persistence, DPAPI secrets, authenticated loopback API/UI,
+the bounded single-run executor, research briefs (OpenAI, Gemini, and OpenRouter),
+project updates, approval-bound export, and owner-approved Markdown memory.
+S06 weekly planning and S07 release hardening remain planned; real-model quality
+and the working-week evaluation happen in S07. Check the
+[solo backlog](solo-rebuild.md) handoffs for exact evidence and limitations.

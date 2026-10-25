@@ -1,13 +1,15 @@
 # OpenFrost — Product one-pager
 
-- **Direction:** Accepted; implementation pending
+- **Direction:** Accepted; implementation in progress
 - **Builder and first user:** ParasRana1729
 - **Release:** v0.1, Windows-first local runtime and local web app
 - **Source of truth:** [Full specification](./ai-os-project-spec.md)
 
-**Current repository: S01 local foundation implemented (contracts, persistence,
-DPAPI secrets, loopback API/UI, bounded executor). The capabilities below are
-planned, not delivered; no model provider or product workflow exists yet.**
+**Current repository: S05 owner-approved memory implemented.** Research briefs
+(OpenAI, Gemini, and OpenRouter), project updates, approval-bound export, and
+inspectable memory work today; weekly planning (S06) and release hardening (S07)
+remain planned. Real-model quality and the owner's working-week evaluation happen
+in S07.
 
 ## Problem
 
@@ -38,7 +40,8 @@ background execution, not a replacement for Windows or a collection of personas.
 - One globally active run, with a persistent queue, finite limits, and cancellation.
 - Owner-chosen model provider (OpenAI, Gemini, or OpenRouter) with a DPAPI-protected key; SQLite + Drizzle for local state.
 - Inspectable, editable, owner-approved global preferences and project memory.
-- Public web research, granted text-file reads, and approved export of new reports.
+- Public web research, granted text-file reads, approved export of new reports,
+  and owner-approved memory.
 
 The PC must be awake and the runtime running. Closing the browser is fine;
 shutting down the PC stops work. Local-first is not offline: selected context is
@@ -70,5 +73,4 @@ The complete release gates are in the full specification.
 
 Build sequentially from the [solo backlog](../backlog/solo-rebuild.md): local
 foundation → research brief → projects → reviewable export → memory → weekly
-planning → release hardening. The foundation starts by creating the workspace and
-development toolchain.
+planning → release hardening. S00–S05 are complete; S06–S07 remain.

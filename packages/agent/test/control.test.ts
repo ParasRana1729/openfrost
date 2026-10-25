@@ -26,7 +26,7 @@ let store: Store;
 beforeEach(() => {
   home = mkdtempSync(join(tmpdir(), 'openfrost-control-test-'));
   opened = openDatabase(home);
-  store = createStore(opened.db);
+  store = createStore(opened.db, { home: opened.home });
 });
 
 afterEach(() => {

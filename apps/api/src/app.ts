@@ -5,13 +5,24 @@ import cors from '@fastify/cors';
 import pino, { type Logger } from 'pino';
 import {
   InvalidApprovalTransitionError,
+  InvalidMemoryProposalTransitionError,
   InvalidTransitionError,
+  MemoryFileEntryNotFoundError,
+  MemoryFileFormatError,
   DEFAULT_EXECUTION_LIMITS,
 } from '@openfrost/domain';
 import {
   DpapiUnavailableError,
   ApprovalNotFoundError,
   ExportDestinationNotFoundError,
+  MemoryDuplicateError,
+  MemoryEntryNotFoundError,
+  MemoryFileChangedError,
+  MemoryFileUnreadableError,
+  MemoryLimitError,
+  MemoryProjectNotFoundError,
+  MemoryProposalNotFoundError,
+  MemorySecretError,
   OwnerExistsError,
   ProjectNotFoundError,
   TaskNotFoundError,
@@ -29,6 +40,7 @@ import { makeAuthRoutes } from './routes/auth.js';
 import { makeSettingsRoutes } from './routes/settings.js';
 import { makeTaskRoutes } from './routes/tasks.js';
 import { makeProjectRoutes } from './routes/projects.js';
+import { makeMemoryRoutes } from './routes/memory.js';
 import { makeExportRoutes } from './routes/exports.js';
 import { makeDispatchRoutes } from './routes/dispatch.js';
 import { makeEventRoutes } from './routes/events.js';
@@ -101,7 +113,10 @@ export async function buildApp(options: BuildAppOptions, logger?: Logger | false
     store = options.store;
   } else {
     opened = openDatabase(config.homeDir);
-    store = createStore(opened.db, { onEvent: (event) => bus.publish(event) });
+    store = createStore(opened.db, {
+      home: opened.home,
+      onEvent: (event) => bus.publish(event),
+    });
   }
 
   // The executor talks to ActiveProvider, which resolves the owner's active
@@ -138,6 +153,31 @@ export async function buildApp(options: BuildAppOptions, logger?: Logger | false
     }
     if (err instanceof ApprovalNotFoundError || err instanceof ExportDestinationNotFoundError) {
       return reply.code(404).send({ error: err.message });
+    }
+    if (
+      err instanceof MemoryProposalNotFoundError ||
+      err instanceof MemoryEntryNotFoundError ||
+      err instanceof MemoryFileEntryNotFoundError ||
+      err instanceof MemoryProjectNotFoundError
+    ) {
+      return reply.code(404).send({ error: err.message });
+    }
+    if (err instanceof MemoryFileChangedError) {
+      return reply.code(409).send({
+        error: err.message,
+        currentSha256: err.currentSha256,
+      });
+    }
+    if (err instanceof MemorySecretError || err instanceof MemoryLimitError) {
+      return reply.code(400).send({ error: err.message });
+    }
+    if (
+      err instanceof MemoryDuplicateError ||
+      err instanceof MemoryFileUnreadableError ||
+      err instanceof MemoryFileFormatError ||
+      err instanceof InvalidMemoryProposalTransitionError
+    ) {
+      return reply.code(409).send({ error: err.message });
     }
     if (err instanceof InvalidApprovalTransitionError) {
       return reply.code(409).send({ error: err.message });
@@ -219,6 +259,7 @@ export async function buildApp(options: BuildAppOptions, logger?: Logger | false
       });
       await protectedScope.register(makeTaskRoutes(ctx));
       await protectedScope.register(makeProjectRoutes(ctx));
+      await protectedScope.register(makeMemoryRoutes(ctx));
       await protectedScope.register(makeExportRoutes(ctx));
       await protectedScope.register(
         makeSettingsRoutes(

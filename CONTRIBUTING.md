@@ -13,8 +13,9 @@ assigned entry in the [solo backlog](backlog/solo-rebuild.md) before starting.
 - Confirm dependencies in the code, not just in planning documents.
 - Use a topic branch, for example `feat/s02-research-brief`,
   `fix/s03-folder-boundary`, or `docs/s00-product-reset`.
-- The S01 foundation is on `main`. Build only what the assigned slice needs and
-  verify dependencies in the actual code; do not infer capabilities from the spec.
+- The foundation through S05 is on `main`. Build only what the assigned slice
+  needs and verify dependencies in the actual code; do not infer capabilities
+  from the spec.
 - Keep unrelated cleanup and destructive operations out of an assigned slice
   unless explicitly authorized.
 

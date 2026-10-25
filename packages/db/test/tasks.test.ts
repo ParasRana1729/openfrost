@@ -21,7 +21,7 @@ let store: Store;
 beforeAll(() => {
   home = mkdtempSync(join(tmpdir(), 'openfrost-tasks-test-'));
   opened = openDatabase(home);
-  store = createStore(opened.db);
+  store = createStore(opened.db, { home: opened.home });
 });
 
 afterAll(() => {
@@ -42,7 +42,7 @@ describe('task lifecycle through the store', () => {
     // not. Fresh store so earlier tests' queued tasks cannot interfere.
     const tieHome = mkdtempSync(join(tmpdir(), 'openfrost-tie-test-'));
     const tieOpened = openDatabase(tieHome);
-    const tieStore = createStore(tieOpened.db);
+    const tieStore = createStore(tieOpened.db, { home: tieOpened.home });
     try {
       const first = tieStore.tasks.create({ title: 'A', request: 'x' }, at(5));
       const second = tieStore.tasks.create({ title: 'B', request: 'x' }, at(5));
@@ -159,6 +159,7 @@ describe('task lifecycle through the store', () => {
     const watched = mkdtempSync(join(tmpdir(), 'openfrost-events-test-'));
     const openedWatched = openDatabase(watched);
     const watchedStore = createStore(openedWatched.db, {
+      home: openedWatched.home,
       onEvent: (event) => seen.push(event.type),
     });
     try {

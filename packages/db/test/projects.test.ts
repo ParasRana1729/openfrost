@@ -20,7 +20,7 @@ let store: Store;
 beforeAll(() => {
   home = mkdtempSync(join(tmpdir(), 'openfrost-projects-test-'));
   opened = openDatabase(home);
-  store = createStore(opened.db);
+  store = createStore(opened.db, { home: opened.home });
 });
 
 afterAll(() => {

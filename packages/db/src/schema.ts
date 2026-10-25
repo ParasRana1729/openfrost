@@ -153,6 +153,52 @@ export const events = sqliteTable('events', {
   createdAt: text('created_at').notNull(),
 });
 
+/**
+ * Pending memory proposals and decisions (S05). Proposed text is cleared after
+ * the owner decides so SQLite never retains a second copy of approved memory:
+ * the canonical content is the Markdown file. Audit fields (scope, source,
+ * dates, hashes) remain.
+ */
+export const memoryProposals = sqliteTable('memory_proposals', {
+  id: text('id').primaryKey(),
+  scope: text('scope').notNull(),
+  projectId: text('project_id'),
+  content: text('content'),
+  sourceJson: text('source_json').notNull(),
+  sourceRunId: text('source_run_id'),
+  state: text('state').notNull(),
+  proposedAt: text('proposed_at').notNull(),
+  decidedAt: text('decided_at'),
+  memoryEntryId: text('memory_entry_id'),
+  proposedContentSha256: text('proposed_content_sha256').notNull(),
+  decidedContentSha256: text('decided_content_sha256'),
+});
+
+/**
+ * Rebuildable memory metadata index. Deliberately has no content column:
+ * `memory/owner.md` and `projects/<id>/memory.md` are canonical.
+ */
+export const memoryEntries = sqliteTable('memory_entries', {
+  id: text('id').primaryKey(),
+  fileKey: text('file_key').notNull(),
+  scope: text('scope').notNull(),
+  projectId: text('project_id'),
+  sourceJson: text('source_json').notNull(),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+  contentSha256: text('content_sha256').notNull(),
+});
+
+/** Last indexed version of each Markdown memory file (external-edit detection). */
+export const memoryFiles = sqliteTable('memory_files', {
+  key: text('key').primaryKey(),
+  scope: text('scope').notNull(),
+  projectId: text('project_id'),
+  path: text('path').notNull(),
+  sha256: text('sha256'),
+  syncedAt: text('synced_at').notNull(),
+});
+
 /** Small key/value table for non-secret runtime state (dispatch pause, onboarding). */
 export const appState = sqliteTable('app_state', {
   key: text('key').primaryKey(),
