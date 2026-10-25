@@ -409,6 +409,23 @@ produce dated updates without mutating a repository or invoking Git/shell tools.
   granted (canonical path echoed) → project-update task scoped on the tasks
   page → completed → saved update rendered with the runtime appendix showing
   `parser.md — read, 149 chars` and `run.log — skipped: unsupported file type`.
+- Real-model evaluation (owner-provided time-limited OpenRouter key,
+  2026-10-25, throwaway data home, key stored through the DPAPI settings
+  flow, home deleted after the test): a `project_update` task on a realistic
+  four-file notes folder completed end-to-end on `openrouter/auto` in ~26 s
+  (2 steps, 7,567 in / 4,118 out tokens). The saved update is dated, cites
+  every substantive claim with a file path plus an exact excerpt, frames all
+  progress as "the notes state …", caught a planted overclaim (a note that
+  walked back a prior "all tests pass" claim), surfaced a genuine cross-file
+  inconsistency (a 1.9x throughput figure measured on an unknown corpus while
+  the 50 MB export was still awaited), listed the denied `.env` and skipped
+  `run.log` exactly as the runtime appendix recorded them, and labeled three
+  hosted web-search results as external reference material rather than
+  project evidence. The key never appeared in API or web logs (grep-verified).
+  One setup stumble: selecting a provider in Settings is only a draft until
+  "Save provider" is clicked — the first run failed `provider_missing`
+  against OpenAI; the status line conflated draft and active provider (UI
+  fix noted for the next interface pass).
 - Not run/verified: a real model call for a project update (the owner
   evaluates with their configured provider, as with S02's real-model
   evaluation); the web UI has no automated browser tests (manual/automated
