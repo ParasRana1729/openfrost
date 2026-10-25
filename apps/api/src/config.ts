@@ -32,6 +32,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     sessionTtlMs: 30 * 24 * 60 * 60 * 1000,
     provider,
     openaiModel: env.OPENFROST_OPENAI_MODEL ?? 'gpt-4.1-mini',
-    geminiModel: env.OPENFROST_GEMINI_MODEL ?? 'gemini-2.5-flash',
+    geminiModel: env.OPENFROST_GEMINI_MODEL ?? 'gemini-3.8-flash',
   };
 }

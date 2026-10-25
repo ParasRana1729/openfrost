@@ -75,7 +75,7 @@ real today.
   tokens, origin allowlisting, an authenticated SSE activity stream, and
   logging that drops headers/cookies/bodies so secrets never reach logs.
   Provider configuration: `OPENFROST_OPENAI_MODEL` (default `gpt-4.1-mini`),
-  `OPENFROST_GEMINI_MODEL` (default `gemini-2.5-flash`); the active provider
+  `OPENFROST_GEMINI_MODEL` (default `gemini-3.8-flash`); the active provider
   is chosen in Settings; `OPENFROST_PROVIDER=fake` is a documented dev/test hook that scripts a
   research run without any API key.
 - **`apps/web`:** local Next.js UI on `127.0.0.1:3000` with a frost visual
