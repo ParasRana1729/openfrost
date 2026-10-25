@@ -207,6 +207,37 @@ button:disabled {
   cursor: not-allowed;
 }
 
+/* Provider choice: a small segmented control of radio-like buttons. */
+.segmented {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--panel-inset);
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+}
+
+.segmented button {
+  border-color: transparent;
+  background: transparent;
+  border-radius: 6px;
+  padding: 4px 16px;
+}
+
+.segmented button:hover:not(:disabled) {
+  background: var(--accent-soft);
+}
+
+.segmented button[aria-checked='true'] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+.segmented button[aria-checked='true']:hover:not(:disabled) {
+  background: #0b5c7d;
+}
+
 label {
   display: block;
   font-weight: 600;
