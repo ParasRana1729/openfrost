@@ -99,7 +99,7 @@ export async function buildApp(options: BuildAppOptions, logger?: Logger | false
   }
 
   // The executor talks to ActiveProvider, which resolves the owner's active
-  // provider (OpenAI or Gemini) per run from Settings; the OPENFROST_PROVIDER
+  // provider (OpenAI, Gemini, or OpenRouter) per run from Settings; the OPENFROST_PROVIDER
   // =fake dev hook overrides routing entirely. Tests may inject a provider.
   const builtProvider: LlmProvider =
     options.provider !== undefined

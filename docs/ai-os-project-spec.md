@@ -9,9 +9,9 @@
 
 **Repository state: S02 research brief implemented.** The workspace, shared
 Zod contracts, SQLite persistence, DPAPI secret storage, authenticated loopback
-API/UI, bounded single-run executor, and the research-brief workflow (OpenAI
-via the Responses API, hosted web search, an SSRF-hardened fetch tool, saved
-Markdown reports) exist and are covered by CI. Project updates and weekly
+API/UI, bounded single-run executor, and the research-brief workflow (OpenAI,
+Gemini, and OpenRouter adapters with hosted web search, an SSRF-hardened fetch
+tool, saved Markdown reports) exist and are covered by CI. Project updates and weekly
 planning are not implemented yet: capabilities below that depend on them are
 requirements to implement, not existing functionality. The
 [solo backlog](../backlog/solo-rebuild.md) is the delivery plan and per-slice
@@ -51,7 +51,7 @@ is no cloud failover or promise of uninterrupted 24/7 execution.
 | Assistant | One persistent assistant; projects organize context, not personalities. |
 | Interface | Local web app for conversation, tasks, results, memory, and approvals. |
 | Hosting | Native Windows runtime; no Docker, cloud database, or hosted worker. |
-| Models | Owner-chosen provider: OpenAI or Gemini (Google AI), one active at a time with its own DPAPI-protected key and configured model; no per-task provider selection. |
+| Models | Owner-chosen provider: OpenAI, Gemini (Google AI), or OpenRouter, one active at a time with its own DPAPI-protected key and configured model; no per-task provider selection. |
 | First workflows | Research briefs, project updates, weekly planning. |
 | Execution | One active agent run globally; additional tasks queue visibly. |
 | Tools | Public web search/fetch, granted-folder reads, and narrowly scoped report export. |
@@ -240,7 +240,7 @@ apps/web           Next.js / React: local assistant and task UI
 apps/api           Fastify: auth, API, SSE, one task worker, routine tick
 packages/domain    Shared Zod contracts (source of truth)
 packages/db        better-sqlite3 + Drizzle, migrations, DPAPI integration
-packages/agent     AI SDK loop, OpenAI adapter, bounded tools, policy enforcement
+packages/agent     AI SDK loop, provider adapters (OpenAI, Gemini, OpenRouter), bounded tools, policy enforcement
 packages/ui        Shared components only where actually reused
 ```
 
@@ -282,8 +282,8 @@ reset user data implicitly during setup, upgrades, or recovery.
 - Email, calendars, payments, external publishing, or broad connector catalogs.
 - A plugin marketplace, untrusted scripts, MCP integrations, or a workflow builder.
 - Voice, avatars, local model hosting, vector search, per-task provider or
-  model selection, or a provider/plugin system (the two built-in adapters are
-  the whole surface).
+  model selection, or a provider/plugin system (the three built-in adapters
+  are the whole surface).
 - Self-directed proactive work, automatic sign-in installation, or a backup subsystem.
 
 ## 9. Delivery and release gates

@@ -2,8 +2,8 @@ import { z } from 'zod';
 import { executionLimitsSchema } from './task.js';
 
 /** Built-in model providers. 'fake' is the scripted dev/test hook only. */
-export const providerIdSchema = z.enum(['openai', 'gemini']);
-export const settingsProviderSchema = z.enum(['openai', 'gemini', 'fake']);
+export const providerIdSchema = z.enum(['openai', 'gemini', 'openrouter']);
+export const settingsProviderSchema = z.enum(['openai', 'gemini', 'openrouter', 'fake']);
 export type ProviderId = z.infer<typeof providerIdSchema>;
 
 /**
@@ -21,10 +21,12 @@ export const assistantSettingsSchema = z.strictObject({
   models: z.strictObject({
     openai: z.string().min(1),
     gemini: z.string().min(1),
+    openrouter: z.string().min(1),
   }),
   hasProviderKey: z.boolean(),
   hasOpenAIKey: z.boolean(),
   hasGeminiKey: z.boolean(),
+  hasOpenRouterKey: z.boolean(),
   executionLimits: executionLimitsSchema,
   onboardingCompletedAt: z.string().min(1).nullable(),
 });

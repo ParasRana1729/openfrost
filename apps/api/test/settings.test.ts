@@ -24,10 +24,15 @@ describe('settings API', () => {
     expect(res.json()).toMatchObject({
       provider: 'openai',
       model: 'gpt-4.1-mini',
-      models: { openai: 'gpt-4.1-mini', gemini: 'gemini-3.8-flash' },
+      models: {
+        openai: 'gpt-4.1-mini',
+        gemini: 'gemini-3.8-flash',
+        openrouter: 'openrouter/auto',
+      },
       hasProviderKey: false,
       hasOpenAIKey: false,
       hasGeminiKey: false,
+      hasOpenRouterKey: false,
     });
     expect(res.json().executionLimits).toMatchObject({ maxSteps: 12 });
   });
@@ -110,6 +115,49 @@ describe('provider switching', () => {
     expect(final.json().hasProviderKey).toBe(false);
   });
 
+  it('switches to openrouter and applies its model override', async () => {
+    const sw = await app.built.app.inject({
+      method: 'PUT',
+      url: '/api/settings/provider',
+      headers: jarHeaders(app),
+      payload: { provider: 'openrouter' },
+    });
+    expect(sw.statusCode).toBe(200);
+    const asDefault = await app.built.app.inject({
+      method: 'GET',
+      url: '/api/settings',
+      headers: { cookie: app.cookie! },
+    });
+    expect(asDefault.json()).toMatchObject({
+      provider: 'openrouter',
+      model: 'openrouter/auto',
+      models: { openrouter: 'openrouter/auto' },
+      hasOpenRouterKey: false,
+    });
+
+    const overridden = await app.built.app.inject({
+      method: 'PUT',
+      url: '/api/settings/provider',
+      headers: jarHeaders(app),
+      payload: { provider: 'openrouter', model: 'openai/gpt-4.1-mini' },
+    });
+    expect(overridden.statusCode).toBe(200);
+    const after = await app.built.app.inject({
+      method: 'GET',
+      url: '/api/settings',
+      headers: { cookie: app.cookie! },
+    });
+    expect(after.json()).toMatchObject({ provider: 'openrouter', model: 'openai/gpt-4.1-mini' });
+
+    const back = await app.built.app.inject({
+      method: 'PUT',
+      url: '/api/settings/provider',
+      headers: jarHeaders(app),
+      payload: { provider: 'openai' },
+    });
+    expect(back.statusCode).toBe(200);
+  });
+
   it('rejects an unknown provider when switching', async () => {
     const res = await app.built.app.inject({
       method: 'PUT',
@@ -129,6 +177,7 @@ describe('provider switching', () => {
 describe('provider key handling (real DPAPI)', () => {
   const OPENAI_KEY = 'sk-openfrost-test-0123456789abcdef';
   const GEMINI_KEY = 'AIza-openfrost-test-0123456789abcdefg';
+  const OPENROUTER_KEY = 'sk-or-openfrost-test-0123456789abcdef';
 
   it('stores keys per provider, never echoes them, and keeps them out of logs', async () => {
     const putOpenAI = await app.built.app.inject({
@@ -149,10 +198,21 @@ describe('provider key handling (real DPAPI)', () => {
     expect(putGemini.statusCode).toBe(200);
     expect(putGemini.body).not.toContain(GEMINI_KEY);
 
+    const putOpenRouter = await app.built.app.inject({
+      method: 'PUT',
+      url: '/api/settings/provider-key',
+      headers: jarHeaders(app),
+      payload: { provider: 'openrouter', key: OPENROUTER_KEY },
+    });
+    expect(putOpenRouter.statusCode).toBe(200);
+    expect(putOpenRouter.body).not.toContain(OPENROUTER_KEY);
+
     expect(await readProviderKey(app.home, 'openai')).toBe(OPENAI_KEY);
     expect(await readProviderKey(app.home, 'gemini')).toBe(GEMINI_KEY);
+    expect(await readProviderKey(app.home, 'openrouter')).toBe(OPENROUTER_KEY);
     expect(app.logs.contains(OPENAI_KEY)).toBe(false);
     expect(app.logs.contains(GEMINI_KEY)).toBe(false);
+    expect(app.logs.contains(OPENROUTER_KEY)).toBe(false);
 
     const settings = await app.built.app.inject({
       method: 'GET',
@@ -162,10 +222,12 @@ describe('provider key handling (real DPAPI)', () => {
     expect(settings.json()).toMatchObject({
       hasOpenAIKey: true,
       hasGeminiKey: true,
+      hasOpenRouterKey: true,
       hasProviderKey: true, // active provider is openai
     });
     expect(JSON.stringify(settings.json())).not.toContain(OPENAI_KEY);
     expect(JSON.stringify(settings.json())).not.toContain(GEMINI_KEY);
+    expect(JSON.stringify(settings.json())).not.toContain(OPENROUTER_KEY);
   });
 
   it('hasProviderKey follows the active provider', async () => {
@@ -185,23 +247,55 @@ describe('provider key handling (real DPAPI)', () => {
       method: 'PUT',
       url: '/api/settings/provider',
       headers: jarHeaders(app),
+      payload: { provider: 'openrouter' },
+    });
+    const asOpenRouter = await app.built.app.inject({
+      method: 'GET',
+      url: '/api/settings',
+      headers: { cookie: app.cookie! },
+    });
+    expect(asOpenRouter.json()).toMatchObject({ provider: 'openrouter', hasProviderKey: true });
+    await app.built.app.inject({
+      method: 'PUT',
+      url: '/api/settings/provider',
+      headers: jarHeaders(app),
       payload: { provider: 'openai' },
     });
   });
 
-  it('deletes keys per provider', async () => {
+  it('deletes keys per provider and rejects unknown providers', async () => {
     const del = await app.built.app.inject({
       method: 'DELETE',
       url: '/api/settings/provider-key?provider=gemini',
       headers: jarHeaders(app),
     });
     expect(del.statusCode).toBe(204);
+    const delRouter = await app.built.app.inject({
+      method: 'DELETE',
+      url: '/api/settings/provider-key?provider=openrouter',
+      headers: jarHeaders(app),
+    });
+    expect(delRouter.statusCode).toBe(204);
     const settings = await app.built.app.inject({
       method: 'GET',
       url: '/api/settings',
       headers: { cookie: app.cookie! },
     });
-    expect(settings.json()).toMatchObject({ hasGeminiKey: false, hasOpenAIKey: true });
+    expect(settings.json()).toMatchObject({
+      hasGeminiKey: false,
+      hasOpenRouterKey: false,
+      hasOpenAIKey: true,
+    });
     await expect(readProviderKey(app.home, 'gemini')).rejects.toThrowError();
+    await expect(readProviderKey(app.home, 'openrouter')).rejects.toThrowError();
+
+    const unknown = await app.built.app.inject({
+      method: 'DELETE',
+      url: '/api/settings/provider-key?provider=anthropic',
+      headers: jarHeaders(app),
+    });
+    expect(unknown.statusCode).toBe(400);
+    // The rejected removal must not have touched the stored OpenAI key.
+    expect(settings.json()).toMatchObject({ hasOpenAIKey: true });
   });
 });

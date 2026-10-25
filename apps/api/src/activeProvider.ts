@@ -2,6 +2,7 @@ import {
   FakeProvider,
   GeminiProvider,
   OpenAIProvider,
+  OpenRouterProvider,
   type LlmProvider,
   type ProviderStepRequest,
   type ProviderStepResult,
@@ -26,13 +27,13 @@ export interface ActiveProviderDeps {
 /**
  * The provider the executor actually talks to. Resolution order per step:
  * the `OPENFROST_PROVIDER=fake` dev hook wins; otherwise the owner's active
- * provider from Settings (appState) with its configured model. Adapters and
- * decrypted keys are cached per provider; key routes invalidate the cache so
- * saving a key takes effect without a restart.
+ * provider from Settings (appState) with its configured model. Adapters are
+ * cached per provider+model and decrypted keys per provider; key routes
+ * invalidate the key cache so saving a key takes effect without a restart.
  */
 export class ActiveProvider implements LlmProvider {
   readonly #deps: ActiveProviderDeps;
-  readonly #adapters = new Map<ProviderId, LlmProvider>();
+  readonly #adapters = new Map<string, LlmProvider>();
   readonly #keys = new Map<ProviderId, string | null>();
   readonly #fake: FakeProvider;
 
@@ -53,9 +54,12 @@ export class ActiveProvider implements LlmProvider {
     const provider = this.#activeProvider();
     const override = this.#deps.store.state.getValue(modelKey(provider));
     const model =
-      override ?? (provider === 'gemini'
+      override ??
+      (provider === 'gemini'
         ? this.#deps.config.geminiModel
-        : this.#deps.config.openaiModel);
+        : provider === 'openrouter'
+          ? this.#deps.config.openrouterModel
+          : this.#deps.config.openaiModel);
     return { provider, model };
   }
 
@@ -78,21 +82,25 @@ export class ActiveProvider implements LlmProvider {
   }
 
   #activeProvider(): ProviderId {
-    return this.#deps.store.state.getValue(ACTIVE_PROVIDER_KEY) === 'gemini'
-      ? 'gemini'
-      : 'openai';
+    const value = this.#deps.store.state.getValue(ACTIVE_PROVIDER_KEY);
+    return value === 'gemini' || value === 'openrouter' ? value : 'openai';
   }
 
   #adapterFor(provider: ProviderId, model: string): LlmProvider {
-    const cached = this.#adapters.get(provider);
+    // Keyed by provider AND model: a saved model override takes effect on the
+    // next run without a restart, instead of reusing a stale adapter.
+    const cacheKey = `${provider}:${model}`;
+    const cached = this.#adapters.get(cacheKey);
     if (cached) {
       return cached;
     }
     const adapter =
       provider === 'gemini'
         ? new GeminiProvider({ model, getApiKey: () => this.#key(provider) })
-        : new OpenAIProvider({ model, getApiKey: () => this.#key(provider) });
-    this.#adapters.set(provider, adapter);
+        : provider === 'openrouter'
+          ? new OpenRouterProvider({ model, getApiKey: () => this.#key(provider) })
+          : new OpenAIProvider({ model, getApiKey: () => this.#key(provider) });
+    this.#adapters.set(cacheKey, adapter);
     return adapter;
   }
 

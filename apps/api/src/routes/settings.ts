@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify';
 import {
   assistantSettingsSchema,
+  providerIdSchema,
   setProviderConfigRequestSchema,
   setProviderKeyRequestSchema,
   type ProviderId,
@@ -29,25 +30,35 @@ export const makeSettingsRoutes = (
 ): FastifyPluginAsync => async (app) => {
   const configuredModel = (provider: ProviderId): string => {
     const override = ctx.store.state.getValue(modelKey(provider));
-    const fallback = provider === 'gemini' ? ctx.config.geminiModel : ctx.config.openaiModel;
+    const fallback =
+      provider === 'gemini'
+        ? ctx.config.geminiModel
+        : provider === 'openrouter'
+          ? ctx.config.openrouterModel
+          : ctx.config.openaiModel;
     return override !== null && override.length > 0 ? override : fallback;
+  };
+
+  const activeProviderFromState = (): ProviderId => {
+    const value = ctx.store.state.getValue(PROVIDER_KEY);
+    return value === 'gemini' || value === 'openrouter' ? value : 'openai';
   };
 
   app.get('/settings', async () => {
     const fakeHook = ctx.config.provider === 'fake';
-    const active: ProviderId = ctx.store.state.getValue(PROVIDER_KEY) === 'gemini'
-      ? 'gemini'
-      : 'openai';
+    const active = activeProviderFromState();
     return assistantSettingsSchema.parse({
       provider: fakeHook ? 'fake' : active,
       model: fakeHook ? null : configuredModel(active),
       models: {
         openai: configuredModel('openai'),
         gemini: configuredModel('gemini'),
+        openrouter: configuredModel('openrouter'),
       },
       hasProviderKey: providerKeyExists(ctx.config.homeDir, active),
       hasOpenAIKey: providerKeyExists(ctx.config.homeDir, 'openai'),
       hasGeminiKey: providerKeyExists(ctx.config.homeDir, 'gemini'),
+      hasOpenRouterKey: providerKeyExists(ctx.config.homeDir, 'openrouter'),
       executionLimits: ctx.executor.limits,
       onboardingCompletedAt: ctx.store.state.getValue('onboarding.completedAt'),
     });
@@ -97,8 +108,12 @@ export const makeSettingsRoutes = (
   });
 
   app.delete('/settings/provider-key', async (request, reply) => {
-    const query = request.query as { provider?: string };
-    const provider: ProviderId = query.provider === 'gemini' ? 'gemini' : 'openai';
+    const query = (request.query as { provider?: string }).provider;
+    const parsed = providerIdSchema.safeParse(query);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: 'Unknown provider.' });
+    }
+    const provider = parsed.data;
     removeProviderKey(ctx.config.homeDir, provider);
     activeProvider?.invalidateKey(provider);
     ctx.store.events.append(
