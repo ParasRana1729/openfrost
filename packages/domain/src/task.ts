@@ -43,10 +43,17 @@ export const DEFAULT_EXECUTION_LIMITS: ExecutionLimits = {
 /**
  * Which bounded workflow a task runs. The kind selects the system policy and
  * the tool set: research briefs use public web retrieval, project updates use
- * granted-folder reads, exports propose one approval-bound file write.
- * There is no per-task provider or model selection.
+ * granted-folder reads, exports propose one approval-bound file write, and
+ * weekly plans draft priorities from a project's notes and recent updates on
+ * the routine scheduler's behalf. There is no per-task provider or model
+ * selection.
  */
-export const taskKindSchema = z.enum(['research_brief', 'project_update', 'export_report']);
+export const taskKindSchema = z.enum([
+  'research_brief',
+  'project_update',
+  'export_report',
+  'weekly_plan',
+]);
 export type TaskKind = z.infer<typeof taskKindSchema>;
 
 export const taskSchema = z.strictObject({
@@ -62,6 +69,9 @@ export const taskSchema = z.strictObject({
   kind: taskKindSchema,
   /** Immutable export arguments; present only on export_report tasks. */
   exportArgs: exportArgsSchema.nullable(),
+  /** Routine that dispatched this task; present only on weekly_plan tasks.
+   * Informational: the task survives routine removal. */
+  routineId: z.string().min(1).nullable(),
   state: taskStateSchema,
   attemptCount: z.number().int().nonnegative(),
   lastRunId: z.string().min(1).nullable(),
@@ -104,6 +114,22 @@ export const createTaskRequestSchema = z.strictObject({
       code: 'custom',
       path: ['kind'],
       message: 'Export tasks are created through the export endpoint',
+    });
+  }
+  // Weekly plans are dispatched only by owner-confirmed routines through the
+  // scheduler; there is no self-assigned or ad-hoc path to create one.
+  if (value.kind === 'weekly_plan') {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['kind'],
+      message: 'Weekly plan tasks are created by routines only',
+    });
+  }
+  if (value.kind === 'weekly_plan' && value.projectId === undefined) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['projectId'],
+      message: 'A weekly plan must be scoped to a project',
     });
   }
 });

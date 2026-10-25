@@ -7,6 +7,8 @@ import {
   exportDestinationSchema,
   projectFolderGrantSchema,
   projectSchema,
+  routineOccurrenceSchema,
+  routineSchema,
   taskSchema,
   type AgentRun,
   type Approval,
@@ -18,6 +20,10 @@ import {
   type ExportDestination,
   type Project,
   type ProjectFolderGrant,
+  type Routine,
+  type RoutineOccurrence,
+  type RoutineSchedule,
+  type RoutineTemplate,
   type RunFailure,
   type RunUsage,
   type Task,
@@ -32,6 +38,8 @@ type ProjectsRow = typeof schema.projects.$inferSelect;
 type ProjectFolderGrantsRow = typeof schema.projectFolderGrants.$inferSelect;
 type ApprovalsRow = typeof schema.approvals.$inferSelect;
 type ExportDestinationsRow = typeof schema.exportDestinations.$inferSelect;
+type RoutinesRow = typeof schema.routines.$inferSelect;
+type RoutineOccurrencesRow = typeof schema.routineOccurrences.$inferSelect;
 
 /** Row → entity mappers. Parsing through the Zod contracts keeps the stored
  * shape honest; a mismatch fails loudly instead of leaking bad data. */
@@ -47,6 +55,7 @@ export function toTask(row: TasksRow): Task {
     kind: row.kind,
     exportArgs:
       row.exportArgs === null ? null : (JSON.parse(row.exportArgs) as ExportArgs),
+    routineId: row.routineId,
     state: row.state,
     attemptCount: row.attemptCount,
     lastRunId: row.lastRunId,
@@ -150,5 +159,37 @@ export function toExportDestination(row: ExportDestinationsRow): ExportDestinati
     id: row.id,
     path: row.path,
     createdAt: row.createdAt,
+  });
+}
+
+export function toRoutine(row: RoutinesRow): Routine {
+  return routineSchema.parse({
+    id: row.id,
+    name: row.name,
+    projectId: row.projectId,
+    timezone: row.timezone,
+    schedule: JSON.parse(row.scheduleJson) as RoutineSchedule,
+    template: JSON.parse(row.templateJson) as RoutineTemplate,
+    state: row.state,
+    windowStartAt: row.windowStartAt,
+    lastOccurrenceKey: row.lastOccurrenceKey,
+    lastOccurrenceAt: row.lastOccurrenceAt,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  });
+}
+
+export function toRoutineOccurrence(row: RoutineOccurrencesRow): RoutineOccurrence {
+  return routineOccurrenceSchema.parse({
+    id: row.id,
+    routineId: row.routineId,
+    occurrenceKey: row.occurrenceKey,
+    scheduledFor: row.scheduledFor,
+    state: row.state,
+    taskId: row.taskId,
+    reason: row.reason,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    decidedAt: row.decidedAt,
   });
 }
