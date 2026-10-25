@@ -76,6 +76,9 @@ export default function SettingsPage() {
 
   const saveProvider = async () => {
     if (!csrf) {
+      // Reachable only in the brief window before the session check resolves;
+      // surfacing it beats a silent no-op click.
+      setError('Session is still loading — try again in a moment.');
       return;
     }
     const trimmedModel = modelValue.trim();
@@ -105,7 +108,11 @@ export default function SettingsPage() {
   };
 
   const saveKey = async () => {
-    if (!csrf || apiKey.trim().length < 10) {
+    if (!csrf) {
+      setError('Session is still loading — try again in a moment.');
+      return;
+    }
+    if (apiKey.trim().length < 10) {
       return;
     }
     setBusy(true);
@@ -132,6 +139,7 @@ export default function SettingsPage() {
 
   const removeKey = async () => {
     if (!csrf) {
+      setError('Session is still loading — try again in a moment.');
       return;
     }
     setBusy(true);
