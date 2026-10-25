@@ -36,7 +36,7 @@ background execution, not a replacement for Windows or a collection of personas.
 - One assistant; projects scope its context without creating separate identities.
 - One local web app for conversation, tasks, results, memory, and approvals.
 - One globally active run, with a persistent queue, finite limits, and cancellation.
-- OpenAI API using the owner's DPAPI-protected key; SQLite + Drizzle for local state.
+- Owner-chosen model provider (OpenAI or Gemini) with a DPAPI-protected key; SQLite + Drizzle for local state.
 - Inspectable, editable, owner-approved global preferences and project memory.
 - Public web research, granted text-file reads, and approved export of new reports.
 

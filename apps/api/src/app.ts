@@ -13,15 +13,13 @@ import {
   TaskNotFoundError,
   createStore,
   openDatabase,
-  providerKeyExists,
-  readProviderKey,
   type OpenDatabaseResult,
   type Store,
 } from '@openfrost/db';
-import { FakeProvider, OpenAIProvider, TaskExecutor } from '@openfrost/agent';
+import { TaskExecutor, type LlmProvider } from '@openfrost/agent';
 import type { ZodError, ZodIssue } from 'zod';
+import { ActiveProvider } from './activeProvider.js';
 import { EventBus } from './bus.js';
-import { fakeResearchScript } from './fakeProviderScript.js';
 import type { AppContext, BuildAppOptions } from './types.js';
 import { makeAuthRoutes } from './routes/auth.js';
 import { makeSettingsRoutes } from './routes/settings.js';
@@ -100,27 +98,13 @@ export async function buildApp(options: BuildAppOptions, logger?: Logger | false
     store = createStore(opened.db, { onEvent: (event) => bus.publish(event) });
   }
 
-  // The provider is built per configuration. The OpenAI adapter reads the
-  // DPAPI-protected key once per process and keeps it in memory only (it is
-  // already held in memory during any authorized call).
-  let cachedKey: string | null | undefined;
-  const builtProvider =
+  // The executor talks to ActiveProvider, which resolves the owner's active
+  // provider (OpenAI or Gemini) per run from Settings; the OPENFROST_PROVIDER
+  // =fake dev hook overrides routing entirely. Tests may inject a provider.
+  const builtProvider: LlmProvider =
     options.provider !== undefined
       ? options.provider
-      : config.provider === 'fake'
-        ? new FakeProvider(fakeResearchScript())
-        : new OpenAIProvider({
-            model: config.openaiModel,
-            getApiKey: async () => {
-              if (cachedKey === undefined) {
-                cachedKey = providerKeyExists(config.homeDir)
-                  ? await readProviderKey(config.homeDir)
-                  : null;
-              }
-              return cachedKey;
-            },
-          });
-  const providerModel = config.provider === 'fake' ? null : config.openaiModel;
+      : new ActiveProvider({ config, store });
 
   const executor = new TaskExecutor({
     store,
@@ -191,7 +175,7 @@ export async function buildApp(options: BuildAppOptions, logger?: Logger | false
     credentials: true,
   });
 
-  const ctx: AppContext = { store, executor, bus, config, providerModel, now };
+  const ctx: AppContext = { store, executor, bus, config, now };
 
   await app.register(makeAuthRoutes(ctx));
   await app.register(
@@ -219,7 +203,12 @@ export async function buildApp(options: BuildAppOptions, logger?: Logger | false
         }
       });
       await protectedScope.register(makeTaskRoutes(ctx));
-      await protectedScope.register(makeSettingsRoutes(ctx));
+      await protectedScope.register(
+        makeSettingsRoutes(
+          ctx,
+          builtProvider instanceof ActiveProvider ? builtProvider : undefined,
+        ),
+      );
       await protectedScope.register(makeDispatchRoutes(ctx));
       await protectedScope.register(makeEventRoutes(ctx));
     },

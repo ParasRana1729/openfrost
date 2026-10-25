@@ -11,6 +11,7 @@ export interface ApiConfig {
   /** 'fake' is a dev/test hook that scripts a research run without any API key. */
   provider: 'openai' | 'fake';
   openaiModel: string;
+  geminiModel: string;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
@@ -31,5 +32,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     sessionTtlMs: 30 * 24 * 60 * 60 * 1000,
     provider,
     openaiModel: env.OPENFROST_OPENAI_MODEL ?? 'gpt-4.1-mini',
+    geminiModel: env.OPENFROST_GEMINI_MODEL ?? 'gemini-2.5-flash',
   };
 }

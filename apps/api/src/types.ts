@@ -9,14 +9,13 @@ export interface AppContext {
   executor: TaskExecutor;
   bus: EventBus;
   config: ApiConfig;
-  /** The configured model, or null for the fake dev provider. */
-  providerModel: string | null;
   now(): string;
 }
 
 export interface BuildAppOptions {
   config: ApiConfig;
-  provider?: LlmProvider | null;
+  /** Tests inject a provider; production routes through ActiveProvider. */
+  provider?: LlmProvider;
   limits?: ExecutionLimits;
   now?: () => string;
   /** Tests may inject a pre-seeded store; the caller then owns its lifetime. */

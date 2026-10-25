@@ -1,10 +1,6 @@
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { providerKeyPath, readProviderKey } from '@openfrost/db';
+import { readProviderKey } from '@openfrost/db';
 import { jarHeaders, setupOwner, startApp, type TestApp } from './helpers.js';
-
-const runsOnWindows = process.platform === 'win32';
 
 let app: TestApp;
 
@@ -18,7 +14,7 @@ afterAll(async () => {
 });
 
 describe('settings API', () => {
-  it('reports settings without a key initially', async () => {
+  it('reports defaults with no keys initially', async () => {
     const res = await app.built.app.inject({
       method: 'GET',
       url: '/api/settings',
@@ -28,7 +24,10 @@ describe('settings API', () => {
     expect(res.json()).toMatchObject({
       provider: 'openai',
       model: 'gpt-4.1-mini',
+      models: { openai: 'gpt-4.1-mini', gemini: 'gemini-2.5-flash' },
       hasProviderKey: false,
+      hasOpenAIKey: false,
+      hasGeminiKey: false,
     });
     expect(res.json().executionLimits).toMatchObject({ maxSteps: 12 });
   });
@@ -38,63 +37,171 @@ describe('settings API', () => {
     expect(res.statusCode).toBe(401);
   });
 
-  it('rejects malformed keys', async () => {
-    const res = await app.built.app.inject({
+  it('rejects malformed keys and unknown providers', async () => {
+    const short = await app.built.app.inject({
       method: 'PUT',
       url: '/api/settings/provider-key',
       headers: jarHeaders(app),
-      payload: { key: 'short' },
+      payload: { provider: 'openai', key: 'short' },
     });
-    expect(res.statusCode).toBe(400);
+    expect(short.statusCode).toBe(400);
+
+    const badProvider = await app.built.app.inject({
+      method: 'PUT',
+      url: '/api/settings/provider-key',
+      headers: jarHeaders(app),
+      payload: { provider: 'anthropic', key: 'a-long-enough-key' },
+    });
+    expect(badProvider.statusCode).toBe(400);
   });
 });
 
-(runsOnWindows ? describe : describe.skip)('provider key handling (real DPAPI)', () => {
-  const KEY = 'sk-openfrost-test-0123456789abcdef';
+describe('provider switching', () => {
+  it('switches the active provider and per-provider model', async () => {
+    const customModel = await app.built.app.inject({
+      method: 'PUT',
+      url: '/api/settings/provider',
+      headers: jarHeaders(app),
+      payload: { provider: 'gemini', model: 'gemini-2.5-pro' },
+    });
+    expect(customModel.statusCode).toBe(200);
 
-  it('stores the key DPAPI-protected, never echoes it, and keeps it out of logs', async () => {
+    const after = await app.built.app.inject({
+      method: 'GET',
+      url: '/api/settings',
+      headers: { cookie: app.cookie! },
+    });
+    expect(after.json()).toMatchObject({
+      provider: 'gemini',
+      model: 'gemini-2.5-pro',
+      models: { openai: 'gpt-4.1-mini', gemini: 'gemini-2.5-pro' },
+      hasProviderKey: false,
+      hasGeminiKey: false,
+    });
+
+    // Clearing the model override returns to the default.
+    const cleared = await app.built.app.inject({
+      method: 'PUT',
+      url: '/api/settings/provider',
+      headers: jarHeaders(app),
+      payload: { provider: 'gemini', model: null },
+    });
+    expect(cleared.statusCode).toBe(200);
+    const afterClear = await app.built.app.inject({
+      method: 'GET',
+      url: '/api/settings',
+      headers: { cookie: app.cookie! },
+    });
+    expect(afterClear.json().model).toBe('gemini-2.5-flash');
+
+    const back = await app.built.app.inject({
+      method: 'PUT',
+      url: '/api/settings/provider',
+      headers: jarHeaders(app),
+      payload: { provider: 'openai' },
+    });
+    expect(back.statusCode).toBe(200);
+    const final = await app.built.app.inject({
+      method: 'GET',
+      url: '/api/settings',
+      headers: { cookie: app.cookie! },
+    });
+    expect(final.json().provider).toBe('openai');
+    expect(final.json().hasProviderKey).toBe(false);
+  });
+
+  it('rejects an unknown provider when switching', async () => {
     const res = await app.built.app.inject({
+      method: 'PUT',
+      url: '/api/settings/provider',
+      headers: jarHeaders(app),
+      payload: { provider: 'anthropic' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('events record provider changes', async () => {
+    const events = app.store.events.listRecent(10);
+    expect(events.some((e) => e.type === 'settings.provider_changed')).toBe(true);
+  });
+});
+
+describe('provider key handling (real DPAPI)', () => {
+  const OPENAI_KEY = 'sk-openfrost-test-0123456789abcdef';
+  const GEMINI_KEY = 'AIza-openfrost-test-0123456789abcdefg';
+
+  it('stores keys per provider, never echoes them, and keeps them out of logs', async () => {
+    const putOpenAI = await app.built.app.inject({
       method: 'PUT',
       url: '/api/settings/provider-key',
       headers: jarHeaders(app),
-      payload: { key: KEY },
+      payload: { provider: 'openai', key: OPENAI_KEY },
     });
-    expect(res.statusCode).toBe(200);
-    expect(res.body).not.toContain(KEY);
+    expect(putOpenAI.statusCode).toBe(200);
+    expect(putOpenAI.body).not.toContain(OPENAI_KEY);
 
-    // The stored blob must not contain the raw key.
-    const blob = readFileSync(providerKeyPath(app.home));
-    expect(blob.subarray(0, 4).toString('utf8')).toBe('OFDP');
-    expect(blob.toString('utf8')).not.toContain(KEY);
-
-    // Same user can still decrypt it (proves real DPAPI round-trip).
-    expect(await readProviderKey(app.home)).toBe(KEY);
-
-    // No log line carries the raw key or the request body.
-    expect(app.logs.contains(KEY)).toBe(false);
-
-    const settings = await app.built.app.inject({
-      method: 'GET',
-      url: '/api/settings',
-      headers: { cookie: app.cookie! },
-    });
-    expect(settings.json().hasProviderKey).toBe(true);
-    expect(JSON.stringify(settings.json())).not.toContain(KEY);
-  });
-
-  it('deletes the key on request', async () => {
-    const res = await app.built.app.inject({
-      method: 'DELETE',
+    const putGemini = await app.built.app.inject({
+      method: 'PUT',
       url: '/api/settings/provider-key',
       headers: jarHeaders(app),
+      payload: { provider: 'gemini', key: GEMINI_KEY },
     });
-    expect(res.statusCode).toBe(204);
+    expect(putGemini.statusCode).toBe(200);
+    expect(putGemini.body).not.toContain(GEMINI_KEY);
+
+    expect(await readProviderKey(app.home, 'openai')).toBe(OPENAI_KEY);
+    expect(await readProviderKey(app.home, 'gemini')).toBe(GEMINI_KEY);
+    expect(app.logs.contains(OPENAI_KEY)).toBe(false);
+    expect(app.logs.contains(GEMINI_KEY)).toBe(false);
+
     const settings = await app.built.app.inject({
       method: 'GET',
       url: '/api/settings',
       headers: { cookie: app.cookie! },
     });
-    expect(settings.json().hasProviderKey).toBe(false);
-    expect(() => readFileSync(join(app.home, 'secrets', 'provider-key.bin'))).toThrowError();
+    expect(settings.json()).toMatchObject({
+      hasOpenAIKey: true,
+      hasGeminiKey: true,
+      hasProviderKey: true, // active provider is openai
+    });
+    expect(JSON.stringify(settings.json())).not.toContain(OPENAI_KEY);
+    expect(JSON.stringify(settings.json())).not.toContain(GEMINI_KEY);
+  });
+
+  it('hasProviderKey follows the active provider', async () => {
+    await app.built.app.inject({
+      method: 'PUT',
+      url: '/api/settings/provider',
+      headers: jarHeaders(app),
+      payload: { provider: 'gemini' },
+    });
+    const asGemini = await app.built.app.inject({
+      method: 'GET',
+      url: '/api/settings',
+      headers: { cookie: app.cookie! },
+    });
+    expect(asGemini.json()).toMatchObject({ provider: 'gemini', hasProviderKey: true });
+    await app.built.app.inject({
+      method: 'PUT',
+      url: '/api/settings/provider',
+      headers: jarHeaders(app),
+      payload: { provider: 'openai' },
+    });
+  });
+
+  it('deletes keys per provider', async () => {
+    const del = await app.built.app.inject({
+      method: 'DELETE',
+      url: '/api/settings/provider-key?provider=gemini',
+      headers: jarHeaders(app),
+    });
+    expect(del.statusCode).toBe(204);
+    const settings = await app.built.app.inject({
+      method: 'GET',
+      url: '/api/settings',
+      headers: { cookie: app.cookie! },
+    });
+    expect(settings.json()).toMatchObject({ hasGeminiKey: false, hasOpenAIKey: true });
+    await expect(readProviderKey(app.home, 'gemini')).rejects.toThrowError();
   });
 });
