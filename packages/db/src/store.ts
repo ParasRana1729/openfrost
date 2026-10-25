@@ -292,6 +292,13 @@ export interface Store {
       patch: { taskId?: string },
       now: string,
     ): RoutineOccurrence;
+    /** Records the dispatched task on an already-materialized occurrence. */
+    setOccurrenceTask(
+      routineId: string,
+      occurrenceKey: string,
+      taskId: string,
+      now: string,
+    ): RoutineOccurrence;
   };
   approvals: {
     create(
@@ -1058,6 +1065,33 @@ export function createStore(db: Db, options: StoreOptions): Store {
           .where(eq(schema.routineOccurrences.id, current.id))
           .run();
         return updated;
+      });
+    },
+    setOccurrenceTask(
+      routineId: string,
+      occurrenceKey: string,
+      taskId: string,
+      now: string,
+    ): RoutineOccurrence {
+      return db.transaction((tx) => {
+        const row = tx
+          .select()
+          .from(schema.routineOccurrences)
+          .where(
+            and(
+              eq(schema.routineOccurrences.routineId, routineId),
+              eq(schema.routineOccurrences.occurrenceKey, occurrenceKey),
+            ),
+          )
+          .get();
+        if (!row) {
+          throw new RoutineOccurrenceNotFoundError(routineId, occurrenceKey);
+        }
+        tx.update(schema.routineOccurrences)
+          .set({ taskId, updatedAt: now })
+          .where(eq(schema.routineOccurrences.id, row.id))
+          .run();
+        return toRoutineOccurrence({ ...row, taskId, updatedAt: now });
       });
     },
   };

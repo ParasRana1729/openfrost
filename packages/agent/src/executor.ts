@@ -205,7 +205,8 @@ export class TaskExecutor {
     string,
     (decision: 'granted' | 'rejected') => void
   >();
-  #drainPromise: Promise<void> | null = null;
+  /** Serializes drain passes; also the promise whenIdle()/stop() await. */
+  #drainChain: Promise<void> = Promise.resolve();
   #active: { taskId: string; runId: string; controller: AbortController } | null = null;
   #shutdown = false;
 
@@ -529,28 +530,27 @@ export class TaskExecutor {
 
   /**
    * Start processing the queue if idle, not paused, and not shut down.
-   * Returns a promise that settles when the current drain cycle finishes.
+   * Passes are serialized onto one chain: a kick that lands while a drain is
+   * finishing (including its resolution microtask) still appends a fresh
+   * pass, so a task enqueued in that gap can never sit queued unprocessed —
+   * the previous early-return on a resolved promise allowed exactly that.
+   * Returns a promise that settles when every pass so far has finished.
    */
   kick(): Promise<void> {
-    if (this.#drainPromise) {
-      return this.#drainPromise;
-    }
     if (this.#shutdown || this.isDispatchPaused()) {
-      return Promise.resolve();
+      return this.#drainChain;
     }
-    this.#drainPromise = this.#drain()
+    this.#drainChain = this.#drainChain
+      .then(() => this.#drain())
       .catch(() => {
         // #drain handles its own errors; this last-resort guard only keeps
         // an unexpected rejection from crashing the runtime as unhandled.
-      })
-      .finally(() => {
-        this.#drainPromise = null;
       });
-    return this.#drainPromise;
+    return this.#drainChain;
   }
 
   whenIdle(): Promise<void> {
-    return this.#drainPromise ?? Promise.resolve();
+    return this.#drainChain;
   }
 
   /**
