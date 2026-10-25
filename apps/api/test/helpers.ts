@@ -45,6 +45,8 @@ export interface TestAppOptions {
   steps?: ScriptedStep[];
   store?: Store;
   withDatabase?: OpenDatabaseResult;
+  /** Injected clock for time-dependent suites (routines, expiries). */
+  now?: () => string;
 }
 
 export async function startApp(options: TestAppOptions = {}): Promise<TestApp> {
@@ -61,7 +63,7 @@ export async function startApp(options: TestAppOptions = {}): Promise<TestApp> {
   const logs = new LogCapture();
   const config = { ...loadConfig({}), homeDir: home, port: 0 };
   const built = await buildApp(
-    { config, provider, store, bus },
+    { config, provider, store, bus, now: options.now },
     logs.logger,
   );
 

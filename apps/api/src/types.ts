@@ -3,10 +3,12 @@ import type { TaskExecutor, LlmProvider } from '@openfrost/agent';
 import type { ExecutionLimits } from '@openfrost/domain';
 import type { EventBus } from './bus.js';
 import type { ApiConfig } from './config.js';
+import type { RoutineScheduler } from './routineScheduler.js';
 
 export interface AppContext {
   store: Store;
   executor: TaskExecutor;
+  scheduler: RoutineScheduler;
   bus: EventBus;
   config: ApiConfig;
   now(): string;

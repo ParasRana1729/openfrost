@@ -9,7 +9,7 @@ import { loadConfig } from './config.js';
 async function main(): Promise<void> {
   const config = loadConfig();
   const built = await buildApp({ config });
-  const { app, executor } = built;
+  const { app, executor, scheduler } = built;
 
   // Recover before listening: no request can precede recovery, and dispatch
   // is already paused for review when the first request arrives.
@@ -45,6 +45,9 @@ async function main(): Promise<void> {
   if (!recovery.dispatchPaused) {
     void executor.kick();
   }
+  // Routines run without an open browser: the tick dispatches due
+  // occurrences into the global queue (a paused dispatch simply holds them).
+  scheduler.start();
 }
 
 main().catch((err) => {

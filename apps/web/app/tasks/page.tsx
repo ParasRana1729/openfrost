@@ -67,6 +67,7 @@ const KIND_LABEL: Record<TaskKind, string> = {
   research_brief: 'Research brief',
   project_update: 'Project update',
   export_report: 'Export',
+  weekly_plan: 'Weekly plan',
 };
 
 /** The projects list endpoint returns each project with its grants. */
@@ -581,7 +582,11 @@ export default function TasksPage() {
           {detail.artifact ? (
             <>
               <h2>
-                {detail.task.kind === 'project_update' ? 'Saved update' : 'Saved report'}
+                {detail.task.kind === 'project_update'
+                  ? 'Saved update'
+                  : detail.task.kind === 'weekly_plan'
+                    ? 'Saved weekly plan'
+                    : 'Saved report'}
               </h2>
               <MarkdownView markdown={detail.artifact.markdown} />
             </>

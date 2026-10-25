@@ -1,4 +1,4 @@
-import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 /**
  * SQLite schema (spec §7 storage ownership). Structured state lives here;
@@ -73,10 +73,13 @@ export const tasks = sqliteTable('tasks', {
   /** JSON array of http(s) URLs, or null. */
   startingUrls: text('starting_urls'),
   projectId: text('project_id'),
-  /** 'research_brief' | 'project_update' | 'export_report' (spec workflows). */
+  /** 'research_brief' | 'project_update' | 'export_report' | 'weekly_plan'. */
   kind: text('kind').notNull().default('research_brief'),
   /** JSON export arguments (artifactId, destinationId, filename); export tasks only. */
   exportArgs: text('export_args'),
+  /** Dispatching routine; weekly_plan tasks only. Informational — a task
+   * survives routine removal, so there is no foreign key. */
+  routineId: text('routine_id'),
   state: text('state').notNull(),
   attemptCount: integer('attempt_count').notNull().default(0),
   lastRunId: text('last_run_id'),
@@ -188,6 +191,56 @@ export const memoryEntries = sqliteTable('memory_entries', {
   updatedAt: text('updated_at').notNull(),
   contentSha256: text('content_sha256').notNull(),
 });
+
+/**
+ * Owner-confirmed weekly planning routines (spec §3.C, S06). Schedules and
+ * templates are JSON columns validated by the domain schemas on read/write;
+ * structured queryable fields (state, project, window start) are columns.
+ */
+export const routines = sqliteTable('routines', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  projectId: text('project_id')
+    .notNull()
+    .references(() => projects.id),
+  timezone: text('timezone').notNull(),
+  scheduleJson: text('schedule_json').notNull(),
+  templateJson: text('template_json').notNull(),
+  state: text('state').notNull(),
+  /** Occurrences scheduled before this instant are ignored (no back-fill). */
+  windowStartAt: text('window_start_at').notNull(),
+  lastOccurrenceKey: text('last_occurrence_key'),
+  lastOccurrenceAt: text('last_occurrence_at'),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+});
+
+/**
+ * Materialized routine occurrences. (routine_id, occurrence_key) is unique:
+ * this is what prevents duplicate work across ticks, restarts, clock
+ * changes, and DST transitions. The local-date key is stable even when the
+ * UTC instant of a schedule shifts with the zone offset.
+ */
+export const routineOccurrences = sqliteTable(
+  'routine_occurrences',
+  {
+    id: text('id').primaryKey(),
+    routineId: text('routine_id')
+      .notNull()
+      .references(() => routines.id),
+    /** Local calendar date (YYYY-MM-DD) of the scheduled occurrence. */
+    occurrenceKey: text('occurrence_key').notNull(),
+    scheduledFor: text('scheduled_for').notNull(),
+    /** 'scheduled' | 'missed' | 'skipped'. */
+    state: text('state').notNull(),
+    taskId: text('task_id'),
+    reason: text('reason'),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+    decidedAt: text('decided_at'),
+  },
+  (table) => [uniqueIndex('routine_occurrences_routine_key').on(table.routineId, table.occurrenceKey)],
+);
 
 /** Last indexed version of each Markdown memory file (external-edit detection). */
 export const memoryFiles = sqliteTable('memory_files', {

@@ -6,6 +6,7 @@ import pino, { type Logger } from 'pino';
 import {
   InvalidApprovalTransitionError,
   InvalidMemoryProposalTransitionError,
+  InvalidRoutineOccurrenceTransitionError,
   InvalidTransitionError,
   MemoryFileEntryNotFoundError,
   MemoryFileFormatError,
@@ -25,6 +26,9 @@ import {
   MemorySecretError,
   OwnerExistsError,
   ProjectNotFoundError,
+  RoutineNotFoundError,
+  RoutineOccurrenceExistsError,
+  RoutineOccurrenceNotFoundError,
   TaskNotFoundError,
   createStore,
   openDatabase,
@@ -35,6 +39,7 @@ import { TaskExecutor, type LlmProvider } from '@openfrost/agent';
 import type { ZodError, ZodIssue } from 'zod';
 import { ActiveProvider } from './activeProvider.js';
 import { EventBus } from './bus.js';
+import { RoutineScheduler } from './routineScheduler.js';
 import type { AppContext, BuildAppOptions } from './types.js';
 import { makeAuthRoutes } from './routes/auth.js';
 import { makeSettingsRoutes } from './routes/settings.js';
@@ -42,6 +47,7 @@ import { makeTaskRoutes } from './routes/tasks.js';
 import { makeProjectRoutes } from './routes/projects.js';
 import { makeMemoryRoutes } from './routes/memory.js';
 import { makeExportRoutes } from './routes/exports.js';
+import { makeRoutineRoutes } from './routes/routines.js';
 import { makeDispatchRoutes } from './routes/dispatch.js';
 import { makeEventRoutes } from './routes/events.js';
 
@@ -86,6 +92,7 @@ export interface BuiltApp {
   app: AppInstance;
   store: Store;
   executor: TaskExecutor;
+  scheduler: RoutineScheduler;
   bus: EventBus;
   ownsDatabase: boolean;
   opened?: OpenDatabaseResult;
@@ -134,6 +141,15 @@ export async function buildApp(options: BuildAppOptions, logger?: Logger | false
     now,
   });
 
+  // The routine tick shares the executor's clock so due/missed decisions and
+  // run timestamps never disagree. Constructed here, started only by main().
+  const scheduler = new RoutineScheduler({
+    store,
+    executor,
+    now,
+    intervalMs: config.routineTickMs,
+  });
+
   const app = Fastify({
     loggerInstance: log === false ? undefined : (log as Logger),
     bodyLimit: 1024 * 1024,
@@ -150,6 +166,15 @@ export async function buildApp(options: BuildAppOptions, logger?: Logger | false
     }
     if (err instanceof ProjectNotFoundError) {
       return reply.code(404).send({ error: err.message });
+    }
+    if (err instanceof RoutineNotFoundError || err instanceof RoutineOccurrenceNotFoundError) {
+      return reply.code(404).send({ error: err.message });
+    }
+    if (err instanceof InvalidRoutineOccurrenceTransitionError) {
+      return reply.code(409).send({ error: err.message });
+    }
+    if (err instanceof RoutineOccurrenceExistsError) {
+      return reply.code(409).send({ error: err.message });
     }
     if (err instanceof ApprovalNotFoundError || err instanceof ExportDestinationNotFoundError) {
       return reply.code(404).send({ error: err.message });
@@ -230,7 +255,7 @@ export async function buildApp(options: BuildAppOptions, logger?: Logger | false
     credentials: true,
   });
 
-  const ctx: AppContext = { store, executor, bus, config, now };
+  const ctx: AppContext = { store, executor, scheduler, bus, config, now };
 
   await app.register(makeAuthRoutes(ctx));
   await app.register(
@@ -261,6 +286,7 @@ export async function buildApp(options: BuildAppOptions, logger?: Logger | false
       await protectedScope.register(makeProjectRoutes(ctx));
       await protectedScope.register(makeMemoryRoutes(ctx));
       await protectedScope.register(makeExportRoutes(ctx));
+      await protectedScope.register(makeRoutineRoutes(ctx));
       await protectedScope.register(
         makeSettingsRoutes(
           ctx,
@@ -273,10 +299,11 @@ export async function buildApp(options: BuildAppOptions, logger?: Logger | false
     { prefix: '/api' },
   );
 
-  return { app, store, executor, bus, ownsDatabase: opened !== undefined, opened };
+  return { app, store, executor, scheduler, bus, ownsDatabase: opened !== undefined, opened };
 }
 
 export async function closeBuiltApp(built: BuiltApp): Promise<void> {
+  built.scheduler.stop();
   await built.executor.stop();
   await built.app.close();
   if (built.ownsDatabase && built.opened) {

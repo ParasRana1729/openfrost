@@ -54,6 +54,53 @@ export function fakeResearchScript(): ScriptedStep[] {
 }
 
 /**
+ * The fake weekly-plan counterpart for routine occurrences: reads the first
+ * granted file (substituted from the task message's inventory) and produces
+ * an honest plan-shaped draft with the three required sections. Lets the S06
+ * routine workflow be exercised in a browser without any API key.
+ */
+export function fakeWeeklyPlanScript(): ScriptedStep[] {
+  return [
+    {
+      type: 'tool_calls',
+      calls: [
+        {
+          name: 'read_project_file',
+          argsJson: JSON.stringify({ path: FIRST_FILE_TOKEN }),
+        },
+      ],
+    },
+    {
+      type: 'final',
+      usage: { inputTokens: 1210, outputTokens: 340 },
+      text: [
+        '## Draft priorities for next week',
+        '',
+        'This is a scripted development plan produced by the fake provider',
+        '(`OPENFROST_PROVIDER=fake`), not a real model. It demonstrates the',
+        'routine pipeline: granted-folder enumeration, a bounded file read,',
+        'recent saved updates in context, and a saved artifact whose',
+        'appendices are recorded by the runtime.',
+        '',
+        '1. Review the updates consulted below and confirm which priorities',
+        '   actually matter.',
+        '2. Nothing here is committed: the owner decides what to keep.',
+        '',
+        '## Unresolved questions',
+        '',
+        '- Whether the granted notes ground any priority at all — check the',
+        '  file appendix for what was actually readable.',
+        '',
+        '## Suggested next steps',
+        '',
+        '- Replace this scripted run with a real model (Settings) and judge',
+        '  the plan from the cited files, excerpts, and dated updates.',
+      ].join('\n'),
+    },
+  ];
+}
+
+/**
  * The fake project-update counterpart: reads the first file from the run's
  * granted-file inventory (substituted by the fake provider from the task
  * message) and produces an honest update-shaped report. Lets the S03

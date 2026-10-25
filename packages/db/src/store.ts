@@ -1,8 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import { asc, desc, eq, inArray, lt, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, lt, sql } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import {
+  InvalidRoutineOccurrenceTransitionError,
   InvalidTransitionError,
+  canTransitionRoutineOccurrence,
   messageSchema,
   transitionApproval,
   transitionRun,
@@ -21,6 +23,12 @@ import {
   type Message,
   type MessageRole,  type Project,
   type ProjectFolderGrant,
+  type Routine,
+  type RoutineOccurrence,
+  type RoutineOccurrenceState,
+  type RoutineSchedule,
+  type RoutineState,
+  type RoutineTemplate,
   type RunFailure,
   type RunState,
   type RunUsage,
@@ -37,6 +45,8 @@ import {
   toExportDestination,
   toProject,
   toProjectFolderGrant,
+  toRoutine,
+  toRoutineOccurrence,
   toTask,
 } from './mappers.js';
 import { createMemoryStore, type MemoryStore } from './memory.js';
@@ -95,6 +105,31 @@ export class ExportDestinationNotFoundError extends Error {
   }
 }
 
+export class RoutineNotFoundError extends Error {
+  constructor(routineId: string) {
+    super(`Routine ${routineId} not found`);
+    this.name = 'RoutineNotFoundError';
+  }
+}
+
+export class RoutineOccurrenceNotFoundError extends Error {
+  constructor(routineId: string, occurrenceKey: string) {
+    super(`Occurrence ${occurrenceKey} for routine ${routineId} not found`);
+    this.name = 'RoutineOccurrenceNotFoundError';
+  }
+}
+
+/** The (routineId, occurrenceKey) pair already exists — occurrence identity
+ * is unique, so a concurrent create is a duplicate by definition. */
+export class RoutineOccurrenceExistsError extends Error {
+  constructor(routineId: string, occurrenceKey: string) {
+    super(
+      `Occurrence ${occurrenceKey} already exists for routine ${routineId}`,
+    );
+    this.name = 'RoutineOccurrenceExistsError';
+  }
+}
+
 export interface Store {
   users: {
     count(): number;
@@ -126,6 +161,7 @@ export interface Store {
         projectId?: string | null;
         kind?: TaskKind;
         exportArgs?: ExportArgs | null;
+        routineId?: string | null;
       },
       now: string,
     ): Task;
@@ -176,6 +212,8 @@ export interface Store {
     ): Artifact;
     get(id: string): Artifact | null;
     latestForTask(taskId: string): Artifact | null;
+    /** Most recent `limit` saved project-update artifacts for a project. */
+    recentProjectUpdates(projectId: string, limit: number): Artifact[];
   };
   projects: {
     create(
@@ -198,6 +236,69 @@ export interface Store {
     get(id: string): ExportDestination | null;
     list(): ExportDestination[];
     remove(id: string): void;
+  };
+  routines: {
+    /** Creates the routine as a paused draft; enabling is a separate owner action. */
+    create(
+      input: {
+        name: string;
+        projectId: string;
+        timezone: string;
+        schedule: RoutineSchedule;
+        template: RoutineTemplate;
+      },
+      now: string,
+    ): Routine;
+    get(id: string): Routine | null;
+    list(): Routine[];
+    listByState(state: RoutineState): Routine[];
+    /** Patch fields. Changing the schedule or time zone moves the
+     * no-back-fill anchor to `now` so an edit never creates instant misses. */
+    update(
+      id: string,
+      patch: {
+        name?: string;
+        projectId?: string;
+        timezone?: string;
+        schedule?: RoutineSchedule;
+        template?: RoutineTemplate;
+        state?: RoutineState;
+        lastOccurrenceKey?: string | null;
+        lastOccurrenceAt?: string | null;
+      },
+      now: string,
+    ): Routine;
+    /** Removes the routine and its occurrence rows; dispatched tasks remain. */
+    remove(id: string): void;
+    /** Creates an occurrence row; the unique (routineId, key) index rejects duplicates. */
+    createOccurrence(
+      input: {
+        routineId: string;
+        occurrenceKey: string;
+        scheduledFor: string;
+        state: RoutineOccurrenceState;
+        taskId?: string | null;
+        reason?: string | null;
+      },
+      now: string,
+    ): RoutineOccurrence;
+    getOccurrence(routineId: string, occurrenceKey: string): RoutineOccurrence | null;
+    listOccurrences(routineId: string, limit: number): RoutineOccurrence[];
+    /** Owner decision on a missed occurrence: run now (with the task) or skip. */
+    resolveOccurrence(
+      routineId: string,
+      occurrenceKey: string,
+      to: 'scheduled' | 'skipped',
+      patch: { taskId?: string },
+      now: string,
+    ): RoutineOccurrence;
+    /** Records the dispatched task on an already-materialized occurrence. */
+    setOccurrenceTask(
+      routineId: string,
+      occurrenceKey: string,
+      taskId: string,
+      now: string,
+    ): RoutineOccurrence;
   };
   approvals: {
     create(
@@ -343,6 +444,7 @@ export function createStore(db: Db, options: StoreOptions): Store {
         projectId?: string | null;
         kind?: TaskKind;
         exportArgs?: ExportArgs | null;
+        routineId?: string | null;
       },
       now: string,
     ): Task {
@@ -361,6 +463,7 @@ export function createStore(db: Db, options: StoreOptions): Store {
           input.exportArgs === undefined || input.exportArgs === null
             ? null
             : JSON.stringify(input.exportArgs),
+        routineId: input.routineId ?? null,
         state: 'queued' as const,
         attemptCount: 0,
         lastRunId: null,
@@ -613,6 +716,24 @@ export function createStore(db: Db, options: StoreOptions): Store {
         .get();
       return row ? toArtifact(row) : null;
     },
+    recentProjectUpdates(projectId: string, limit: number): Artifact[] {
+      // Joins saved updates to their tasks so project scoping holds: another
+      // project's updates never enter a weekly plan's context.
+      const joined = db
+        .select({ artifact: schema.artifacts })
+        .from(schema.artifacts)
+        .innerJoin(schema.tasks, eq(schema.artifacts.taskId, schema.tasks.id))
+        .where(
+          and(
+            eq(schema.tasks.projectId, projectId),
+            eq(schema.artifacts.kind, 'project_update'),
+          ),
+        )
+        .orderBy(desc(schema.artifacts.createdAt), desc(schema.artifacts.id))
+        .limit(limit)
+        .all();
+      return joined.map((row) => toArtifact(row.artifact));
+    },
   };
 
   const projects = {
@@ -727,6 +848,251 @@ export function createStore(db: Db, options: StoreOptions): Store {
       db.delete(schema.exportDestinations)
         .where(eq(schema.exportDestinations.id, id))
         .run();
+    },
+  };
+
+  const routines = {
+    create(
+      input: {
+        name: string;
+        projectId: string;
+        timezone: string;
+        schedule: RoutineSchedule;
+        template: RoutineTemplate;
+      },
+      now: string,
+    ): Routine {
+      const row = {
+        id: randomUUID(),
+        name: input.name,
+        projectId: input.projectId,
+        timezone: input.timezone,
+        scheduleJson: JSON.stringify(input.schedule),
+        templateJson: JSON.stringify(input.template),
+        state: 'paused' as const,
+        // Nothing before creation may ever run or be reported missed.
+        windowStartAt: now,
+        lastOccurrenceKey: null,
+        lastOccurrenceAt: null,
+        createdAt: now,
+        updatedAt: now,
+      };
+      db.insert(schema.routines).values(row).run();
+      return toRoutine(row);
+    },
+    get(id: string): Routine | null {
+      const row = db.select().from(schema.routines).where(eq(schema.routines.id, id)).get();
+      return row ? toRoutine(row) : null;
+    },
+    list(): Routine[] {
+      return db
+        .select()
+        .from(schema.routines)
+        .orderBy(asc(schema.routines.createdAt), sql`rowid asc`)
+        .all()
+        .map(toRoutine);
+    },
+    listByState(state: RoutineState): Routine[] {
+      return db
+        .select()
+        .from(schema.routines)
+        .where(eq(schema.routines.state, state))
+        .orderBy(asc(schema.routines.createdAt), sql`rowid asc`)
+        .all()
+        .map(toRoutine);
+    },
+    update(
+      id: string,
+      patch: {
+        name?: string;
+        projectId?: string;
+        timezone?: string;
+        schedule?: RoutineSchedule;
+        template?: RoutineTemplate;
+        state?: RoutineState;
+        lastOccurrenceKey?: string | null;
+        lastOccurrenceAt?: string | null;
+      },
+      now: string,
+    ): Routine {
+      return db.transaction((tx) => {
+        const row = tx.select().from(schema.routines).where(eq(schema.routines.id, id)).get();
+        if (!row) {
+          throw new RoutineNotFoundError(id);
+        }
+        const scheduleChanged =
+          patch.schedule !== undefined || patch.timezone !== undefined;
+        const updated: Routine = {
+          ...toRoutine(row),
+          ...(patch.name !== undefined ? { name: patch.name } : {}),
+          ...(patch.projectId !== undefined ? { projectId: patch.projectId } : {}),
+          ...(patch.timezone !== undefined ? { timezone: patch.timezone } : {}),
+          ...(patch.schedule !== undefined ? { schedule: patch.schedule } : {}),
+          ...(patch.template !== undefined ? { template: patch.template } : {}),
+          ...(patch.state !== undefined ? { state: patch.state } : {}),
+          ...(patch.lastOccurrenceKey !== undefined
+            ? { lastOccurrenceKey: patch.lastOccurrenceKey }
+            : {}),
+          ...(patch.lastOccurrenceAt !== undefined
+            ? { lastOccurrenceAt: patch.lastOccurrenceAt }
+            : {}),
+          ...(scheduleChanged ? { windowStartAt: now } : {}),
+          updatedAt: now,
+        };
+        tx.update(schema.routines)
+          .set({
+            name: updated.name,
+            projectId: updated.projectId,
+            timezone: updated.timezone,
+            scheduleJson: JSON.stringify(updated.schedule),
+            templateJson: JSON.stringify(updated.template),
+            state: updated.state,
+            windowStartAt: updated.windowStartAt,
+            lastOccurrenceKey: updated.lastOccurrenceKey,
+            lastOccurrenceAt: updated.lastOccurrenceAt,
+            updatedAt: updated.updatedAt,
+          })
+          .where(eq(schema.routines.id, id))
+          .run();
+        return updated;
+      });
+    },
+    remove(id: string): void {
+      // Occurrences belong to the routine; dispatched tasks are independent
+      // history and stay (their routineId becomes an informational dead ref).
+      db.transaction((tx) => {
+        tx.delete(schema.routineOccurrences).where(eq(schema.routineOccurrences.routineId, id)).run();
+        tx.delete(schema.routines).where(eq(schema.routines.id, id)).run();
+      });
+    },
+    createOccurrence(
+      input: {
+        routineId: string;
+        occurrenceKey: string;
+        scheduledFor: string;
+        state: RoutineOccurrenceState;
+        taskId?: string | null;
+        reason?: string | null;
+      },
+      now: string,
+    ): RoutineOccurrence {
+      const row = {
+        id: randomUUID(),
+        routineId: input.routineId,
+        occurrenceKey: input.occurrenceKey,
+        scheduledFor: input.scheduledFor,
+        state: input.state,
+        taskId: input.taskId ?? null,
+        reason: input.reason ?? null,
+        createdAt: now,
+        updatedAt: now,
+        decidedAt: null,
+      };
+      try {
+        db.insert(schema.routineOccurrences).values(row).run();
+      } catch (err) {
+        if (err instanceof Error && err.message.includes('UNIQUE constraint failed')) {
+          throw new RoutineOccurrenceExistsError(input.routineId, input.occurrenceKey);
+        }
+        throw err;
+      }
+      return toRoutineOccurrence(row);
+    },
+    getOccurrence(routineId: string, occurrenceKey: string): RoutineOccurrence | null {
+      const row = db
+        .select()
+        .from(schema.routineOccurrences)
+        .where(
+          and(
+            eq(schema.routineOccurrences.routineId, routineId),
+            eq(schema.routineOccurrences.occurrenceKey, occurrenceKey),
+          ),
+        )
+        .get();
+      return row ? toRoutineOccurrence(row) : null;
+    },
+    listOccurrences(routineId: string, limit: number): RoutineOccurrence[] {
+      return db
+        .select()
+        .from(schema.routineOccurrences)
+        .where(eq(schema.routineOccurrences.routineId, routineId))
+        .orderBy(desc(schema.routineOccurrences.occurrenceKey))
+        .limit(limit)
+        .all()
+        .map(toRoutineOccurrence);
+    },
+    resolveOccurrence(
+      routineId: string,
+      occurrenceKey: string,
+      to: 'scheduled' | 'skipped',
+      patch: { taskId?: string },
+      now: string,
+    ): RoutineOccurrence {
+      return db.transaction((tx) => {
+        const row = tx
+          .select()
+          .from(schema.routineOccurrences)
+          .where(
+            and(
+              eq(schema.routineOccurrences.routineId, routineId),
+              eq(schema.routineOccurrences.occurrenceKey, occurrenceKey),
+            ),
+          )
+          .get();
+        if (!row) {
+          throw new RoutineOccurrenceNotFoundError(routineId, occurrenceKey);
+        }
+        const current = toRoutineOccurrence(row);
+        if (!canTransitionRoutineOccurrence(current.state, to)) {
+          throw new InvalidRoutineOccurrenceTransitionError(current.state, to);
+        }
+        const updated: RoutineOccurrence = {
+          ...current,
+          state: to,
+          ...(patch.taskId !== undefined ? { taskId: patch.taskId } : {}),
+          reason: null,
+          updatedAt: now,
+          decidedAt: now,
+        };
+        tx.update(schema.routineOccurrences)
+          .set({
+            state: updated.state,
+            taskId: updated.taskId,
+            reason: updated.reason,
+            updatedAt: updated.updatedAt,
+            decidedAt: updated.decidedAt,
+          })
+          .where(eq(schema.routineOccurrences.id, current.id))
+          .run();
+        return updated;
+      });
+    },
+    setOccurrenceTask(
+      routineId: string,
+      occurrenceKey: string,
+      taskId: string,
+      now: string,
+    ): RoutineOccurrence {
+      return db.transaction((tx) => {
+        const row = tx
+          .select()
+          .from(schema.routineOccurrences)
+          .where(
+            and(
+              eq(schema.routineOccurrences.routineId, routineId),
+              eq(schema.routineOccurrences.occurrenceKey, occurrenceKey),
+            ),
+          )
+          .get();
+        if (!row) {
+          throw new RoutineOccurrenceNotFoundError(routineId, occurrenceKey);
+        }
+        tx.update(schema.routineOccurrences)
+          .set({ taskId, updatedAt: now })
+          .where(eq(schema.routineOccurrences.id, row.id))
+          .run();
+        return toRoutineOccurrence({ ...row, taskId, updatedAt: now });
+      });
     },
   };
 
@@ -959,6 +1325,7 @@ export function createStore(db: Db, options: StoreOptions): Store {
     artifacts,
     projects,
     exportDestinations,
+    routines,
     approvals,
     conversations,
     messages,

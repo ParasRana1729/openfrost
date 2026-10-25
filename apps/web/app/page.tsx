@@ -2,7 +2,14 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import type { Event, Project, ProjectFolderGrant, Task, TaskKind } from '@openfrost/domain';
+import type {
+  Event,
+  Project,
+  ProjectFolderGrant,
+  Routine,
+  Task,
+  TaskKind,
+} from '@openfrost/domain';
 import { ApiError, getJson, mutate } from '../lib/api';
 import { formatTimestamp } from '../lib/format';
 import { useSession } from '../lib/useSession';
@@ -10,6 +17,11 @@ import { useBusyGlow } from '../components/useBusyGlow';
 
 interface ProjectOption extends Project {
   grants: ProjectFolderGrant[];
+}
+
+interface RoutineSummary {
+  routine: Routine;
+  missedCount: number;
 }
 
 interface TasksResponse {
@@ -40,6 +52,7 @@ export default function HomePage() {
   const [tasks, setTasks] = useState<TasksResponse | null>(null);
   const [events, setEvents] = useState<Event[]>([]);
   const [pendingApprovals, setPendingApprovals] = useState<ApprovalSummary[]>([]);
+  const [missedRoutines, setMissedRoutines] = useState<RoutineSummary[]>([]);
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -58,14 +71,21 @@ export default function HomePage() {
     }
     inFlight.current = true;
     try {
-      const [tasksResponse, eventsResponse, approvalsResponse] = await Promise.all([
-        getJson<TasksResponse>('/api/tasks'),
-        getJson<{ events: Event[] }>('/api/events?limit=15'),
-        getJson<{ approvals: ApprovalSummary[] }>('/api/approvals?state=pending'),
-      ]);
+      const [tasksResponse, eventsResponse, approvalsResponse, routinesResponse] =
+        await Promise.all([
+          getJson<TasksResponse>('/api/tasks'),
+          getJson<{ events: Event[] }>('/api/events?limit=15'),
+          getJson<{ approvals: ApprovalSummary[] }>('/api/approvals?state=pending'),
+          getJson<{ routines: RoutineSummary[] }>('/api/routines').catch(() => ({
+            routines: [] as RoutineSummary[],
+          })),
+        ]);
       setTasks(tasksResponse);
       setEvents(eventsResponse.events);
       setPendingApprovals(approvalsResponse.approvals);
+      setMissedRoutines(
+        routinesResponse.routines.filter((entry) => entry.missedCount > 0),
+      );
       setActionError(null);
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : 'API unreachable');
@@ -196,6 +216,25 @@ export default function HomePage() {
           <button className="primary" onClick={() => void resumeDispatch()}>
             Resume dispatch
           </button>
+        </div>
+      ) : null}
+
+      {missedRoutines.length > 0 ? (
+        <div className="panel">
+          <h1>Missed routine occurrences</h1>
+          {missedRoutines.map((entry) => (
+            <p key={entry.routine.id} className="muted">
+              <strong>{entry.routine.name}</strong> missed{' '}
+              {entry.missedCount === 1 ? 'a scheduled run' : `${entry.missedCount} scheduled runs`}
+              {' '}while the runtime was unavailable. Run it once now or skip it —
+              nothing replays automatically.
+            </p>
+          ))}
+          <div className="row">
+            <Link href="/routines">
+              <button className="primary">Review under Routines</button>
+            </Link>
+          </div>
         </div>
       ) : null}
 

@@ -1,8 +1,9 @@
 import { z } from 'zod';
 
 /** `report` is a research brief; `project_update` is an evidence-backed
- * update produced from a project's granted files. */
-export const artifactKindSchema = z.enum(['report', 'project_update']);
+ * update produced from a project's granted files; `weekly_plan` is a
+ * routine-drafted plan for next week's priorities. */
+export const artifactKindSchema = z.enum(['report', 'project_update', 'weekly_plan']);
 export type ArtifactKind = z.infer<typeof artifactKindSchema>;
 
 export const artifactSchema = z.strictObject({
