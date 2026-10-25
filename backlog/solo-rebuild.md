@@ -260,7 +260,7 @@ no plugin system — two built-in adapters only.
   per provider with invalidation on key save/remove (no restart needed).
   Settings API: `PUT /settings/provider` (switch + per-provider model
   override; 409 while the fake hook is active), per-provider key
-  save/remove. Config: `OPENFROST_GEMINI_MODEL` (default `gemini-2.5-flash`)
+  save/remove. Config: `OPENFROST_GEMINI_MODEL` (default `gemini-3.8-flash`)
   alongside `OPENFROST_OPENAI_MODEL`. Web settings UI: provider choice,
   per-provider model/key management, pricing map extended.
 - Verification: `pnpm lint`/`pnpm build`/`pnpm test` pass (139 tests: 31

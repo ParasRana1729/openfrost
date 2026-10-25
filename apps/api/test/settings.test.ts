@@ -24,7 +24,7 @@ describe('settings API', () => {
     expect(res.json()).toMatchObject({
       provider: 'openai',
       model: 'gpt-4.1-mini',
-      models: { openai: 'gpt-4.1-mini', gemini: 'gemini-2.5-flash' },
+      models: { openai: 'gpt-4.1-mini', gemini: 'gemini-3.8-flash' },
       hasProviderKey: false,
       hasOpenAIKey: false,
       hasGeminiKey: false,
@@ -92,7 +92,7 @@ describe('provider switching', () => {
       url: '/api/settings',
       headers: { cookie: app.cookie! },
     });
-    expect(afterClear.json().model).toBe('gemini-2.5-flash');
+    expect(afterClear.json().model).toBe('gemini-3.8-flash');
 
     const back = await app.built.app.inject({
       method: 'PUT',
