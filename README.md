@@ -3,11 +3,12 @@
 > One personal AI agent that turns requests and recurring responsibilities into
 > completed work, with useful memory, visible progress, and owner control.
 
-**Status: S03 projects implemented — two of the three workflows work.**
+**Status: S04 approval-bound export implemented — two of the three workflows work.**
 
 OpenFrost is a solo project owned by ParasRana1729. What ships today is the S01
-foundation plus the S02 research-brief workflow and the S03 project-update
-workflow. With a provider key stored in Settings (OpenAI, Gemini, or
+foundation plus the S02 research-brief workflow, the S03 project-update
+workflow, and S04 approval-bound export (granted destinations, exact-proposal
+review, create-only writes). With a provider key stored in Settings (OpenAI, Gemini, or
 OpenRouter — your choice in Settings), a submitted question (with optional
 constraints and starting URLs) runs as a bounded agent task — provider-backed
 web search plus a hardened public-page fetch — and saves a Markdown report with
@@ -16,8 +17,11 @@ appendix. Projects organize context: create one, grant it folder roots
 explicitly, and scope tasks to it — a project update reads only that project's
 granted text/Markdown notes (canonical-path checks, credential-store
 exclusions, bounded counts/sizes, skipped sources visible) and saves a dated,
-evidence-backed update citing file paths and excerpts. Weekly planning is
-**not implemented yet** (S06).
+evidence-backed update citing file paths and excerpts. Saved reports can be
+exported as **new** Markdown files into an owner-granted destination — but only
+after the owner approves the exact proposal (destination, filename, content
+hash) in the web app; the write is revalidated at execution and never
+overwrites. Weekly planning is **not implemented yet** (S06).
 
 ## The direction
 
@@ -32,6 +36,7 @@ The first release targets three useful jobs:
 | --- | --- | --- |
 | Research brief | A saved comparison and recommendation, with sources and uncertainties. | **Works** (S02) — real-model quality pending the owner's evaluation |
 | Project update | An evidence-backed summary of granted project notes, blockers, and next steps. | **Works** (S03) — real-model quality pending the owner's evaluation |
+| Report export | An approved copy of a saved report written into a granted folder. | **Works** (S04) — exercised with the fake provider; real use during S07 |
 | Weekly planning | An owner-scheduled draft of priorities from project notes and recent updates. | Planned (S06) |
 
 The runtime is Windows-first and local, using SQLite + Drizzle, editable
@@ -83,8 +88,13 @@ real today.
   bounded file counts/sizes/types with skipped sources visible, a policy that
   separates documented progress / stated blockers / unknowns / proposed next
   steps and treats notes as claims rather than proof of shipping, and a
-  runtime-recorded file appendix. A deterministic fake provider covers all of
-  this in tests — no paid API calls anywhere in CI.
+  runtime-recorded file appendix. S04 adds the one narrow write: an export
+  task that proposes the exact file write (artifact hash, canonical
+  destination, safe filename), parks in `awaiting_approval` while the owner
+  reviews it in the web app, and on approval revalidates everything before a
+  single create-only write — refusals, rejections, expiries, and restarts are
+  always visible and never replayed. A deterministic fake provider covers all
+  of this in tests — no paid API calls anywhere in CI.
 - **`apps/api`**: Fastify bound to `127.0.0.1` with first-run owner setup,
   scrypt passwords, HttpOnly SameSite=Strict sessions, session-bound CSRF
   tokens, origin allowlisting, an authenticated SSE activity stream, and
@@ -118,7 +128,7 @@ Requires Windows (DPAPI), Node.js 24+ (`24` line; 26 works), and pnpm 10
 pnpm install          # installs all workspace dependencies
 pnpm build            # builds all packages and the web app (do this first)
 pnpm lint             # eslint across the workspace
-pnpm test             # vitest in every package (199 tests; includes real
+pnpm test             # vitest in every package (226 tests; includes real
                       #   DPAPI round-trips on Windows)
 pnpm dev              # API on 127.0.0.1:8787 and web on 127.0.0.1:3000
 ```
@@ -156,7 +166,6 @@ AGENTS.md / CONTRIBUTING.md  Engineering, security, and landing workflow
 - [Developer guide](docs/AI_DEVELOPER_GUIDE.md): working one slice at a time.
 - [Contributing](CONTRIBUTING.md): branch, verification, and review conventions.
 
-The next assigned slice is **S04 (approval-bound report export) or S05
-(owner-approved memory)** — both depend on S03 only. Implement only the
+The next assigned slice is **S05: owner-approved memory**. Implement only the
 assigned slice, never real credentials in `.env`, prompts, or repository
 files; the credential flow uses DPAPI.
