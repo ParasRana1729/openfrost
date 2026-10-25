@@ -5,11 +5,7 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { InvalidApprovalTransitionError } from '@openfrost/domain';
 import { createStore, openDatabase, type OpenDatabaseResult, type Store } from '@openfrost/db';
-import {
-  ExportRefusedError,
-  TaskExecutor,
-} from '../src/index.js';
-import type { ScriptedStep } from '../src/index.js';
+import { TaskExecutor } from '../src/index.js';
 
 /** Anchored to the real clock so approval TTL timers (which run on the real
  * event loop) fire deterministically even though executor now() is frozen. */
@@ -60,7 +56,7 @@ async function waitForState(taskId: string, state: string): Promise<void> {
   throw new Error(`task never reached ${state}`);
 }
 
-function makeExecutor(steps: ScriptedStep[] = [], approvalTtlMs = 60_000): TaskExecutor {
+function makeExecutor(approvalTtlMs = 60_000): TaskExecutor {
   return new TaskExecutor({
     store,
     // Exports never call the model; provider null also proves exports work
@@ -164,7 +160,7 @@ describe('approval-bound export flow', () => {
 
   it('expires an approval nobody decided and writes nothing', async () => {
     const artifactId = seedArtifact();
-    const executor = makeExecutor([], 30);
+    const executor = makeExecutor(30);
     const task = await executor.enqueueExport({
       artifactId,
       destinationId,

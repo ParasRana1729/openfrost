@@ -2,7 +2,6 @@ import { randomUUID } from 'node:crypto';
 import { asc, desc, eq, inArray, lt, sql } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import {
-  InvalidApprovalTransitionError,
   InvalidTransitionError,
   messageSchema,
   transitionApproval,
