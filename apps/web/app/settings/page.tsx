@@ -232,10 +232,21 @@ export default function SettingsPage() {
           </button>
         </div>
         <p className="muted">
-          Status: {PROVIDER_LABEL[selectedProvider]} · Model: {selectedModel ?? '—'} ·{' '}
-          {selectedHasKey ? 'key stored' : 'no key'}. Switching providers and
-          saved keys take effect on the next task run — no restart needed.
+          Active provider:{' '}
+          {fakeActive
+            ? 'fake (dev hook)'
+            : settings?.provider !== undefined && settings.provider !== 'fake'
+              ? PROVIDER_LABEL[settings.provider]
+              : '—'}{' '}
+          · Model: {settings?.model ?? '—'} ·{' '}
+          {settings?.hasProviderKey ? 'key stored' : 'no key'}. Changes take
+          effect on the next task run — no restart needed.
         </p>
+        {!fakeActive && settings !== null && selectedProvider !== settings.provider ? (
+          <p className="note">
+            Selection changed — save the provider to apply it on the next run.
+          </p>
+        ) : null}
 
         <h2>API keys</h2>
         <p className="muted">

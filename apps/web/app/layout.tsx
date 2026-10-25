@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
-import Link from 'next/link';
+import { SidebarNav } from '../components/SidebarNav';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -35,19 +35,22 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
       <body>
-        <nav className="nav">
-          <span className="brand">
-            <FlakeMark />
-            OpenFrost
-          </span>
-          <span className="links">
-            <Link href="/">Home</Link>
-            <Link href="/tasks">Tasks</Link>
-            <Link href="/projects">Projects</Link>
-            <Link href="/settings">Settings</Link>
-          </span>
-        </nav>
-        <main className="main">{children}</main>
+        <div className="shell">
+          <aside className="sidebar">
+            <span className="brand">
+              <FlakeMark />
+              OpenFrost
+            </span>
+            <SidebarNav />
+            <div className="sidebar-foot">
+              <span className="dot dot-idle" aria-hidden="true" />
+              local runtime
+              <br />
+              loopback only
+            </div>
+          </aside>
+          <main className="main">{children}</main>
+        </div>
       </body>
     </html>
   );
