@@ -9,7 +9,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { parseMemoryFile } from '@openfrost/domain';
+import { MEMORY_FILE_MAX_BYTES, parseMemoryFile } from '@openfrost/domain';
 import {
   MemoryDuplicateError,
   MemoryFileChangedError,
@@ -403,6 +403,22 @@ describe('owner-approved memory store', () => {
       ),
     ).toThrowError(MemoryFileUnreadableError);
     expect(readFileSync(globalPath(home), 'utf8')).toContain('Owner notes.');
+  });
+
+  it('refuses memory files larger than the bounded read size', () => {
+    const { home, store } = openFixture('oversized');
+    writeFileSync(globalPath(home), 'x'.repeat(MEMORY_FILE_MAX_BYTES + 1), 'utf8');
+
+    const view = store.memory.readFileView('global', null);
+    expect(view).toMatchObject({ exists: true, sha256: null, entries: [] });
+    expect(view.problems).toContain(
+      `The memory file is larger than ${MEMORY_FILE_MAX_BYTES} bytes; it was not parsed.`,
+    );
+    expect(store.memory.contextForTask(null)).toMatchObject({
+      text: '',
+      globalEntries: 0,
+      problems: view.problems,
+    });
   });
 
   it('excludes secrets from proposals, approvals, and edits', () => {

@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { Buffer } from 'node:buffer';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { and, desc, eq, inArray, isNull, type SQL } from 'drizzle-orm';
@@ -256,8 +257,11 @@ export function createMemoryStore(db: Db, home: string): MemoryStore {
     let exists = false;
     let sha256Value: string | null = null;
     let problems: string[] = [];
+    let fileDescriptor: number | undefined;
     try {
-      const stat = fs.statSync(filePath);
+      fileDescriptor = fs.openSync(filePath, 'r');
+      const stat = fs.fstatSync(fileDescriptor);
+      exists = true;
       if (!stat.isFile()) {
         return {
           key,
@@ -271,13 +275,37 @@ export function createMemoryStore(db: Db, home: string): MemoryStore {
           problems: [`The memory path is not a file: ${filePath}`],
         };
       }
-      markdown = fs.readFileSync(filePath, 'utf8');
-      exists = true;
-      sha256Value = sha256(markdown);
       if (stat.size > MEMORY_FILE_MAX_BYTES) {
         problems = [
           `The memory file is larger than ${MEMORY_FILE_MAX_BYTES} bytes; it was not parsed.`,
         ];
+      } else {
+        // Read at most the configured limit plus one byte. The extra byte
+        // catches a file that grows after fstat without ever loading an
+        // unbounded external edit into memory.
+        const buffer = Buffer.alloc(MEMORY_FILE_MAX_BYTES + 1);
+        let bytesRead = 0;
+        while (bytesRead < buffer.length) {
+          const count = fs.readSync(
+            fileDescriptor,
+            buffer,
+            bytesRead,
+            buffer.length - bytesRead,
+            bytesRead,
+          );
+          if (count === 0) {
+            break;
+          }
+          bytesRead += count;
+        }
+        if (bytesRead > MEMORY_FILE_MAX_BYTES) {
+          problems = [
+            `The memory file is larger than ${MEMORY_FILE_MAX_BYTES} bytes; it was not parsed.`,
+          ];
+        } else {
+          markdown = buffer.subarray(0, bytesRead).toString('utf8');
+          sha256Value = sha256(markdown);
+        }
       }
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
@@ -292,6 +320,10 @@ export function createMemoryStore(db: Db, home: string): MemoryStore {
           entries: [],
           problems: [`The memory file could not be read: ${(err as Error).message}`],
         };
+      }
+    } finally {
+      if (fileDescriptor !== undefined) {
+        fs.closeSync(fileDescriptor);
       }
     }
     if (exists && problems.length === 0) {
