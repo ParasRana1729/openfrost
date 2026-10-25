@@ -17,6 +17,16 @@ interface TasksResponse {
   executor: { busy: boolean; activeTaskId: string | null; dispatchPaused: boolean };
 }
 
+interface ApprovalSummary {
+  id: string;
+  taskId: string;
+  filename: string;
+  destinationPath: string;
+  state: string;
+  requestedAt: string;
+  expiresAt: string;
+}
+
 const MAX_STARTING_URLS = 5;
 /** The API requires a title; the composer derives one from the request. */
 function deriveTitle(request: string): string {
@@ -29,6 +39,7 @@ export default function HomePage() {
   const { session, loading, error, refresh } = useSession();
   const [tasks, setTasks] = useState<TasksResponse | null>(null);
   const [events, setEvents] = useState<Event[]>([]);
+  const [pendingApprovals, setPendingApprovals] = useState<ApprovalSummary[]>([]);
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -47,12 +58,14 @@ export default function HomePage() {
     }
     inFlight.current = true;
     try {
-      const [tasksResponse, eventsResponse] = await Promise.all([
+      const [tasksResponse, eventsResponse, approvalsResponse] = await Promise.all([
         getJson<TasksResponse>('/api/tasks'),
         getJson<{ events: Event[] }>('/api/events?limit=15'),
+        getJson<{ approvals: ApprovalSummary[] }>('/api/approvals?state=pending'),
       ]);
       setTasks(tasksResponse);
       setEvents(eventsResponse.events);
+      setPendingApprovals(approvalsResponse.approvals);
       setActionError(null);
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : 'API unreachable');
@@ -154,6 +167,25 @@ export default function HomePage() {
 
   return (
     <>
+      {pendingApprovals.length > 0 ? (
+        <div className="panel">
+          <h1>Approval needed</h1>
+          {pendingApprovals.map((approval) => (
+            <p key={approval.id} className="muted">
+              Export <strong>{approval.filename}</strong> into{' '}
+              <span className="mono">{approval.destinationPath}</span> — requested{' '}
+              {formatTimestamp(approval.requestedAt)}. The run is holding until you
+              decide.
+            </p>
+          ))}
+          <div className="row">
+            <Link href="/tasks">
+              <button className="primary">Review under Tasks</button>
+            </Link>
+          </div>
+        </div>
+      ) : null}
+
       {tasks?.executor.dispatchPaused ? (
         <div className="panel">
           <h1>Dispatch paused after recovery</h1>

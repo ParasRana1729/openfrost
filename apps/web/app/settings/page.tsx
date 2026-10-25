@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import type { AssistantSettings, ProviderId } from '@openfrost/domain';
+import type { AssistantSettings, ExportDestination, ProviderId } from '@openfrost/domain';
 import { ApiError, getJson, mutate } from '../../lib/api';
 import { useSession } from '../../lib/useSession';
 
@@ -31,6 +31,20 @@ export default function SettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [destinations, setDestinations] = useState<ExportDestination[]>([]);
+  const [destPath, setDestPath] = useState('');
+  const [destBusy, setDestBusy] = useState(false);
+
+  const refreshDestinations = useCallback(async () => {
+    try {
+      const data = await getJson<{ destinations: ExportDestination[] }>(
+        '/api/exports/destinations',
+      );
+      setDestinations(data.destinations);
+    } catch {
+      setDestinations([]);
+    }
+  }, []);
 
   const refreshSettings = useCallback(async () => {
     try {
@@ -47,8 +61,9 @@ export default function SettingsPage() {
   useEffect(() => {
     if (session?.authenticated) {
       void refreshSettings();
+      void refreshDestinations();
     }
-  }, [session?.authenticated, refreshSettings]);
+  }, [session?.authenticated, refreshSettings, refreshDestinations]);
 
   const csrf = session?.csrfToken ?? null;
 
@@ -159,6 +174,50 @@ export default function SettingsPage() {
       setError(err instanceof ApiError ? err.message : 'Could not remove key');
     } finally {
       setBusy(false);
+    }
+  };
+
+  const grantDestination = async () => {
+    if (!csrf || destPath.trim().length === 0) {
+      return;
+    }
+    setDestBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await mutate<{ destination: ExportDestination }>({
+        method: 'POST',
+        path: '/api/exports/destinations',
+        body: { path: destPath.trim() },
+        csrfToken: csrf,
+      });
+      setDestPath('');
+      setNotice(`Destination granted: ${result.destination.path}`);
+      await refreshDestinations();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not grant destination');
+    } finally {
+      setDestBusy(false);
+    }
+  };
+
+  const removeDestination = async (destinationId: string) => {
+    if (!csrf) {
+      return;
+    }
+    setDestBusy(true);
+    setError(null);
+    try {
+      await mutate({
+        method: 'DELETE',
+        path: `/api/exports/destinations/${destinationId}`,
+        csrfToken: csrf,
+      });
+      await refreshDestinations();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not remove destination');
+    } finally {
+      setDestBusy(false);
     }
   };
 
@@ -316,6 +375,43 @@ export default function SettingsPage() {
           Retrieval times reported in saved research briefs come from real page
           fetches, so slow sites use more of the run&rsquo;s wall-clock budget.
         </p>
+      </div>
+
+      <div className="panel">
+        <h2>Export destinations</h2>
+        <p className="muted">
+          Folders an approved export may write into. Exports create new
+          Markdown files only — never overwrite — and the canonical path is
+          re-checked at execution, so a moved or replaced folder stops
+          granting immediately.
+        </p>
+        {destinations.length === 0 ? (
+          <p className="muted">No destination granted yet.</p>
+        ) : (
+          destinations.map((destination) => (
+            <div className="grant-row" key={destination.id}>
+              <span className="mono">{destination.path}</span>
+              <button disabled={destBusy} onClick={() => void removeDestination(destination.id)}>
+                Remove
+              </button>
+            </div>
+          ))
+        )}
+        <div className="row" style={{ marginTop: 10 }}>
+          <input
+            style={{ flex: 1 }}
+            value={destPath}
+            maxLength={1000}
+            onChange={(e) => setDestPath(e.target.value)}
+            placeholder="Absolute folder path, e.g. C:\Users\you\Documents\exports"
+          />
+          <button
+            disabled={destBusy || destPath.trim().length === 0}
+            onClick={() => void grantDestination()}
+          >
+            Grant destination
+          </button>
+        </div>
       </div>
 
       <div className="panel">

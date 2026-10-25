@@ -974,3 +974,27 @@ td.mono {
 .md a {
   overflow-wrap: anywhere;
 }
+
+/* ----------------------------- export review ------------------------------ */
+
+.export-box {
+  margin-top: 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-panel);
+  padding: 14px 16px;
+  background: var(--panel-inset);
+}
+
+.export-box[data-state='pending'] {
+  border-color: var(--ice-edge);
+}
+
+.export-box[data-state='rejected'],
+.export-box[data-state='canceled'],
+.export-box[data-state='expired'] {
+  border-color: rgba(242, 121, 107, 0.4);
+}
+
+.export-box[data-state='executed'] {
+  border-color: rgba(69, 224, 166, 0.4);
+}
