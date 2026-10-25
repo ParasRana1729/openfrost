@@ -58,6 +58,21 @@ describe('task lifecycle through the store', () => {
     }
   });
 
+  it('persists constraints and starting urls with the task', () => {
+    const task = store.tasks.create(
+      {
+        title: 'Sourced',
+        request: 'Compare A and B',
+        constraints: 'Local-first storage preferred.',
+        startingUrls: ['https://a.example/', 'https://b.example/'],
+      },
+      at(2),
+    );
+    const read = store.tasks.get(task.id);
+    expect(read?.constraints).toBe('Local-first storage preferred.');
+    expect(read?.startingUrls).toEqual(['https://a.example/', 'https://b.example/']);
+  });
+
   it('startRun claims a queued task atomically and counts attempts', () => {
     const task = store.tasks.create({ title: 'Run me', request: 'x' }, at(0));
     const { task: claimed, run } = store.tasks.startRun(task.id, at(0));

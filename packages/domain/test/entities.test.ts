@@ -50,11 +50,23 @@ describe('agentRun schema', () => {
     ).toThrowError();
   });
 
-  it('accepts usage counts', () => {
+  it('accepts usage counts and defaults token counts to null', () => {
     expect(
       runUsageSchema.parse({ steps: 3, inputChars: 100, outputChars: 42 }),
-    ).toEqual({ steps: 3, inputChars: 100, outputChars: 42 });
+    ).toEqual({ steps: 3, inputChars: 100, outputChars: 42, inputTokens: null, outputTokens: null });
+    expect(
+      runUsageSchema.parse({
+        steps: 3,
+        inputChars: 100,
+        outputChars: 42,
+        inputTokens: 1200,
+        outputTokens: 340,
+      }),
+    ).toEqual({ steps: 3, inputChars: 100, outputChars: 42, inputTokens: 1200, outputTokens: 340 });
     expect(() => runUsageSchema.parse({ steps: -1, inputChars: 0, outputChars: 0 })).toThrowError();
+    expect(() =>
+      runUsageSchema.parse({ steps: 1, inputChars: 0, outputChars: 0, inputTokens: 1.5, outputTokens: 0 }),
+    ).toThrowError();
   });
 });
 

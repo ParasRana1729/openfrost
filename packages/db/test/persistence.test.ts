@@ -66,7 +66,13 @@ describe('persistence across restart', () => {
 
         const runs = store2.runs.listForTask(task.id);
         expect(runs).toHaveLength(1);
-        expect(runs[0]?.usage).toEqual({ steps: 2, inputChars: 30, outputChars: 120 });
+        expect(runs[0]?.usage).toEqual({
+          steps: 2,
+          inputChars: 30,
+          outputChars: 120,
+          inputTokens: null,
+          outputTokens: null,
+        });
 
         const events = store2.events.listForTask(task.id);
         expect(events.map((e) => e.type)).toContain('task.created');

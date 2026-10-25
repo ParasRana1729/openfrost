@@ -43,6 +43,10 @@ export const taskSchema = z.strictObject({
   id: z.string().min(1),
   title: z.string().min(1).max(200),
   request: z.string().min(1),
+  /** Optional constraints the owner attached to the request. */
+  constraints: z.string().max(2000).nullable(),
+  /** Optional public http(s) pages to retrieve before research begins. */
+  startingUrls: z.array(z.string().max(2048)).nullable(),
   state: taskStateSchema,
   attemptCount: z.number().int().nonnegative(),
   lastRunId: z.string().min(1).nullable(),
@@ -60,6 +64,11 @@ export const createTaskRequestSchema = z.strictObject({
     .string()
     .min(1)
     .max(DEFAULT_EXECUTION_LIMITS.maxInputChars),
+  constraints: z.string().max(2000).optional(),
+  startingUrls: z
+    .array(z.url({ protocol: /^https?$/ }).max(2048))
+    .max(5)
+    .optional(),
 });
 export type CreateTaskRequest = z.infer<typeof createTaskRequestSchema>;
 

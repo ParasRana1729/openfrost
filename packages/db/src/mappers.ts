@@ -24,6 +24,9 @@ export function toTask(row: TasksRow): Task {
     id: row.id,
     title: row.title,
     request: row.request,
+    constraints: row.constraints,
+    startingUrls:
+      row.startingUrls === null ? null : (JSON.parse(row.startingUrls) as string[]),
     state: row.state,
     attemptCount: row.attemptCount,
     lastRunId: row.lastRunId,

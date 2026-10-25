@@ -43,6 +43,9 @@ export const tasks = sqliteTable('tasks', {
   id: text('id').primaryKey(),
   title: text('title').notNull(),
   request: text('request').notNull(),
+  constraints: text('constraints'),
+  /** JSON array of http(s) URLs, or null. */
+  startingUrls: text('starting_urls'),
   state: text('state').notNull(),
   attemptCount: integer('attempt_count').notNull().default(0),
   lastRunId: text('last_run_id'),

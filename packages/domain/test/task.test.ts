@@ -18,6 +18,8 @@ function sampleTask(overrides: Partial<Task> = {}): Task {
     id: 'task-1',
     title: 'Compare note-taking apps',
     request: 'Compare Obsidian, Logseq, and Notion for research notes.',
+    constraints: null,
+    startingUrls: null,
     state: 'queued',
     attemptCount: 0,
     lastRunId: null,
@@ -64,6 +66,43 @@ describe('createTaskRequest schema', () => {
         request: 'a'.repeat(DEFAULT_EXECUTION_LIMITS.maxInputChars),
       }),
     ).toBeTruthy();
+  });
+
+  it('accepts optional constraints and http(s) starting urls', () => {
+    const parsed = createTaskRequestSchema.parse({
+      title: 'Research',
+      request: 'Compare options',
+      constraints: 'Prefer tools with local-first storage; budget under $20/month.',
+      startingUrls: ['https://obsidian.md/', 'https://logseq.com/'],
+    });
+    expect(parsed.constraints).toContain('local-first');
+    expect(parsed.startingUrls).toHaveLength(2);
+  });
+
+  it('rejects non-http(s) starting urls, bad urls, and more than five', () => {
+    const base = { title: 'Research', request: 'Compare options' };
+    expect(() =>
+      createTaskRequestSchema.parse({ ...base, startingUrls: ['ftp://example.com/x'] }),
+    ).toThrowError();
+    expect(() =>
+      createTaskRequestSchema.parse({ ...base, startingUrls: ['not a url'] }),
+    ).toThrowError();
+    expect(() =>
+      createTaskRequestSchema.parse({
+        ...base,
+        startingUrls: [
+          'https://a.com/',
+          'https://b.com/',
+          'https://c.com/',
+          'https://d.com/',
+          'https://e.com/',
+          'https://f.com/',
+        ],
+      }),
+    ).toThrowError();
+    expect(() =>
+      createTaskRequestSchema.parse({ ...base, constraints: 'x'.repeat(2001) }),
+    ).toThrowError();
   });
 
   it('rejects a request larger than the input bound', () => {
