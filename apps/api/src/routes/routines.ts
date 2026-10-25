@@ -52,7 +52,7 @@ export const makeRoutineRoutes = (ctx: AppContext): FastifyPluginAsync => async 
     return { routines: ctx.store.routines.list().map((r) => routineView(ctx.store, r, nowMs)) };
   });
 
-  app.get('/routines/:routineId', async (request, reply) => {
+  app.get('/routines/:routineId', async (request, _reply) => {
     const { routineId } = request.params as { routineId: string };
     const routine = ctx.store.routines.get(routineId);
     if (!routine) {
