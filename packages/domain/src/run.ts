@@ -26,6 +26,7 @@ export const runFailureCodeSchema = z.enum([
   'provider_error',
   'limit_reached',
   'source_unavailable',
+  'export_refused',
   'internal',
 ]);
 export type RunFailureCode = z.infer<typeof runFailureCodeSchema>;

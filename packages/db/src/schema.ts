@@ -73,8 +73,10 @@ export const tasks = sqliteTable('tasks', {
   /** JSON array of http(s) URLs, or null. */
   startingUrls: text('starting_urls'),
   projectId: text('project_id'),
-  /** 'research_brief' | 'project_update' (spec workflows). */
+  /** 'research_brief' | 'project_update' | 'export_report' (spec workflows). */
   kind: text('kind').notNull().default('research_brief'),
+  /** JSON export arguments (artifactId, destinationId, filename); export tasks only. */
+  exportArgs: text('export_args'),
   state: text('state').notNull(),
   attemptCount: integer('attempt_count').notNull().default(0),
   lastRunId: text('last_run_id'),
@@ -82,6 +84,42 @@ export const tasks = sqliteTable('tasks', {
   error: text('error'),
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),
+});
+
+/**
+ * Owner-granted canonical folder roots that approved exports may write
+ * into. v0.1 exposes this only in Settings; deleting a destination stops
+ * future exports but never touches files already written.
+ */
+export const exportDestinations = sqliteTable('export_destinations', {
+  id: text('id').primaryKey(),
+  path: text('path').notNull(),
+  createdAt: text('created_at').notNull(),
+});
+
+/**
+ * Owner decisions on consequential actions (spec §6). The proposed action
+ * is snapshotted immutably; rows are never deleted — decisions, expiries,
+ * and refusals remain auditable.
+ */
+export const approvals = sqliteTable('approvals', {
+  id: text('id').primaryKey(),
+  taskId: text('task_id').notNull(),
+  runId: text('run_id').notNull(),
+  action: text('action').notNull(),
+  artifactId: text('artifact_id').notNull(),
+  destinationId: text('destination_id').notNull(),
+  destinationPath: text('destination_path').notNull(),
+  filename: text('filename').notNull(),
+  contentSha256: text('content_sha256').notNull(),
+  riskTier: text('risk_tier').notNull(),
+  state: text('state').notNull(),
+  requestedAt: text('requested_at').notNull(),
+  expiresAt: text('expires_at').notNull(),
+  decidedAt: text('decided_at'),
+  executedAt: text('executed_at'),
+  outcomeJson: text('outcome_json'),
+  refusalReason: text('refusal_reason'),
 });
 
 export const agentRuns = sqliteTable('agent_runs', {

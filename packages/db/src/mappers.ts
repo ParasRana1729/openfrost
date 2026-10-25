@@ -1,15 +1,21 @@
 import {
   agentRunSchema,
+  approvalSchema,
   artifactSchema,
   conversationSchema,
   eventSchema,
+  exportDestinationSchema,
   projectFolderGrantSchema,
   projectSchema,
   taskSchema,
   type AgentRun,
+  type Approval,
+  type ApprovalOutcome,
   type Artifact,
   type Conversation,
   type Event,
+  type ExportArgs,
+  type ExportDestination,
   type Project,
   type ProjectFolderGrant,
   type RunFailure,
@@ -24,6 +30,8 @@ type ArtifactsRow = typeof schema.artifacts.$inferSelect;
 type EventsRow = typeof schema.events.$inferSelect;
 type ProjectsRow = typeof schema.projects.$inferSelect;
 type ProjectFolderGrantsRow = typeof schema.projectFolderGrants.$inferSelect;
+type ApprovalsRow = typeof schema.approvals.$inferSelect;
+type ExportDestinationsRow = typeof schema.exportDestinations.$inferSelect;
 
 /** Row → entity mappers. Parsing through the Zod contracts keeps the stored
  * shape honest; a mismatch fails loudly instead of leaking bad data. */
@@ -37,6 +45,8 @@ export function toTask(row: TasksRow): Task {
       row.startingUrls === null ? null : (JSON.parse(row.startingUrls) as string[]),
     projectId: row.projectId,
     kind: row.kind,
+    exportArgs:
+      row.exportArgs === null ? null : (JSON.parse(row.exportArgs) as ExportArgs),
     state: row.state,
     attemptCount: row.attemptCount,
     lastRunId: row.lastRunId,
@@ -106,6 +116,39 @@ export function toConversation(row: typeof schema.conversations.$inferSelect): C
     id: row.id,
     title: row.title,
     projectId: row.projectId,
+    createdAt: row.createdAt,
+  });
+}
+
+export function toApproval(row: ApprovalsRow): Approval {
+  return approvalSchema.parse({
+    id: row.id,
+    taskId: row.taskId,
+    runId: row.runId,
+    action: row.action,
+    artifactId: row.artifactId,
+    destinationId: row.destinationId,
+    destinationPath: row.destinationPath,
+    filename: row.filename,
+    contentSha256: row.contentSha256,
+    riskTier: row.riskTier,
+    state: row.state,
+    requestedAt: row.requestedAt,
+    expiresAt: row.expiresAt,
+    decidedAt: row.decidedAt,
+    executedAt: row.executedAt,
+    outcome:
+      row.outcomeJson === null
+        ? null
+        : (JSON.parse(row.outcomeJson) as ApprovalOutcome),
+    refusalReason: row.refusalReason,
+  });
+}
+
+export function toExportDestination(row: ExportDestinationsRow): ExportDestination {
+  return exportDestinationSchema.parse({
+    id: row.id,
+    path: row.path,
     createdAt: row.createdAt,
   });
 }

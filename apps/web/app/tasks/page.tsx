@@ -2,7 +2,16 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import type { AgentRun, Event, Project, ProjectFolderGrant, Task, TaskKind } from '@openfrost/domain';
+import type {
+  AgentRun,
+  Approval,
+  Event,
+  ExportDestination,
+  Project,
+  ProjectFolderGrant,
+  Task,
+  TaskKind,
+} from '@openfrost/domain';
 import { ApiError, getJson, mutate } from '../../lib/api';
 import { estimateCost, formatCost, loadConfiguredModel } from '../../lib/pricing';
 import { formatTimestamp } from '../../lib/format';
@@ -27,7 +36,21 @@ interface TaskDetail {
   runs: AgentRun[];
   events: Event[];
   artifact: { id: string; markdown: string } | null;
+  approval: Approval | null;
 }
+
+/** Suggests a safe default export filename derived from the task title. */
+function suggestFilename(title: string): string {
+  const base = title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 92);
+  return `${base.length > 0 ? base : 'report'}.md`;
+}
+
+/** Decision states where the review panel polls so progress stays visible. */
+const DECISION_STATES: ReadonlySet<string> = new Set(['pending', 'granted']);
 
 const REQUEUEABLE: ReadonlySet<string> = new Set(['failed', 'canceled', 'interrupted']);
 
@@ -43,6 +66,7 @@ const MAX_STARTING_URLS = 5;
 const KIND_LABEL: Record<TaskKind, string> = {
   research_brief: 'Research brief',
   project_update: 'Project update',
+  export_report: 'Export',
 };
 
 /** The projects list endpoint returns each project with its grants. */
@@ -90,6 +114,11 @@ export default function TasksPage() {
   const [startingUrlsText, setStartingUrlsText] = useState('');
   const [detail, setDetail] = useState<TaskDetail | null>(null);
   const [model, setModel] = useState<string | null>(null);
+  const [destinations, setDestinations] = useState<ExportDestination[]>([]);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportFilename, setExportFilename] = useState('');
+  const [exportDestinationId, setExportDestinationId] = useState('');
+  const [exportBusy, setExportBusy] = useState(false);
   const inFlight = useRef(false);
   useBusyGlow(data?.executor.busy ?? false);
 
@@ -114,6 +143,9 @@ export default function TasksPage() {
       void getJson<{ projects: ProjectOption[] }>('/api/projects')
         .then((data) => setProjects(data.projects))
         .catch(() => setProjects([]));
+      void getJson<{ destinations: ExportDestination[] }>('/api/exports/destinations')
+        .then((data) => setDestinations(data.destinations))
+        .catch(() => setDestinations([]));
     }
   }, [session?.authenticated, refreshTasks]);
 
@@ -152,7 +184,10 @@ export default function TasksPage() {
   // While the opened task is still in flight, poll its detail every 3 s so
   // progress shows without reopening. Cleanup runs on close/unmount/state change.
   const detailTaskId = detail?.task.id ?? null;
-  const detailLive = detail !== null && LIVE_STATES.has(detail.task.state);
+  const detailLive =
+    detail !== null &&
+    (LIVE_STATES.has(detail.task.state) ||
+      (detail.approval !== null && DECISION_STATES.has(detail.approval.state)));
 
   useEffect(() => {
     if (!detailTaskId || !detailLive) {
@@ -262,8 +297,62 @@ export default function TasksPage() {
   const openDetail = async (taskId: string) => {
     try {
       setDetail(await getJson<TaskDetail>(`/api/tasks/${taskId}`));
+      setExportOpen(false);
+      setExportFilename('');
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not load task');
+    }
+  };
+
+  const proposeExport = async () => {
+    if (!csrf || !detail || exportDestinationId === '' || exportFilename.trim().length === 0) {
+      return;
+    }
+    if (!detail.artifact) {
+      return;
+    }
+    setExportBusy(true);
+    setError(null);
+    try {
+      await mutate({
+        method: 'POST',
+        path: '/api/exports',
+        body: {
+          artifactId: detail.artifact.id,
+          destinationId: exportDestinationId,
+          filename: exportFilename.trim(),
+        },
+        csrfToken: csrf,
+      });
+      setExportOpen(false);
+      setDetail(await getJson<TaskDetail>(`/api/tasks/${detail.task.id}`));
+      await refreshTasks();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not propose the export');
+    } finally {
+      setExportBusy(false);
+    }
+  };
+
+  const decideApproval = async (approvalId: string, decision: 'granted' | 'rejected') => {
+    if (!csrf || !detail) {
+      return;
+    }
+    setExportBusy(true);
+    setError(null);
+    try {
+      await mutate({
+        method: 'POST',
+        path: `/api/approvals/${approvalId}/decision`,
+        body: { decision },
+        csrfToken: csrf,
+      });
+      setDetail(await getJson<TaskDetail>(`/api/tasks/${detail.task.id}`));
+      await refreshTasks();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not record the decision');
+    } finally {
+      setExportBusy(false);
     }
   };
 
@@ -496,6 +585,129 @@ export default function TasksPage() {
               </h2>
               <MarkdownView markdown={detail.artifact.markdown} />
             </>
+          ) : null}
+          {detail.artifact && detail.approval === null ? (
+            <div className="export-box">
+              <h2>Export a copy</h2>
+              <p className="muted">
+                Proposes writing this artifact as a <strong>new</strong> Markdown file
+                into a granted destination. The write happens only after you approve
+                the exact proposal — nothing is written without your decision, and
+                existing files are never overwritten.
+              </p>
+              {!exportOpen ? (
+                <div className="row">
+                  <button onClick={() => {
+                    setExportFilename(suggestFilename(detail.task.title));
+                    setExportOpen(true);
+                  }}>
+                    Propose export…
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <label htmlFor="export-filename">Filename (new .md file)</label>
+                  <input
+                    id="export-filename"
+                    value={exportFilename}
+                    maxLength={100}
+                    onChange={(e) => setExportFilename(e.target.value)}
+                    placeholder="weekly-update.md"
+                  />
+                  <label htmlFor="export-destination">Destination</label>
+                  <select
+                    id="export-destination"
+                    value={exportDestinationId}
+                    onChange={(e) => setExportDestinationId(e.target.value)}
+                  >
+                    <option value="">Choose destination…</option>
+                    {destinations.map((destination) => (
+                      <option key={destination.id} value={destination.id}>
+                        {destination.path}
+                      </option>
+                    ))}
+                  </select>
+                  {destinations.length === 0 ? (
+                    <p className="error">
+                      No destination granted yet. Grant one on the{' '}
+                      <Link href="/settings">settings page</Link>.
+                    </p>
+                  ) : null}
+                  <div className="row" style={{ marginTop: 10 }}>
+                    <button
+                      className="primary"
+                      disabled={
+                        exportBusy ||
+                        exportDestinationId === '' ||
+                        exportFilename.trim().length === 0
+                      }
+                      onClick={() => void proposeExport()}
+                    >
+                      Propose export for review
+                    </button>
+                    <button disabled={exportBusy} onClick={() => setExportOpen(false)}>
+                      Cancel
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          ) : null}
+          {detail.approval ? (
+            <div className="export-box" data-state={detail.approval.state}>
+              <h2>Export review</h2>
+              <p className="muted">
+                <strong>{detail.approval.filename}</strong> into{' '}
+                <span className="mono">{detail.approval.destinationPath}</span> ·{' '}
+                <span className="mono">
+                  sha256 {detail.approval.contentSha256.slice(0, 12)}…
+                </span>{' '}
+                · risk tier {detail.approval.riskTier}
+              </p>
+              <p className="muted">
+                Requested {formatTimestamp(detail.approval.requestedAt)} · expires{' '}
+                {formatTimestamp(detail.approval.expiresAt)} · state{' '}
+                <span className={`chip ${detail.approval.state === 'granted' ? 'running' : detail.approval.state}`}>
+                  {detail.approval.state}
+                </span>
+              </p>
+              {detail.approval.refusalReason ? (
+                <p className="error">{detail.approval.refusalReason}</p>
+              ) : null}
+              {detail.approval.outcome ? (
+                <p className="muted">
+                  Written: <span className="mono">{detail.approval.outcome.file}</span> (
+                  {detail.approval.outcome.bytes.toLocaleString()} bytes in{' '}
+                  {detail.approval.outcome.ms} ms)
+                </p>
+              ) : null}
+              {detail.approval.state === 'pending' ? (
+                <>
+                  <p className="note">
+                    The run is holding until you decide. The file is written only on
+                    approval, as a new file, after every check is repeated.
+                  </p>
+                  <div className="row">
+                    <button
+                      className="primary"
+                      disabled={exportBusy}
+                      onClick={() => void decideApproval(detail.approval!.id, 'granted')}
+                    >
+                      Approve export
+                    </button>
+                    <button
+                      disabled={exportBusy}
+                      onClick={() => void decideApproval(detail.approval!.id, 'rejected')}
+                    >
+                      Reject
+                    </button>
+                  </div>
+                </>
+              ) : null}
+              {detail.approval.state === 'granted' && !detail.approval.outcome ? (
+                <p className="muted">Approved — writing now…</p>
+              ) : null}
+            </div>
           ) : null}
           <h2>Run attempts</h2>
           <table>

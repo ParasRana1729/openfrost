@@ -4,14 +4,20 @@ import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import {
   InvalidTransitionError,
   messageSchema,
+  transitionApproval,
   transitionRun,
   transitionTask,
   type AgentRun,
+  type Approval,
+  type ApprovalOutcome,
+  type ApprovalState,
   type Artifact,
   type ArtifactKind,
   type Conversation,
   type Event,
   type EventType,
+  type ExportArgs,
+  type ExportDestination,
   type Message,
   type MessageRole,  type Project,
   type ProjectFolderGrant,
@@ -24,9 +30,11 @@ import {
 } from '@openfrost/domain';
 import {
   toAgentRun,
+  toApproval,
   toArtifact,
   toConversation,
   toEvent,
+  toExportDestination,
   toProject,
   toProjectFolderGrant,
   toTask,
@@ -72,6 +80,20 @@ export class ProjectNotFoundError extends Error {
   }
 }
 
+export class ApprovalNotFoundError extends Error {
+  constructor(approvalId: string) {
+    super(`Approval ${approvalId} not found`);
+    this.name = 'ApprovalNotFoundError';
+  }
+}
+
+export class ExportDestinationNotFoundError extends Error {
+  constructor(destinationId: string) {
+    super(`Export destination ${destinationId} not found`);
+    this.name = 'ExportDestinationNotFoundError';
+  }
+}
+
 export interface Store {
   users: {
     count(): number;
@@ -102,6 +124,7 @@ export interface Store {
         startingUrls?: string[] | null;
         projectId?: string | null;
         kind?: TaskKind;
+        exportArgs?: ExportArgs | null;
       },
       now: string,
     ): Task;
@@ -168,6 +191,40 @@ export interface Store {
     addGrant(projectId: string, canonicalPath: string, now: string): ProjectFolderGrant;
     removeGrant(projectId: string, grantId: string): void;
     listGrants(projectId: string): ProjectFolderGrant[];
+  };
+  exportDestinations: {
+    add(canonicalPath: string, now: string): ExportDestination;
+    get(id: string): ExportDestination | null;
+    list(): ExportDestination[];
+    remove(id: string): void;
+  };
+  approvals: {
+    create(
+      input: {
+        taskId: string;
+        runId: string;
+        artifactId: string;
+        destinationId: string;
+        destinationPath: string;
+        filename: string;
+        contentSha256: string;
+        expiresAt: string;
+      },
+      now: string,
+    ): Approval;
+    get(id: string): Approval | null;
+    getForTask(taskId: string): Approval | null;
+    listByStates(states: readonly ApprovalState[]): Approval[];
+    listAll(): Approval[];
+    /** Owner decision or system expiry; validates the transition map. */
+    decide(
+      id: string,
+      to: 'granted' | 'rejected' | 'canceled' | 'expired',
+      now: string,
+    ): Approval;
+    markExecuted(id: string, outcome: ApprovalOutcome, now: string): Approval;
+    /** A granted export that execution refused: terminal, never executed. */
+    markRefused(id: string, refusalReason: string, now: string): Approval;
   };
   conversations: {
     create(title: string, now: string, projectId?: string | null): Conversation;
@@ -277,6 +334,7 @@ export function createStore(db: Db, options: StoreOptions = {}): Store {
         startingUrls?: string[] | null;
         projectId?: string | null;
         kind?: TaskKind;
+        exportArgs?: ExportArgs | null;
       },
       now: string,
     ): Task {
@@ -291,6 +349,10 @@ export function createStore(db: Db, options: StoreOptions = {}): Store {
             : JSON.stringify(input.startingUrls),
         projectId: input.projectId ?? null,
         kind: input.kind ?? ('research_brief' as const),
+        exportArgs:
+          input.exportArgs === undefined || input.exportArgs === null
+            ? null
+            : JSON.stringify(input.exportArgs),
         state: 'queued' as const,
         attemptCount: 0,
         lastRunId: null,
@@ -627,6 +689,179 @@ export function createStore(db: Db, options: StoreOptions = {}): Store {
     },
   };
 
+  const exportDestinations = {
+    add(canonicalPath: string, now: string): ExportDestination {
+      const row = {
+        id: randomUUID(),
+        path: canonicalPath,
+        createdAt: now,
+      };
+      db.insert(schema.exportDestinations).values(row).run();
+      return toExportDestination(row);
+    },
+    get(id: string): ExportDestination | null {
+      const row = db
+        .select()
+        .from(schema.exportDestinations)
+        .where(eq(schema.exportDestinations.id, id))
+        .get();
+      return row ? toExportDestination(row) : null;
+    },
+    list(): ExportDestination[] {
+      return db
+        .select()
+        .from(schema.exportDestinations)
+        .orderBy(asc(schema.exportDestinations.createdAt), sql`rowid asc`)
+        .all()
+        .map(toExportDestination);
+    },
+    remove(id: string): void {
+      db.delete(schema.exportDestinations)
+        .where(eq(schema.exportDestinations.id, id))
+        .run();
+    },
+  };
+
+  const approvals = {
+    create(
+      input: {
+        taskId: string;
+        runId: string;
+        artifactId: string;
+        destinationId: string;
+        destinationPath: string;
+        filename: string;
+        contentSha256: string;
+        expiresAt: string;
+      },
+      now: string,
+    ): Approval {
+      const row = {
+        id: randomUUID(),
+        taskId: input.taskId,
+        runId: input.runId,
+        action: 'export_file' as const,
+        artifactId: input.artifactId,
+        destinationId: input.destinationId,
+        destinationPath: input.destinationPath,
+        filename: input.filename,
+        contentSha256: input.contentSha256,
+        riskTier: 'telegram' as const,
+        state: 'pending' as const,
+        requestedAt: now,
+        expiresAt: input.expiresAt,
+        decidedAt: null,
+        executedAt: null,
+        outcomeJson: null,
+        refusalReason: null,
+      };
+      db.insert(schema.approvals).values(row).run();
+      return toApproval(row);
+    },
+    get(id: string): Approval | null {
+      const row = db
+        .select()
+        .from(schema.approvals)
+        .where(eq(schema.approvals.id, id))
+        .get();
+      return row ? toApproval(row) : null;
+    },
+    getForTask(taskId: string): Approval | null {
+      const row = db
+        .select()
+        .from(schema.approvals)
+        .where(eq(schema.approvals.taskId, taskId))
+        .orderBy(desc(schema.approvals.requestedAt), sql`rowid desc`)
+        .get();
+      return row ? toApproval(row) : null;
+    },
+    listByStates(states: readonly ApprovalState[]): Approval[] {
+      return db
+        .select()
+        .from(schema.approvals)
+        .where(inArray(schema.approvals.state, states as ApprovalState[]))
+        .orderBy(asc(schema.approvals.requestedAt), sql`rowid asc`)
+        .all()
+        .map(toApproval);
+    },
+    listAll(): Approval[] {
+      return db
+        .select()
+        .from(schema.approvals)
+        .orderBy(desc(schema.approvals.requestedAt), sql`rowid desc`)
+        .all()
+        .map(toApproval);
+    },
+    decide(
+      id: string,
+      to: 'granted' | 'rejected' | 'canceled' | 'expired',
+      now: string,
+    ): Approval {
+      return db.transaction((tx) => {
+        const row = tx
+          .select()
+          .from(schema.approvals)
+          .where(eq(schema.approvals.id, id))
+          .get();
+        if (!row) {
+          throw new ApprovalNotFoundError(id);
+        }
+        const next = transitionApproval(toApproval(row), to, now);
+        tx.update(schema.approvals)
+          .set({ state: next.state, decidedAt: next.decidedAt })
+          .where(eq(schema.approvals.id, id))
+          .run();
+        return next;
+      });
+    },
+    markExecuted(id: string, outcome: ApprovalOutcome, now: string): Approval {
+      return db.transaction((tx) => {
+        const row = tx
+          .select()
+          .from(schema.approvals)
+          .where(eq(schema.approvals.id, id))
+          .get();
+        if (!row) {
+          throw new ApprovalNotFoundError(id);
+        }
+        const next = transitionApproval(toApproval(row), 'executed', now);
+        const updated: Approval = {
+          ...next,
+          executedAt: now,
+          outcome,
+        };
+        tx.update(schema.approvals)
+          .set({
+            state: updated.state,
+            executedAt: updated.executedAt,
+            outcomeJson: JSON.stringify(outcome),
+          })
+          .where(eq(schema.approvals.id, id))
+          .run();
+        return updated;
+      });
+    },
+    markRefused(id: string, refusalReason: string, now: string): Approval {
+      return db.transaction((tx) => {
+        const row = tx
+          .select()
+          .from(schema.approvals)
+          .where(eq(schema.approvals.id, id))
+          .get();
+        if (!row) {
+          throw new ApprovalNotFoundError(id);
+        }
+        const next = transitionApproval(toApproval(row), 'canceled', now);
+        const updated: Approval = { ...next, refusalReason };
+        tx.update(schema.approvals)
+          .set({ state: updated.state, refusalReason })
+          .where(eq(schema.approvals.id, id))
+          .run();
+        return updated;
+      });
+    },
+  };
+
   const conversations = {
     create(title: string, now: string, projectId?: string | null): Conversation {
       const row = {
@@ -713,6 +948,8 @@ export function createStore(db: Db, options: StoreOptions = {}): Store {
     events,
     artifacts,
     projects,
+    exportDestinations,
+    approvals,
     conversations,
     messages,
     state,

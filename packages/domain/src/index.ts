@@ -5,3 +5,4 @@ export * from './artifact.js';
 export * from './event.js';
 export * from './settings.js';
 export * from './project.js';
+export * from './approval.js';

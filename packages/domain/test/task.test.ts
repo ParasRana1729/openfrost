@@ -22,6 +22,7 @@ function sampleTask(overrides: Partial<Task> = {}): Task {
     startingUrls: null,
     projectId: null,
     kind: 'research_brief',
+    exportArgs: null,
     state: 'queued',
     attemptCount: 0,
     lastRunId: null,

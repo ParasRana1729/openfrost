@@ -29,11 +29,13 @@ export const makeTaskRoutes = (ctx: AppContext): FastifyPluginAsync => async (ap
     const events = ctx.store.events.listForTask(taskId);
     const artifact =
       task.resultArtifactId !== null ? ctx.store.artifacts.get(task.resultArtifactId) : null;
+    const approval = ctx.store.approvals.getForTask(taskId);
     return {
       task,
       runs,
       events,
       artifact: artifact ? { id: artifact.id, markdown: artifact.markdown } : null,
+      approval,
     };
   });
 

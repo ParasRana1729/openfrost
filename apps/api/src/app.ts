@@ -4,11 +4,14 @@ import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
 import pino, { type Logger } from 'pino';
 import {
+  InvalidApprovalTransitionError,
   InvalidTransitionError,
   DEFAULT_EXECUTION_LIMITS,
 } from '@openfrost/domain';
 import {
   DpapiUnavailableError,
+  ApprovalNotFoundError,
+  ExportDestinationNotFoundError,
   OwnerExistsError,
   ProjectNotFoundError,
   TaskNotFoundError,
@@ -26,6 +29,7 @@ import { makeAuthRoutes } from './routes/auth.js';
 import { makeSettingsRoutes } from './routes/settings.js';
 import { makeTaskRoutes } from './routes/tasks.js';
 import { makeProjectRoutes } from './routes/projects.js';
+import { makeExportRoutes } from './routes/exports.js';
 import { makeDispatchRoutes } from './routes/dispatch.js';
 import { makeEventRoutes } from './routes/events.js';
 
@@ -132,6 +136,12 @@ export async function buildApp(options: BuildAppOptions, logger?: Logger | false
     if (err instanceof ProjectNotFoundError) {
       return reply.code(404).send({ error: err.message });
     }
+    if (err instanceof ApprovalNotFoundError || err instanceof ExportDestinationNotFoundError) {
+      return reply.code(404).send({ error: err.message });
+    }
+    if (err instanceof InvalidApprovalTransitionError) {
+      return reply.code(409).send({ error: err.message });
+    }
     if (err instanceof InvalidTransitionError) {
       return reply.code(409).send({ error: err.message });
     }
@@ -209,6 +219,7 @@ export async function buildApp(options: BuildAppOptions, logger?: Logger | false
       });
       await protectedScope.register(makeTaskRoutes(ctx));
       await protectedScope.register(makeProjectRoutes(ctx));
+      await protectedScope.register(makeExportRoutes(ctx));
       await protectedScope.register(
         makeSettingsRoutes(
           ctx,

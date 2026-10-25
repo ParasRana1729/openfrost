@@ -2,7 +2,7 @@
 
 - **Specification:** [v0.1 solo rebuild](../docs/ai-os-project-spec.md)
 - **Owner for every item:** ParasRana1729
-- **Current assignment:** S04 or S05 next; S03 complete (see its handoff)
+- **Current assignment:** S05 next; S04 complete (see its handoff)
 
 These are local backlog identifiers, not GitHub issue numbers. Only S00 is in
 scope for the current reset. S01–S07 are planned, unimplemented
@@ -442,7 +442,7 @@ produce dated updates without mutating a repository or invoking Git/shell tools.
 
 ## S04 — Add approval-bound report export
 
-- **Status:** Planned
+- **Status:** Complete (real-use evaluation happens alongside S07's working week)
 - **Depends on:** S03
 
 Add one narrow write: exporting a saved report as a new Markdown file beneath an
@@ -451,17 +451,65 @@ this feature.
 
 ### Acceptance criteria
 
-- [ ] Risk contracts retain `auto`, `telegram`, and `local`; standard writes use
+- [x] Risk contracts retain `auto`, `telegram`, and `local`; standard writes use
       the `telegram` identifier but approvals occur in the local web app only.
-- [ ] Review shows exact content and destination and binds the decision to an
+- [x] Review shows exact content and destination and binds the decision to an
       immutable action/run with expiry and audit events.
-- [ ] Rejecting, changing content, expiring, canceling, or revoking access prevents
+- [x] Rejecting, changing content, expiring, canceling, or revoking access prevents
       execution. Duplicate decisions cannot write twice.
-- [ ] Export creates a new file without overwrite; canonical-root checks and
+- [x] Export creates a new file without overwrite; canonical-root checks and
       execution-time validation prevent escapes, including changed junctions.
-- [ ] Unknown write outcomes are reconciled rather than replayed automatically.
-- [ ] Delete/overwrite/shell/system/credential tools remain unavailable; approval
+- [x] Unknown write outcomes are reconciled rather than replayed automatically.
+- [x] Delete/overwrite/shell/system/credential tools remain unavailable; approval
       cannot override a denied capability or folder boundary.
+
+### Handoff
+
+- Implemented: the export is an `export_report` task through the one global
+  executor. `POST /api/exports` (artifact + destination grant + safe filename)
+  binds immutable arguments; the run performs no model work — it builds the
+  proposal (artifact sha256, canonical destination realpath, filename), persists
+  an `approvals` row with a 24 h TTL, moves the task to `awaiting_approval`, and
+  holds the executor while the owner decides in the web app (other tasks queue
+  visibly). The task detail review panel shows the exact destination, filename,
+  content hash, `telegram` risk tier, and the artifact's full content; the Home
+  page shows a pending-approval banner. `decideApproval` validates decisions
+  against the approval transition map — decided, expired, or canceled approvals
+  refuse further decisions, so duplicates cannot write twice. On grant, the run
+  resumes (`awaiting_approval → running`) and revalidates everything at
+  execution: approval still granted and unexpired, artifact hash unchanged,
+  destination still canonical (moved or junction-swapped folders refuse), target
+  still absent — then writes once with a create-only flag (`wx`). Any refusal
+  fails the run `export_refused` and marks the approval canceled with the
+  reason; nothing is retried. Rejection/expiry/cancellation finish the task
+  honestly without writing. Restart recovery cancels approvals left pending or
+  granted-but-unconfirmed with an explicit reconcile note ("the file may or may
+  not exist") — the runtime never replays a write. Destinations are granted in
+  Settings through the same canonical-path guard as source folders (realpath,
+  drive-root and data-directory refusals); removing a destination stops future
+  exports without touching written files. The risk contract is unchanged:
+  `auto`/`telegram`/`local`, the export uses `telegram`, approval is local-only,
+  and no delete/overwrite/shell/system/credential tool exists.
+- Verification: `pnpm lint`, `pnpm test`, `pnpm build` pass locally (226 tests:
+  51 domain, 32 db, 99 agent, 44 api) — the executor test matrix covers every
+  prevents-execution criterion (reject, duplicate decision, expiry, content
+  tamper, target appeared, destination moved, cancel-while-parked, restart
+  recovery, retry-overwrite) and the API suite covers the HTTP surface.
+  Browser-verified end to end on a throwaway home with
+  `OPENFROST_PROVIDER=fake`: grant destination → submit brief → propose export
+  from the task detail → run parks with the review panel → Approve → the exact
+  1,007-byte file appears in the destination and the approval shows `executed`
+  with the outcome; a duplicate proposal for the same filename failed with
+  "Exports never overwrite" while the executor stayed held for the pending
+  review and the second task queued visibly behind it.
+- Not run/verified: a real-model artifact export (the flow is model-independent;
+  the owner exercises it during S07's working week); no automated browser tests
+  (unchanged limitation).
+- Known limitations: one approval per export task and one pending export at a
+  time in practice (the executor is held while any review is open); exports are
+  UTF-8 text only; the destination list has no per-folder size/quota bound (the
+  single-file write is bounded by the artifact's own size).
+- Next: S05 — owner-approved memory.
 
 ## S05 — Add inspectable, owner-approved memory
 
