@@ -46,8 +46,8 @@ The first release targets three useful jobs:
 | --- | --- | --- |
 | Research brief | A saved comparison and recommendation, with sources and uncertainties. | **Works** (S02) — real-model quality pending the owner's evaluation |
 | Project update | An evidence-backed summary of granted project notes, blockers, and next steps. | **Works** (S03) — real-model quality pending the owner's evaluation |
-| Report export | An approved copy of a saved report written into a granted folder. | **Works** (S04) — exercised with the fake provider; real use during S07 |
-| Weekly planning | An owner-scheduled draft of priorities from project notes and recent updates. | **Works** (S06) — exercised with the fake provider; real-model quality pending S07 |
+| Report export | An approved copy of a saved report written into a granted folder. | **Works** (S04) — approve/reject exercised live 2026-10-26 |
+| Weekly planning | An owner-scheduled draft of priorities from project notes and recent updates. | **Works** (S06) — real-model run 2026-10-26 (free model) |
 
 The runtime is Windows-first and local, using SQLite + Drizzle, editable
 Markdown memory, and the owner's provider API keys (OpenAI, Gemini, or
@@ -164,10 +164,40 @@ Requires Windows (DPAPI), Node.js 24+ (`24` line; 26 works), and pnpm 10
 pnpm install          # installs all workspace dependencies
 pnpm build            # builds all packages and the web app (do this first)
 pnpm lint             # eslint across the workspace
-pnpm test             # vitest in every package (318 tests; includes real
+pnpm test             # vitest in every package (321 tests; includes real
                       #   DPAPI round-trips on Windows)
 pnpm dev              # API on 127.0.0.1:8787 and web on 127.0.0.1:3000
 ```
+
+**Fresh setup (first run):** start with `pnpm dev`, open
+`http://127.0.0.1:3000`, create the owner account in onboarding (one owner,
+password hashed with scrypt; wrong passwords are refused and unauthenticated
+API access is 401 even on loopback), then store a provider key in Settings —
+it is sealed with Windows DPAPI for the current user and never displayed or
+logged again. Everything the app stores lives under
+`%USERPROFILE%\.openfrost`: `db\openfrost.db` (tasks, runs, events,
+approvals, artifacts, routines, memory metadata), `secrets\` (DPAPI-sealed
+provider key blobs), `memory\owner.md` and `projects\<id>\memory.md`
+(canonical approved memory, plain editable Markdown), and
+`projects\<id>\instructions.md`. Nothing is reset by upgrades: schema changes
+are additive Drizzle migrations applied at startup (an S05-era database
+upgrades in place with all data preserved, verified with the real S05 build).
+The runtime starts and stops cleanly; a hard kill marks unfinished runs
+`interrupted` and pauses dispatch until you review and resume under Tasks.
+
+**Costs and providers:** with OpenRouter as the active provider, note that
+hosted web search on research briefs bills per executed search even when the
+model itself is a free `:free` tier, and an account without purchased credits
+will fail any brief whose run triggers search (HTTP 402, surfaced honestly).
+File-grounded workflows (project updates, weekly plans) never request hosted
+search. Free models are also rate-limited per day by the provider.
+
+**Known limitations:** research briefs depend on the provider's hosted search
+quality; project deletion is not implemented; markdown table cells do not
+support escaped pipes; memory retrieval is file-order up to a 6,000-character
+budget (no relevance ranking); no automated browser tests (manual pass each
+slice); the assistant never deletes or overwrites files (exports are
+create-only and approval-bound).
 
 Day-to-day use after `pnpm dev`: open `http://127.0.0.1:3000` (or
 `http://localhost:3000`) — the web app proxies API calls to the local service,
@@ -202,7 +232,8 @@ AGENTS.md / CONTRIBUTING.md  Engineering, security, and landing workflow
 - [Developer guide](docs/AI_DEVELOPER_GUIDE.md): working one slice at a time.
 - [Contributing](CONTRIBUTING.md): branch, verification, and review conventions.
 
-The next assigned slice is **S07: harden and validate the personal-use
-release**. Implement only the
+The current slice is **S07: harden and validate the personal-use release**
+(validation performed 2026-10-26; the one-working-week log lives in the
+backlog). Implement only the
 assigned slice, never real credentials in `.env`, prompts, or repository
 files; the credential flow uses DPAPI.
