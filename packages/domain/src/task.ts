@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { exportArgsSchema } from './approval.js';
 
 /** Task lifecycle states (spec §5). Terminal states have no outgoing edges. */
 export const taskStateSchema = z.enum([
@@ -42,9 +43,10 @@ export const DEFAULT_EXECUTION_LIMITS: ExecutionLimits = {
 /**
  * Which bounded workflow a task runs. The kind selects the system policy and
  * the tool set: research briefs use public web retrieval, project updates use
- * granted-folder reads. There is no per-task provider or model selection.
+ * granted-folder reads, exports propose one approval-bound file write.
+ * There is no per-task provider or model selection.
  */
-export const taskKindSchema = z.enum(['research_brief', 'project_update']);
+export const taskKindSchema = z.enum(['research_brief', 'project_update', 'export_report']);
 export type TaskKind = z.infer<typeof taskKindSchema>;
 
 export const taskSchema = z.strictObject({
@@ -58,6 +60,8 @@ export const taskSchema = z.strictObject({
   /** Project this task is scoped to, when the owner chose one. */
   projectId: z.string().min(1).nullable(),
   kind: taskKindSchema,
+  /** Immutable export arguments; present only on export_report tasks. */
+  exportArgs: exportArgsSchema.nullable(),
   state: taskStateSchema,
   attemptCount: z.number().int().nonnegative(),
   lastRunId: z.string().min(1).nullable(),
@@ -91,6 +95,15 @@ export const createTaskRequestSchema = z.strictObject({
       code: 'custom',
       path: ['projectId'],
       message: 'A project update must be scoped to a project',
+    });
+  }
+  // Exports are created through the dedicated export endpoint, which binds
+  // the immutable arguments; the general task form never offers them.
+  if (value.kind === 'export_report') {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['kind'],
+      message: 'Export tasks are created through the export endpoint',
     });
   }
 });
