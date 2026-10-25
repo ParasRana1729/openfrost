@@ -90,16 +90,19 @@ export default function HomePage() {
           background. Closing this browser does not stop them.
         </p>
         <p className="note">
-          Research briefs are the first supported workflow: a run performs
-          public web search plus page retrieval and saves a Markdown report —
-          one run at a time. The model provider (OpenAI, Gemini, or OpenRouter)
-          is chosen in
-          Settings; without a key configured there, tasks fail with a clear
-          message instead of running.
+          Two workflows are supported: research briefs (public web search plus page
+          retrieval, saved as a Markdown report) and project updates (a project&apos;s
+          granted files read and turned into an evidence-backed, dated update —
+          created on the Projects page). One run executes at a time. The model
+          provider (OpenAI, Gemini, or OpenRouter) is chosen in Settings; without a
+          key configured there, tasks fail with a clear message instead of running.
         </p>
         <div className="row">
           <Link href="/tasks">
             <button className="primary">Go to tasks</button>
+          </Link>
+          <Link href="/projects">
+            <button>Manage projects</button>
           </Link>
         </div>
       </div>
