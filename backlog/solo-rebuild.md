@@ -2,7 +2,7 @@
 
 - **Specification:** [v0.1 solo rebuild](../docs/ai-os-project-spec.md)
 - **Owner for every item:** ParasRana1729
-- **Current assignment:** S02 next; S01 complete (see its handoff)
+- **Current assignment:** S03 next; S02 complete (see its handoff)
 
 These are local backlog identifiers, not GitHub issue numbers. Only S00 is in
 scope for the current reset. S01–S07 are planned, unimplemented
@@ -137,7 +137,7 @@ Add domain entities incrementally, only when the assigned slice needs them.
 
 ## S02 — Complete the research-brief vertical slice
 
-- **Status:** Planned
+- **Status:** Complete (real-model quality pending the owner's evaluation)
 - **Depends on:** S01
 
 Deliver a real request-to-report experience before adding more configuration.
@@ -146,18 +146,77 @@ page retrieval. No shell, managed browser, or connector catalog.
 
 ### Acceptance criteria
 
-- [ ] From the web app, submit a question and constraints, see task progress, and
+- [x] From the web app, submit a question and constraints, see task progress, and
       open a saved report after a restart.
-- [ ] A brief includes a comparison, recommendation, sources, retrieval times,
+- [x] A brief includes a comparison, recommendation, sources, retrieval times,
       uncertainties, and unanswered questions.
-- [ ] Fetching blocks private/loopback/link-local/metadata destinations and
+- [x] Fetching blocks private/loopback/link-local/metadata destinations and
       unsafe URLs, including redirects and DNS changes; requests are bounded.
-- [ ] Source content cannot change tool policy, access credentials, or approve
+- [x] Source content cannot change tool policy, access credentials, or approve
       actions. Failed retrievals and unsupported claims are surfaced.
-- [ ] The UI exposes failure, cancel/retry controls, usage, and cost estimates
+- [x] The UI exposes failure, cancel/retry controls, usage, and cost estimates
       when available without claiming certainty about unknown costs.
-- [ ] Fake-provider tests cover the workflow; the owner separately evaluates one
+- [x] Fake-provider tests cover the workflow; the owner separately evaluates one
       real research task. Automated tests need no real API keys.
+
+### Handoff
+
+- Implemented: the provider seam is now a tool-calling conversation loop
+  (`packages/agent/src/provider.ts` — `LlmProvider.step()` over `AgentMessage`
+  items returning final text with url citations, or tool calls plus
+  hosted-search counts and token usage). `OpenAIProvider` calls the OpenAI
+  **Responses API** (`POST /v1/responses`) with hosted `web_search` plus the
+  function tools; `url_citation` annotations become the brief's citations and
+  token usage lands on run rows. The executor runs the bounded loop: a policy
+  system message states that retrieved page content is untrusted data and
+  never instructions; owner constraints and starting URLs enter the user
+  message; starting URLs are deterministically prefetched through `fetch_page`
+  (recorded as `step: 0` tool events); tool results are bounded (20k chars),
+  capped (4 calls/step), and unknown tools/invalid arguments surface as
+  failures to the model; the artifact gains a runtime-recorded
+  `## Retrieved sources` appendix (per-URL HTTP status, ms, chars, including
+  failed retrievals) that the model cannot fabricate. `fetch_page`
+  (`packages/agent/src/tools/fetchPage.ts` + `ipGuard.ts`) is the retrieval
+  trust boundary: http(s) only, no embedded credentials, host deny list
+  (localhost/.localhost/.local/.home.arpa/metadata hosts), IP-literal and
+  per-address DNS validation (IPv4 u32 / IPv6 BigInt guard incl.
+  `::ffff:`-mapped v4), an undici dispatcher whose connect-time lookup
+  re-resolves and re-validates every connection (DNS rebinding fails closed),
+  manual redirects with full re-validation (max 4), content-type gate, 2 MB
+  streamed size cap, 15s deadline. apps/api configures the provider via
+  `OPENFROST_PROVIDER=openai|fake` and `OPENFROST_OPENAI_MODEL` (default
+  `gpt-4.1-mini`); the OpenAI adapter reads the DPAPI-protected key once per
+  process (memory only); `OPENFROST_PROVIDER=fake` scripts a deterministic
+  research run through the real `fetch_page` so the pipeline is exercisable
+  without any key. The web app renders reports with an injection-safe
+  markdown renderer (no `dangerouslySetInnerHTML`, http(s)-only links),
+  collects constraints/starting URLs, shows token usage and list-price cost
+  estimates (labeled as estimates; "no list price on file" when unknown), and
+  polls task detail live while a run is active.
+- Verification: `pnpm lint`, `pnpm test`, `pnpm build` pass locally (126
+  tests: 31 domain, 26 db, 41 agent, 28 api — all fake-provider, zero paid
+  calls) and in CI on `windows-latest`. Browser-verified end to end on a temp
+  home with `OPENFROST_PROVIDER=fake`: onboarding → submit task with
+  constraints + starting URL → live progress → saved report rendered as
+  markdown with real retrieval timings (HTTP 200, ~1s/0.7s, recorded by the
+  runtime) → full runtime restart → report, retrieval records, and usage
+  still present. SSRF matrix covered by injected-resolver/fetch tests
+  (redirect-to-private, literal IPs, DNS-private, metadata hosts, ftp,
+  credentials, oversized body, bad content type).
+- Not run/verified: a real OpenAI call. The provider path is implemented and
+  unit-tested with injected transports, but per this criterion the owner
+  separately evaluates one real research task (store a key in Settings, submit
+  a real question, judge report quality). No key was present during
+  development and none was requested.
+- Known limitations: markdown tables in reports render as plain text (the
+  renderer supports a deliberately small surface); hosted web-search timing is
+  not exposed by the provider API (fetch timings are real; search counts are
+  logged as events); cost estimates use a static list-price table and are
+  always labeled as estimates; web_search results enter model context through
+  the provider rather than discrete tool results, so the runtime logs search
+  events but not their raw contents; conversations/messages remain unwired
+  (tasks only); NAT64 `64:ff9b::/96` is not in the denied IP ranges.
+- Next: S03 — projects: granted-folder context and evidence-backed updates.
 
 ## S03 — Add project context and evidence-backed updates
 
