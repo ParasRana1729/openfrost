@@ -7,3 +7,4 @@ export * from './executor.js';
 export * from './tools/types.js';
 export * from './tools/ipGuard.js';
 export * from './tools/fetchPage.js';
+export * from './tools/projectFiles.js';

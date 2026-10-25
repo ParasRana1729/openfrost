@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { createTaskRequestSchema } from '@openfrost/domain';
+import { ProjectNotFoundError } from '@openfrost/db';
 import type { AppContext } from '../types.js';
 
 export const makeTaskRoutes = (ctx: AppContext): FastifyPluginAsync => async (app) => {
@@ -9,6 +10,11 @@ export const makeTaskRoutes = (ctx: AppContext): FastifyPluginAsync => async (ap
 
   app.post('/tasks', async (request, reply) => {
     const input = createTaskRequestSchema.parse(request.body);
+    // The contract cannot check store existence; a scoped task must point at
+    // a real project or it would fail later with no way to recover.
+    if (input.projectId !== undefined && ctx.store.projects.get(input.projectId) === null) {
+      throw new ProjectNotFoundError(input.projectId);
+    }
     const task = await ctx.executor.enqueue(input);
     return reply.code(202).send({ task });
   });

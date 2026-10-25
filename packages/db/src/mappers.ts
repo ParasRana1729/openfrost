@@ -1,11 +1,17 @@
 import {
   agentRunSchema,
   artifactSchema,
+  conversationSchema,
   eventSchema,
+  projectFolderGrantSchema,
+  projectSchema,
   taskSchema,
   type AgentRun,
   type Artifact,
+  type Conversation,
   type Event,
+  type Project,
+  type ProjectFolderGrant,
   type RunFailure,
   type RunUsage,
   type Task,
@@ -16,6 +22,8 @@ type TasksRow = typeof schema.tasks.$inferSelect;
 type AgentRunsRow = typeof schema.agentRuns.$inferSelect;
 type ArtifactsRow = typeof schema.artifacts.$inferSelect;
 type EventsRow = typeof schema.events.$inferSelect;
+type ProjectsRow = typeof schema.projects.$inferSelect;
+type ProjectFolderGrantsRow = typeof schema.projectFolderGrants.$inferSelect;
 
 /** Row → entity mappers. Parsing through the Zod contracts keeps the stored
  * shape honest; a mismatch fails loudly instead of leaking bad data. */
@@ -27,6 +35,8 @@ export function toTask(row: TasksRow): Task {
     constraints: row.constraints,
     startingUrls:
       row.startingUrls === null ? null : (JSON.parse(row.startingUrls) as string[]),
+    projectId: row.projectId,
+    kind: row.kind,
     state: row.state,
     attemptCount: row.attemptCount,
     lastRunId: row.lastRunId,
@@ -68,6 +78,34 @@ export function toEvent(row: EventsRow): Event {
     taskId: row.taskId,
     runId: row.runId,
     payload: JSON.parse(row.payloadJson) as Record<string, unknown>,
+    createdAt: row.createdAt,
+  });
+}
+
+export function toProject(row: ProjectsRow): Project {
+  return projectSchema.parse({
+    id: row.id,
+    name: row.name,
+    instructions: row.instructions,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  });
+}
+
+export function toProjectFolderGrant(row: ProjectFolderGrantsRow): ProjectFolderGrant {
+  return projectFolderGrantSchema.parse({
+    id: row.id,
+    projectId: row.projectId,
+    path: row.path,
+    createdAt: row.createdAt,
+  });
+}
+
+export function toConversation(row: typeof schema.conversations.$inferSelect): Conversation {
+  return conversationSchema.parse({
+    id: row.id,
+    title: row.title,
+    projectId: row.projectId,
     createdAt: row.createdAt,
   });
 }

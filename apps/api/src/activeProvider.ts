@@ -3,6 +3,7 @@ import {
   GeminiProvider,
   OpenAIProvider,
   OpenRouterProvider,
+  PROJECT_FILE_INVENTORY_HEADING,
   type LlmProvider,
   type ProviderStepRequest,
   type ProviderStepResult,
@@ -14,7 +15,7 @@ import {
   type Store,
 } from '@openfrost/db';
 import type { ApiConfig } from './config.js';
-import { fakeResearchScript } from './fakeProviderScript.js';
+import { fakeProjectUpdateScript, fakeResearchScript } from './fakeProviderScript.js';
 
 const ACTIVE_PROVIDER_KEY = 'provider.active';
 const modelKey = (provider: ProviderId): string => `provider.model.${provider}`;
@@ -35,11 +36,11 @@ export class ActiveProvider implements LlmProvider {
   readonly #deps: ActiveProviderDeps;
   readonly #adapters = new Map<string, LlmProvider>();
   readonly #keys = new Map<ProviderId, string | null>();
-  readonly #fake: FakeProvider;
+  /** Scripted fake run in progress; a new run (step 1) starts a new script. */
+  #fake: FakeProvider | null = null;
 
   constructor(deps: ActiveProviderDeps) {
     this.#deps = deps;
-    this.#fake = new FakeProvider(fakeResearchScript());
   }
 
   get name(): string {
@@ -70,6 +71,18 @@ export class ActiveProvider implements LlmProvider {
 
   async step(request: ProviderStepRequest): Promise<ProviderStepResult> {
     if (this.#isFakeHook()) {
+      // One fresh scripted run per agent run; the kind follows the task's
+      // first user message (project updates carry the granted-file inventory).
+      if (request.step === 1 || this.#fake === null) {
+        const script = request.messages.some(
+          (message) =>
+            message.role === 'user' &&
+            message.content.includes(PROJECT_FILE_INVENTORY_HEADING),
+        )
+          ? fakeProjectUpdateScript()
+          : fakeResearchScript();
+        this.#fake = new FakeProvider(script);
+      }
       return this.#fake.step(request);
     }
     const { provider, model } = this.current();

@@ -5,13 +5,16 @@ before changing the repository.
 
 ## 1. Current direction and authority
 
-**Current state: S01 local foundation implemented; no model provider yet.** The
-pnpm workspace, shared Zod contracts, SQLite persistence, DPAPI secret storage,
-authenticated loopback API/UI, and the bounded single-run executor exist and are
-covered by `pnpm lint && pnpm test && pnpm build` and CI. Product workflows
-(research briefs, project updates, weekly planning) are not implemented; do not
-claim they work. Do not invent APIs, scripts, migrations, tools, or passing
-checks beyond what the repository actually contains.
+**Current state: S03 projects implemented.** The pnpm workspace, shared Zod
+contracts, SQLite persistence, DPAPI secret storage, authenticated loopback
+API/UI, the bounded single-run executor, the research-brief workflow (OpenAI,
+Gemini, and OpenRouter adapters with hosted web search and an SSRF-hardened
+fetch tool), and the project-update workflow (project CRUD with explicitly
+granted folder roots, canonical-path checks, bounded text/Markdown reads,
+evidence-backed saved updates) exist and are covered by
+`pnpm lint && pnpm test && pnpm build` and CI. Weekly planning is not
+implemented; do not claim it works. Do not invent APIs, scripts, migrations,
+tools, or passing checks beyond what the repository actually contains.
 
 OpenFrost is a Windows-first personal **AI OS** being rebuilt by one owner,
 ParasRana1729. One assistant completes research briefs, project updates, and

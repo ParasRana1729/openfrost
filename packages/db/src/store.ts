@@ -8,17 +8,29 @@ import {
   transitionTask,
   type AgentRun,
   type Artifact,
+  type ArtifactKind,
   type Conversation,
   type Event,
   type EventType,
   type Message,
-  type MessageRole,  type RunFailure,
+  type MessageRole,  type Project,
+  type ProjectFolderGrant,
+  type RunFailure,
   type RunState,
   type RunUsage,
   type Task,
+  type TaskKind,
   type TaskState,
 } from '@openfrost/domain';
-import { toAgentRun, toArtifact, toEvent, toTask } from './mappers.js';
+import {
+  toAgentRun,
+  toArtifact,
+  toConversation,
+  toEvent,
+  toProject,
+  toProjectFolderGrant,
+  toTask,
+} from './mappers.js';
 import { hashPassword, verifyPassword } from './passwords.js';
 import * as schema from './schema.js';
 
@@ -53,6 +65,13 @@ export class TaskNotFoundError extends Error {
   }
 }
 
+export class ProjectNotFoundError extends Error {
+  constructor(projectId: string) {
+    super(`Project ${projectId} not found`);
+    this.name = 'ProjectNotFoundError';
+  }
+}
+
 export interface Store {
   users: {
     count(): number;
@@ -81,6 +100,8 @@ export interface Store {
         request: string;
         constraints?: string | null;
         startingUrls?: string[] | null;
+        projectId?: string | null;
+        kind?: TaskKind;
       },
       now: string,
     ): Task;
@@ -123,13 +144,36 @@ export interface Store {
     listForTask(taskId: string): Event[];
   };
   artifacts: {
-    create(taskId: string | null, markdown: string, now: string): Artifact;
+    create(
+      taskId: string | null,
+      markdown: string,
+      now: string,
+      kind?: ArtifactKind,
+    ): Artifact;
     get(id: string): Artifact | null;
     latestForTask(taskId: string): Artifact | null;
   };
+  projects: {
+    create(
+      input: { name: string; instructions?: string | null },
+      now: string,
+    ): Project;
+    update(
+      id: string,
+      patch: { name?: string; instructions?: string | null },
+      now: string,
+    ): Project;
+    get(id: string): Project | null;
+    list(): Project[];
+    addGrant(projectId: string, canonicalPath: string, now: string): ProjectFolderGrant;
+    removeGrant(projectId: string, grantId: string): void;
+    listGrants(projectId: string): ProjectFolderGrant[];
+  };
   conversations: {
-    create(title: string, now: string): Conversation;
+    create(title: string, now: string, projectId?: string | null): Conversation;
     list(): Conversation[];
+    /** Conversations scoped to one project, plus unscoped conversations. */
+    listByProject(projectId: string): Conversation[];
     get(id: string): Conversation | null;
   };
   messages: {
@@ -231,6 +275,8 @@ export function createStore(db: Db, options: StoreOptions = {}): Store {
         request: string;
         constraints?: string | null;
         startingUrls?: string[] | null;
+        projectId?: string | null;
+        kind?: TaskKind;
       },
       now: string,
     ): Task {
@@ -243,6 +289,8 @@ export function createStore(db: Db, options: StoreOptions = {}): Store {
           input.startingUrls === undefined || input.startingUrls === null
             ? null
             : JSON.stringify(input.startingUrls),
+        projectId: input.projectId ?? null,
+        kind: input.kind ?? ('research_brief' as const),
         state: 'queued' as const,
         attemptCount: 0,
         lastRunId: null,
@@ -466,11 +514,16 @@ export function createStore(db: Db, options: StoreOptions = {}): Store {
   };
 
   const artifacts = {
-    create(taskId: string | null, markdown: string, now: string): Artifact {
+    create(
+      taskId: string | null,
+      markdown: string,
+      now: string,
+      kind: ArtifactKind = 'report',
+    ): Artifact {
       const row = {
         id: randomUUID(),
         taskId,
-        kind: 'report' as const,
+        kind,
         markdown,
         createdAt: now,
       };
@@ -492,21 +545,119 @@ export function createStore(db: Db, options: StoreOptions = {}): Store {
     },
   };
 
+  const projects = {
+    create(
+      input: { name: string; instructions?: string | null },
+      now: string,
+    ): Project {
+      const row = {
+        id: randomUUID(),
+        name: input.name,
+        instructions: input.instructions ?? null,
+        createdAt: now,
+        updatedAt: now,
+      };
+      db.insert(schema.projects).values(row).run();
+      return toProject(row);
+    },
+    update(
+      id: string,
+      patch: { name?: string; instructions?: string | null },
+      now: string,
+    ): Project {
+      return db.transaction((tx) => {
+        const row = tx.select().from(schema.projects).where(eq(schema.projects.id, id)).get();
+        if (!row) {
+          throw new ProjectNotFoundError(id);
+        }
+        const updated: Project = {
+          ...toProject(row),
+          ...(patch.name !== undefined ? { name: patch.name } : {}),
+          ...(patch.instructions !== undefined ? { instructions: patch.instructions } : {}),
+          updatedAt: now,
+        };
+        tx.update(schema.projects)
+          .set({
+            name: updated.name,
+            instructions: updated.instructions,
+            updatedAt: updated.updatedAt,
+          })
+          .where(eq(schema.projects.id, id))
+          .run();
+        return updated;
+      });
+    },
+    get(id: string): Project | null {
+      const row = db.select().from(schema.projects).where(eq(schema.projects.id, id)).get();
+      return row ? toProject(row) : null;
+    },
+    list(): Project[] {
+      return db
+        .select()
+        .from(schema.projects)
+        .orderBy(asc(schema.projects.createdAt), sql`rowid asc`)
+        .all()
+        .map(toProject);
+    },
+    addGrant(projectId: string, canonicalPath: string, now: string): ProjectFolderGrant {
+      const row = {
+        id: randomUUID(),
+        projectId,
+        path: canonicalPath,
+        createdAt: now,
+      };
+      db.insert(schema.projectFolderGrants).values(row).run();
+      return toProjectFolderGrant(row);
+    },
+    removeGrant(projectId: string, grantId: string): void {
+      db.delete(schema.projectFolderGrants)
+        .where(
+          sql`${schema.projectFolderGrants.id} = ${grantId} and ${schema.projectFolderGrants.projectId} = ${projectId}`,
+        )
+        .run();
+    },
+    listGrants(projectId: string): ProjectFolderGrant[] {
+      return db
+        .select()
+        .from(schema.projectFolderGrants)
+        .where(eq(schema.projectFolderGrants.projectId, projectId))
+        .orderBy(asc(schema.projectFolderGrants.createdAt), sql`rowid asc`)
+        .all()
+        .map(toProjectFolderGrant);
+    },
+  };
+
   const conversations = {
-    create(title: string, now: string): Conversation {
-      const row = { id: randomUUID(), title, createdAt: now };
+    create(title: string, now: string, projectId?: string | null): Conversation {
+      const row = {
+        id: randomUUID(),
+        title,
+        projectId: projectId ?? null,
+        createdAt: now,
+      };
       db.insert(schema.conversations).values(row).run();
-      return row;
+      return toConversation(row);
     },
     list(): Conversation[] {
       return db
         .select()
         .from(schema.conversations)
         .orderBy(desc(schema.conversations.createdAt))
-        .all();
+        .all()
+        .map(toConversation);
+    },
+    listByProject(projectId: string): Conversation[] {
+      return db
+        .select()
+        .from(schema.conversations)
+        .where(eq(schema.conversations.projectId, projectId))
+        .orderBy(desc(schema.conversations.createdAt))
+        .all()
+        .map(toConversation);
     },
     get(id: string): Conversation | null {
-      return db.select().from(schema.conversations).where(eq(schema.conversations.id, id)).get() ?? null;
+      const row = db.select().from(schema.conversations).where(eq(schema.conversations.id, id)).get() ?? null;
+      return row ? toConversation(row) : null;
     },
   };
 
@@ -554,5 +705,16 @@ export function createStore(db: Db, options: StoreOptions = {}): Store {
     },
   };
 
-  return { users, sessions, tasks, runs, events, artifacts, conversations, messages, state };
+  return {
+    users,
+    sessions,
+    tasks,
+    runs,
+    events,
+    artifacts,
+    projects,
+    conversations,
+    messages,
+    state,
+  };
 }

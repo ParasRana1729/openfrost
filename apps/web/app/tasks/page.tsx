@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { AgentRun, Event, Task } from '@openfrost/domain';
+import Link from 'next/link';
+import type { AgentRun, Event, Project, ProjectFolderGrant, Task, TaskKind } from '@openfrost/domain';
 import { ApiError, getJson, mutate } from '../../lib/api';
 import { estimateCost, formatCost, loadConfiguredModel } from '../../lib/pricing';
 import { formatTimestamp } from '../../lib/format';
@@ -38,6 +39,16 @@ const LIVE_STATES: ReadonlySet<string> = new Set([
 
 const MAX_STARTING_URLS = 5;
 
+const KIND_LABEL: Record<TaskKind, string> = {
+  research_brief: 'Research brief',
+  project_update: 'Project update',
+};
+
+/** The projects list endpoint returns each project with its grants. */
+interface ProjectOption extends Project {
+  grants: ProjectFolderGrant[];
+}
+
 interface ParsedStartingUrls {
   urls: string[];
   invalid: string[];
@@ -68,10 +79,13 @@ function isHttpUrl(url: string): boolean {
 export default function TasksPage() {
   const { session, loading, refresh } = useSession();
   const [data, setData] = useState<TasksResponse | null>(null);
+  const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [title, setTitle] = useState('');
   const [request, setRequest] = useState('');
   const [constraints, setConstraints] = useState('');
+  const [kind, setKind] = useState<TaskKind>('research_brief');
+  const [projectId, setProjectId] = useState('');
   const [startingUrlsText, setStartingUrlsText] = useState('');
   const [detail, setDetail] = useState<TaskDetail | null>(null);
   const [model, setModel] = useState<string | null>(null);
@@ -95,6 +109,9 @@ export default function TasksPage() {
   useEffect(() => {
     if (session?.authenticated) {
       void refreshTasks();
+      void getJson<{ projects: ProjectOption[] }>('/api/projects')
+        .then((data) => setProjects(data.projects))
+        .catch(() => setProjects([]));
     }
   }, [session?.authenticated, refreshTasks]);
 
@@ -161,16 +178,18 @@ export default function TasksPage() {
   const csrf = session?.csrfToken ?? null;
 
   const parsedUrls = parseStartingUrls(startingUrlsText);
+  // Starting URLs apply to research briefs only; project updates read files.
   const startingUrlsInvalid =
-    parsedUrls.invalid.length > 0 || parsedUrls.urls.length > MAX_STARTING_URLS;
+    kind === 'research_brief' &&
+    (parsedUrls.invalid.length > 0 || parsedUrls.urls.length > MAX_STARTING_URLS);
+  const projectUpdateInvalid = kind === 'project_update' && projectId === '';
+  const selectedProject = projects.find((project) => project.id === projectId) ?? null;
 
   const submitTask = async () => {
-    if (
-      !csrf ||
-      title.trim().length === 0 ||
-      request.trim().length === 0 ||
-      startingUrlsInvalid
-    ) {
+    if (!csrf || title.trim().length === 0 || request.trim().length === 0) {
+      return;
+    }
+    if (startingUrlsInvalid || projectUpdateInvalid) {
       return;
     }
     const body: {
@@ -178,12 +197,17 @@ export default function TasksPage() {
       request: string;
       constraints?: string;
       startingUrls?: string[];
-    } = { title: title.trim(), request: request.trim() };
+      projectId?: string;
+      kind: TaskKind;
+    } = { title: title.trim(), request: request.trim(), kind };
     if (constraints.trim().length > 0) {
       body.constraints = constraints.trim();
     }
-    if (parsedUrls.urls.length > 0) {
+    if (kind === 'research_brief' && parsedUrls.urls.length > 0) {
       body.startingUrls = parsedUrls.urls;
+    }
+    if (projectId !== '') {
+      body.projectId = projectId;
     }
     try {
       await mutate({ method: 'POST', path: '/api/tasks', body, csrfToken: csrf });
@@ -261,6 +285,48 @@ export default function TasksPage() {
 
       <div className="panel">
         <h1>New task</h1>
+        <label htmlFor="kind">Workflow</label>
+        <select
+          id="kind"
+          value={kind}
+          onChange={(e) => setKind(e.target.value as TaskKind)}
+        >
+          <option value="research_brief">
+            Research brief — public web search and page retrieval
+          </option>
+          <option value="project_update">
+            Project update — read a project&apos;s granted files
+          </option>
+        </select>
+        <label htmlFor="project">Project (optional for briefs, required for updates)</label>
+        <select
+          id="project"
+          value={projectId}
+          onChange={(e) => setProjectId(e.target.value)}
+        >
+          <option value="">No project</option>
+          {projects.map((project) => (
+            <option key={project.id} value={project.id}>
+              {project.name}
+            </option>
+          ))}
+        </select>
+        {kind === 'project_update' && projects.length === 0 ? (
+          <p className="error">
+            A project update needs a project with a granted folder. Create one on
+            the <Link href="/projects">projects page</Link> first.
+          </p>
+        ) : null}
+        {kind === 'project_update' && selectedProject ? (
+          <p className="muted">
+            Scoped to <strong>{selectedProject.name}</strong>: the run can read only
+            this project&apos;s granted folders ({selectedProject.grants.length}{' '}
+            granted) and only this project&apos;s instructions apply.{' '}
+            {selectedProject.grants.length === 0
+              ? 'It will fail honestly until a folder is granted.'
+              : ''}
+          </p>
+        ) : null}
         <label htmlFor="title">Title</label>
         <input
           id="title"
@@ -285,15 +351,19 @@ export default function TasksPage() {
           onChange={(e) => setConstraints(e.target.value)}
           placeholder="Prefer local-first tools; budget under $20/month"
         />
-        <label htmlFor="starting-urls">
-          Starting URLs (optional, one per line, max {MAX_STARTING_URLS})
-        </label>
-        <textarea
-          id="starting-urls"
-          value={startingUrlsText}
-          onChange={(e) => setStartingUrlsText(e.target.value)}
-          placeholder={'https://example.com/overview\nhttps://example.com/pricing'}
-        />
+        {kind === 'research_brief' ? (
+          <>
+            <label htmlFor="starting-urls">
+              Starting URLs (optional, one per line, max {MAX_STARTING_URLS})
+            </label>
+            <textarea
+              id="starting-urls"
+              value={startingUrlsText}
+              onChange={(e) => setStartingUrlsText(e.target.value)}
+              placeholder={'https://example.com/overview\nhttps://example.com/pricing'}
+            />
+          </>
+        ) : null}
         {startingUrlsInvalid ? (
           <p className="error">
             {parsedUrls.invalid.length > 0
@@ -315,7 +385,8 @@ export default function TasksPage() {
               !csrf ||
               title.trim().length === 0 ||
               request.trim().length === 0 ||
-              startingUrlsInvalid
+              startingUrlsInvalid ||
+              projectUpdateInvalid
             }
             onClick={() => void submitTask()}
           >
@@ -356,6 +427,12 @@ export default function TasksPage() {
                 <span className={`chip ${task.state}`}>{task.state.replace('_', ' ')}</span>
               </div>
               <p className="muted">
+                {KIND_LABEL[task.kind] ?? task.kind}
+                {task.projectId
+                  ? ` · project: ${projects.find((p) => p.id === task.projectId)?.name ?? task.projectId.slice(0, 8) + '…'}`
+                  : ''}
+              </p>
+              <p className="muted">
                 attempts: {task.attemptCount}
                 {task.error ? ` · last error: ${task.error}` : ''}
               </p>
@@ -382,6 +459,12 @@ export default function TasksPage() {
             </span>
           </h2>
           <p className="muted">{detail.task.request}</p>
+          <p className="muted">
+            <strong>Workflow:</strong> {KIND_LABEL[detail.task.kind] ?? detail.task.kind}
+            {detail.task.projectId
+              ? ` · scoped to project ${projects.find((p) => p.id === detail.task.projectId)?.name ?? detail.task.projectId.slice(0, 8) + '…'}`
+              : ''}
+          </p>
           {detail.task.constraints ? (
             <p className="muted">
               <strong>Constraints:</strong> {detail.task.constraints}
@@ -406,7 +489,9 @@ export default function TasksPage() {
           ) : null}
           {detail.artifact ? (
             <>
-              <h2>Saved report</h2>
+              <h2>
+                {detail.task.kind === 'project_update' ? 'Saved update' : 'Saved report'}
+              </h2>
               <MarkdownView markdown={detail.artifact.markdown} />
             </>
           ) : null}

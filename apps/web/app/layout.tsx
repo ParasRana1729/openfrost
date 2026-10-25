@@ -43,6 +43,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           <span className="links">
             <Link href="/">Home</Link>
             <Link href="/tasks">Tasks</Link>
+            <Link href="/projects">Projects</Link>
             <Link href="/settings">Settings</Link>
           </span>
         </nav>

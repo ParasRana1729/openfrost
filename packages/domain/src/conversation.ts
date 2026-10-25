@@ -3,6 +3,8 @@ import { z } from 'zod';
 export const conversationSchema = z.strictObject({
   id: z.string().min(1),
   title: z.string().min(1).max(200),
+  /** Project the conversation is scoped to, when the owner chose one. */
+  projectId: z.string().min(1).nullable(),
   createdAt: z.string().min(1),
 });
 export type Conversation = z.infer<typeof conversationSchema>;

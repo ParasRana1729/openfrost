@@ -10,6 +10,7 @@ import {
 import {
   DpapiUnavailableError,
   OwnerExistsError,
+  ProjectNotFoundError,
   TaskNotFoundError,
   createStore,
   openDatabase,
@@ -24,6 +25,7 @@ import type { AppContext, BuildAppOptions } from './types.js';
 import { makeAuthRoutes } from './routes/auth.js';
 import { makeSettingsRoutes } from './routes/settings.js';
 import { makeTaskRoutes } from './routes/tasks.js';
+import { makeProjectRoutes } from './routes/projects.js';
 import { makeDispatchRoutes } from './routes/dispatch.js';
 import { makeEventRoutes } from './routes/events.js';
 
@@ -127,6 +129,9 @@ export async function buildApp(options: BuildAppOptions, logger?: Logger | false
     if (err instanceof TaskNotFoundError) {
       return reply.code(404).send({ error: err.message });
     }
+    if (err instanceof ProjectNotFoundError) {
+      return reply.code(404).send({ error: err.message });
+    }
     if (err instanceof InvalidTransitionError) {
       return reply.code(409).send({ error: err.message });
     }
@@ -203,6 +208,7 @@ export async function buildApp(options: BuildAppOptions, logger?: Logger | false
         }
       });
       await protectedScope.register(makeTaskRoutes(ctx));
+      await protectedScope.register(makeProjectRoutes(ctx));
       await protectedScope.register(
         makeSettingsRoutes(
           ctx,

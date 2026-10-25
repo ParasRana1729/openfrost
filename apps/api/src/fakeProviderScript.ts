@@ -1,4 +1,4 @@
-import type { ScriptedStep } from '@openfrost/agent';
+import { FIRST_FILE_TOKEN, type ScriptedStep } from '@openfrost/agent';
 
 /**
  * Dev/test provider script for OPENFROST_PROVIDER=fake: a deterministic
@@ -48,6 +48,56 @@ export function fakeResearchScript(): ScriptedStep[] {
         '',
         '- Everything here is scripted; no model reasoning occurred.',
         '- Hosted web-search timing is not exposed by the provider API.',
+      ].join('\n'),
+    },
+  ];
+}
+
+/**
+ * The fake project-update counterpart: reads the first file from the run's
+ * granted-file inventory (substituted by the fake provider from the task
+ * message) and produces an honest update-shaped report. Lets the S03
+ * project-update workflow be exercised in a browser without any API key.
+ */
+export function fakeProjectUpdateScript(): ScriptedStep[] {
+  return [
+    {
+      type: 'tool_calls',
+      calls: [
+        {
+          name: 'read_project_file',
+          argsJson: JSON.stringify({ path: FIRST_FILE_TOKEN }),
+        },
+      ],
+    },
+    {
+      type: 'final',
+      usage: { inputTokens: 980, outputTokens: 310 },
+      text: [
+        '## Documented progress',
+        '',
+        'This is a scripted development update produced by the fake provider',
+        '(`OPENFROST_PROVIDER=fake`), not a real model. It demonstrates the',
+        'project-update pipeline: granted-folder enumeration, a bounded file',
+        'read, and a saved artifact whose file appendix is recorded by the',
+        'runtime.',
+        '',
+        'The notes state that this file was readable; nothing in this update',
+        'is evidence that any feature shipped or a test passed.',
+        '',
+        '## Stated blockers',
+        '',
+        '- None can be stated from a scripted run.',
+        '',
+        '## Unknowns',
+        '',
+        '- If the requested file failed to read, the update is grounded in',
+        '  nothing; the file appendix below records the real outcome.',
+        '',
+        '## Proposed next steps',
+        '',
+        '- Replace this scripted run with a real model (Settings) and judge',
+        '  the update from the cited files and excerpts.',
       ].join('\n'),
     },
   ];

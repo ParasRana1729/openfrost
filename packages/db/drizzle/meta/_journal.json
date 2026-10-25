@@ -15,6 +15,13 @@
       "when": 1792917032385,
       "tag": "0001_task-source-scope",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1792933861954,
+      "tag": "0002_projects",
+      "breakpoints": true
     }
   ]
 }
