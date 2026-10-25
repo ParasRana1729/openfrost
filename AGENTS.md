@@ -5,16 +5,18 @@ before changing the repository.
 
 ## 1. Current direction and authority
 
-**Current state: S04 approval-bound export implemented.** The pnpm workspace,
+**Current state: S05 owner-approved memory implemented.** The pnpm workspace,
 shared Zod contracts, SQLite persistence, DPAPI secret storage, authenticated
 loopback API/UI, the bounded single-run executor, the research-brief workflow
 (OpenAI, Gemini, and OpenRouter adapters with hosted web search and an
 SSRF-hardened fetch tool), the project-update workflow (project CRUD with
 explicitly granted folder roots, canonical-path checks, bounded text/Markdown
-reads, evidence-backed saved updates), and the approval-bound export workflow
+reads, evidence-backed saved updates), the approval-bound export workflow
 (granted destinations, exact-proposal review with expiry and audit events,
-create-only guarded writes) exist and are covered by
-`pnpm lint && pnpm test && pnpm build` and CI. Weekly planning is not
+create-only guarded writes), and owner-approved memory (canonical Markdown
+files, inspectable proposals, scope-isolated retrieval, external-edit
+detection) exist and are covered by
+`pnpm lint && pnpm test && pnpm build` and CI. S06 weekly planning is not
 implemented; do not claim it works. Do not invent APIs, scripts, migrations,
 tools, or passing checks beyond what the repository actually contains.
 

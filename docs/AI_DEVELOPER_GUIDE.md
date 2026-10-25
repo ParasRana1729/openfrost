@@ -17,19 +17,22 @@ Then inspect current `origin/main`, relevant recent commits/PRs, and the assigne
 entry's handoff. Those are shared context; do not assume another agent's private
 conversation or unpushed edits are available.
 
-**Current state: S01 local foundation implemented; no model provider yet.** The
-workspace, contracts, persistence, DPAPI secrets, loopback API/UI, tests, and
-CI are present. The three product workflows are still a plan (S02+); check the
-solo backlog for what actually exists before building.
+**Current state: S05 owner-approved memory implemented.** S01–S05 are complete:
+the workspace, contracts, persistence, DPAPI secrets, loopback API/UI, bounded
+executor, research briefs, project updates, approval-bound export, and
+owner-approved memory exist and pass the project checks. S06 weekly planning and
+S07 release hardening remain planned. Check the solo backlog handoffs for exact
+evidence and limitations before building.
 
 ## 2. Set up and choose one slice
 
-Start with S01 in the solo backlog. Create the minimal workspace, pin a supported
-Node.js LTS version and pnpm version, define working scripts, and document setup
-as part of that assignment. There are no install/start/test commands to run yet.
+Start with the current assignment. S06 weekly planning is next, but implement it
+only when explicitly assigned. Check the solo backlog entry and handoffs, then
+confirm its dependencies in the code. The toolchain exists: `pnpm install`,
+`pnpm lint`, `pnpm test`, `pnpm build`, and `pnpm dev` are the working commands.
 
-Never put a real API key in `.env`, a prompt, or an issue. DPAPI-backed credential
-setup is an S01 deliverable, not a capability this baseline already provides.
+Never put a real API key in `.env`, a prompt, or an issue. Provider keys are
+stored only through Settings and Windows DPAPI.
 
 Use a focused topic branch, for example `feat/s02-research-brief`. Check that the
 slice's dependencies actually work before building on them.
@@ -42,7 +45,7 @@ Read AGENTS.md and docs/ai-os-project-spec.md.
 
 Implement only <S-ID and title> from backlog/solo-rebuild.md.
 Check the actual repository state and follow the item's acceptance criteria.
-Do not invent existing components beyond the S01 foundation; check the backlog handoff.
+Do not invent existing components beyond what the repository actually contains; check the backlog handoff.
 Create only what the assigned slice needs and preserve unrelated work.
 
 Use strict TypeScript, shared Zod contracts in packages/domain, and Vitest tests.
@@ -60,21 +63,21 @@ Do not merge incomplete work, implement another slice, force-push shared history
 change repository settings, or deploy under this authorization.
 ```
 
-Use `S01 — Establish the minimal local task foundation` as the next implementation
-assignment. Research briefs are the first end-to-end product slice after that.
 Replace the placeholder with the specific task before sending the assignment;
-the merge authorization applies to that scope, not the whole backlog.
+the merge authorization applies to that scope, not the whole backlog. Use the
+currently assigned slice (S06 when assigned); the earlier slices are implemented.
 
 ## 4. Verify the implementation
 
-S01 must define the scripts for the exact project checks:
+The project defines the scripts for the exact project checks:
 
 ```bash
 pnpm lint && pnpm test && pnpm build
 ```
 
-They are not runnable before that toolchain exists. Never claim missing checks
-passed. For specification-only work, check local links, consistency, and contents.
+They exist and CI runs them on `windows-latest`. Never claim checks passed when
+they were not run. For documentation-only work, check local links, consistency,
+and contents.
 
 Then exercise the slice's workflow: submit a task, inspect its result and evidence,
 and test applicable failure, permission, cancellation, and restart behavior.

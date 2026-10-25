@@ -3,12 +3,13 @@
 > One personal AI agent that turns requests and recurring responsibilities into
 > completed work, with useful memory, visible progress, and owner control.
 
-**Status: S04 approval-bound export implemented — two of the three workflows work.**
+**Status: S05 owner-approved memory implemented — two of the three workflows work.**
 
 OpenFrost is a solo project owned by ParasRana1729. What ships today is the S01
 foundation plus the S02 research-brief workflow, the S03 project-update
-workflow, and S04 approval-bound export (granted destinations, exact-proposal
-review, create-only writes). With a provider key stored in Settings (OpenAI, Gemini, or
+workflow, S04 approval-bound export (granted destinations, exact-proposal
+review, create-only writes), and S05 owner-approved memory. With a provider key
+stored in Settings (OpenAI, Gemini, or
 OpenRouter — your choice in Settings), a submitted question (with optional
 constraints and starting URLs) runs as a bounded agent task — provider-backed
 web search plus a hardened public-page fetch — and saves a Markdown report with
@@ -21,7 +22,12 @@ evidence-backed update citing file paths and excerpts. Saved reports can be
 exported as **new** Markdown files into an owner-granted destination — but only
 after the owner approves the exact proposal (destination, filename, content
 hash) in the web app; the write is revalidated at execution and never
-overwrites. Weekly planning is **not implemented yet** (S06).
+overwrites. The assistant can propose durable memory during a task, but nothing
+enters future context until the owner approves it on the Memory page: global
+preferences for every task plus only the active project's facts. Canonical
+memory is Markdown, edits and deletions take effect for future retrieval, and
+deleting an entry keeps the source task and report history. Weekly planning is
+**not implemented yet** (S06).
 
 ## The direction
 
@@ -46,30 +52,34 @@ Local-first does not mean offline: selected context is sent to the model/search
 provider. The PC must be awake and the runtime running; work can continue after
 the browser closes, but not while the PC is off.
 
-Tools will start with public web research, granted-folder reads, and approved
-export of new reports. No arbitrary shell, browser/OS computer use, Telegram,
-agent teams, cloud workers, or plugin marketplace in v0.1.
+Tools will start with public web research, granted-folder reads, approved
+export of new reports, and memory proposals. No arbitrary shell, browser/OS
+computer use, Telegram, agent teams, cloud workers, or plugin marketplace in
+v0.1.
 
 See the [product one-pager](docs/product-one-pager.md) and
 [full specification](docs/ai-os-project-spec.md) for the accepted scope and
 release gates. They describe planned behavior; the table above tracks what is
 real today.
 
-## What is implemented (S01)
+## What is implemented (S01–S05)
 
 - **Workspace and toolchain:** pnpm workspace with Node 24 LTS
   (`.nvmrc`; engines allow 24–26) and pnpm pinned in `packageManager`.
   `pnpm lint && pnpm test && pnpm build` are the required checks and run on
   `windows-latest` in GitHub Actions.
 - **`packages/domain`:** Zod contracts for tasks, agent runs, conversations,
-  messages, artifacts, append-only events, risk tiers, execution limits, and
-  settings, with enforced task/run state-transition maps.
+  messages, artifacts, append-only events, risk tiers, execution limits,
+  settings, and owner-approved memory (entries, proposals, snapshots, Markdown
+  block format), with enforced task/run state-transition maps.
 - **`packages/db`:** SQLite + Drizzle migrations under
   `%USERPROFILE%\.openfrost\db\openfrost.db` (owner override:
   `OPENFROST_HOME`). Data survives restarts; migrations never reset it.
   Provider keys are sealed with real Windows DPAPI
   (CryptProtectData/CryptUnprotectData, CurrentUser scope) and fail closed
-  off Windows.
+  off Windows. Approved memory content lives in canonical Markdown under
+  `memory\owner.md` and `projects\<id>\memory.md`; SQLite keeps pending
+  proposals and rebuildable metadata indexes, not a second content copy.
 - **`packages/agent`** — one global executor; one run at a time, finite
   step/wall-clock/input/output limits, cancellation, explicit retries with
   visible attempt history, and restart recovery that marks unfinished runs
@@ -93,7 +103,11 @@ real today.
   destination, safe filename), parks in `awaiting_approval` while the owner
   reviews it in the web app, and on approval revalidates everything before a
   single create-only write — refusals, rejections, expiries, and restarts are
-  always visible and never replayed. A deterministic fake provider covers all
+  always visible and never replayed. S05 adds owner-approved memory: a
+  `propose_memory` tool is available to every model-backed run (bounded,
+  duplicate- and credential-refusing), and task prompts receive only approved
+  global preferences plus the active project's facts from Markdown, never
+  pending proposals or another project's entries. A deterministic fake provider covers all
   of this in tests — no paid API calls anywhere in CI.
 - **`apps/api`**: Fastify bound to `127.0.0.1` with first-run owner setup,
   scrypt passwords, HttpOnly SameSite=Strict sessions, session-bound CSRF
@@ -103,7 +117,9 @@ real today.
   `OPENFROST_GEMINI_MODEL` (default `gemini-3.8-flash`),
   `OPENFROST_OPENROUTER_MODEL` (default `openrouter/auto`); the active provider
   is chosen in Settings; `OPENFROST_PROVIDER=fake` is a documented dev/test hook that scripts a
-  research run without any API key.
+  research run without any API key. Authenticated memory routes expose
+  proposals, file state, hashes, and owner decisions; every mutation requires
+  the page's current file hash and CSRF token.
 - **`apps/web`:** local Next.js UI on `127.0.0.1:3000` with a frost visual
   identity — a dispatch status strip, a dark runtime-console activity log, and
   mono system data — onboarding with the required data-transmission and
@@ -112,7 +128,10 @@ real today.
   with list-price cost estimates (labeled as estimates; unknown when no price
   is on file), markdown report/update rendering, dispatch-resume review, the
   Projects page (create/edit projects, grant/revoke folder roots with
-  canonicalization, per-project transmission disclosure), and provider
+  canonicalization, per-project transmission disclosure), the Memory page
+  (pending proposals with scope/source/date and editable approval, global and
+  project entries with edit/delete, external-edit warnings, reload, decision
+  history), and provider
   settings — active provider (OpenAI, Gemini, or OpenRouter), per-provider
   DPAPI-protected keys and models — and execution limits.
 
@@ -128,7 +147,7 @@ Requires Windows (DPAPI), Node.js 24+ (`24` line; 26 works), and pnpm 10
 pnpm install          # installs all workspace dependencies
 pnpm build            # builds all packages and the web app (do this first)
 pnpm lint             # eslint across the workspace
-pnpm test             # vitest in every package (226 tests; includes real
+pnpm test             # vitest in every package (265 tests; includes real
                       #   DPAPI round-trips on Windows)
 pnpm dev              # API on 127.0.0.1:8787 and web on 127.0.0.1:3000
 ```
@@ -166,6 +185,7 @@ AGENTS.md / CONTRIBUTING.md  Engineering, security, and landing workflow
 - [Developer guide](docs/AI_DEVELOPER_GUIDE.md): working one slice at a time.
 - [Contributing](CONTRIBUTING.md): branch, verification, and review conventions.
 
-The next assigned slice is **S05: owner-approved memory**. Implement only the
+The next assigned slice is **S06: owner-confirmed weekly planning routines**.
+Implement only the
 assigned slice, never real credentials in `.env`, prompts, or repository
 files; the credential flow uses DPAPI.
