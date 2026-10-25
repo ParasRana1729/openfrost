@@ -126,20 +126,22 @@ export class FakeProvider implements LlmProvider {
           citations: step.citations ?? [],
           usage: step.usage ?? NO_TOKENS,
         };
-      case 'tool_calls':
+      case 'tool_calls': {
+        const substitute = firstInventoryPath(request.messages) ?? 'C:\\no-project-file-inventory';
+        // The path lands inside a JSON string literal, so it must be escaped
+        // (a raw Windows path would otherwise smuggle \n and \a escapes).
+        const escaped = JSON.stringify(substitute).slice(1, -1);
         return {
           kind: 'tool_calls',
           calls: step.calls.map((call) => ({
             id: `fake-call-${(this.#callCounter += 1)}`,
             name: call.name,
-            argsJson: call.argsJson.replaceAll(
-              FIRST_FILE_TOKEN,
-              () => firstInventoryPath(request.messages) ?? 'C:\\no-project-file-inventory',
-            ),
+            argsJson: call.argsJson.replaceAll(FIRST_FILE_TOKEN, () => escaped),
           })),
           searches: step.searches ?? 0,
           usage: step.usage ?? NO_TOKENS,
         };
+      }
       case 'continue':
       case 'hang':
         return { kind: 'tool_calls', calls: [], searches: 0, usage: NO_TOKENS };

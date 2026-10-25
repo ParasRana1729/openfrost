@@ -51,7 +51,7 @@ export const makeProjectRoutes = (ctx: AppContext): FastifyPluginAsync => async 
       { payload: { projectId: project.id, name: project.name } },
       ctx.now(),
     );
-    return reply.code(201).send({ project });
+    return reply.code(201).send({ project: { ...project, grants: [] } });
   });
 
   app.get('/projects/:projectId', async (request) => {

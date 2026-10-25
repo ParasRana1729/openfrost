@@ -440,6 +440,9 @@ export class TaskExecutor {
       } else {
         runTools = this.tools;
       }
+      // Per-run dispatch map: project updates carry a tool bound to this
+      // task's project, which is not part of the constructor-level tool set.
+      const runToolsByName = new Map(runTools.map((tool) => [tool.definition.name, tool]));
       const messages: AgentMessage[] = [
         {
           role: 'system',
@@ -537,7 +540,7 @@ export class TaskExecutor {
           );
         }
         messages.push({ role: 'tool_calls', calls: result.calls });
-        await this.#executeToolCalls(taskId, run.id, step, result.calls, messages, toolCtx, controller.signal);
+        await this.#executeToolCalls(taskId, run.id, step, result.calls, messages, runToolsByName, toolCtx, controller.signal);
       }
       throw new LimitReachedError(
         'max_steps',
@@ -568,6 +571,18 @@ export class TaskExecutor {
     const lines = [`Task: ${task.title}`, '', task.request, ''];
     if (task.constraints) {
       lines.push(`Owner constraints: ${task.constraints}`, '');
+    }
+    // A project-scoped brief runs with the project's standing instructions;
+    // granted files stay exclusive to project updates (workflow B).
+    if (task.projectId) {
+      const project = this.store.projects.get(task.projectId);
+      if (project?.instructions) {
+        lines.push(
+          'Project instructions (owner-authored, from the project this task is scoped to):',
+          project.instructions,
+          '',
+        );
+      }
     }
     const startingUrls = (task.startingUrls ?? []).slice(0, MAX_STARTING_URLS);
     if (startingUrls.length === 0) {
@@ -612,12 +627,13 @@ export class TaskExecutor {
     step: number,
     calls: Array<{ id: string; name: string; argsJson: string }>,
     messages: AgentMessage[],
+    toolsByName: Map<string, AgentTool>,
     ctx: RunToolRecords,
     signal: AbortSignal,
   ): Promise<void> {
     const callable = calls.slice(0, MAX_TOOL_CALLS_PER_STEP);
     for (const call of callable) {
-      const tool = this.#toolsByName.get(call.name);
+      const tool = toolsByName.get(call.name);
       const outcome = tool
         ? await this.#runTool(tool, call.argsJson, ctx, signal)
         : { ok: false, content: `Unknown tool: ${call.name}`, durationMs: 0 };
@@ -931,26 +947,16 @@ export class TaskExecutor {
       lines.push('No granted-folder access was recorded for this run.\n');
       return lines.join('\n');
     }
-    // A file can appear twice (listed by the enumeration, then read or
-    // refused); the most informative outcome wins.
+    // A file can appear several times (listed by the enumeration, then read,
+    // then refused after a mid-run revocation); the most recent outcome wins,
+    // in the order the paths were first seen.
     const byPath = new Map<string, FileAccessRecord>();
     const order: string[] = [];
-    const precedence: Record<FileAccessRecord['status'], number> = {
-      read: 4,
-      failed: 3,
-      available: 2,
-      skipped: 1,
-      root_error: 1,
-      limit: 0,
-    };
     for (const record of records) {
-      const existing = byPath.get(record.path);
-      if (!existing) {
-        byPath.set(record.path, record);
+      if (!byPath.has(record.path)) {
         order.push(record.path);
-      } else if (precedence[record.status] >= precedence[existing.status]) {
-        byPath.set(record.path, record);
       }
+      byPath.set(record.path, record);
     }
     for (const path of order) {
       const record = byPath.get(path);
