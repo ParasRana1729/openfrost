@@ -352,7 +352,7 @@ export class TaskExecutor {
       }
 
       for (let step = 1; step <= this.limits.maxSteps; step += 1) {
-        if (Date.now() > deadlineMs) {
+        if (Date.now() >= deadlineMs) {
           throw new LimitReachedError(
             'wall_clock',
             `Run exceeded its ${this.limits.maxWallClockMs} ms wall-clock limit.`,
@@ -440,12 +440,13 @@ export class TaskExecutor {
   }
 
   /** Classify an abort: shutdown → interrupted, deadline → wall-clock limit,
-   * otherwise the owner canceled. */
+   * otherwise the owner canceled. The timer fires at the deadline, so the
+   * same millisecond still counts as limit reached (>=, not >). */
   private abortOutcome(deadlineMs: number): Error {
     if (this.#shutdown) {
       return abortError();
     }
-    if (Date.now() > deadlineMs) {
+    if (Date.now() >= deadlineMs) {
       return new LimitReachedError(
         'wall_clock',
         `Run exceeded its ${this.limits.maxWallClockMs} ms wall-clock limit.`,
