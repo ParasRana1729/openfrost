@@ -26,6 +26,7 @@ export const sessions = sqliteTable('sessions', {
 export const conversations = sqliteTable('conversations', {
   id: text('id').primaryKey(),
   title: text('title').notNull(),
+  projectId: text('project_id'),
   createdAt: text('created_at').notNull(),
 });
 
@@ -39,6 +40,31 @@ export const messages = sqliteTable('messages', {
   createdAt: text('created_at').notNull(),
 });
 
+/**
+ * Projects scope one assistant's context (spec §4). Deleting projects is not
+ * supported in v0.1, so tasks can reference projects without cascade rules.
+ */
+export const projects = sqliteTable('projects', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  instructions: text('instructions'),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+});
+
+/**
+ * Folder roots the owner explicitly granted to a project. `path` stores the
+ * canonical absolute path recorded at grant time; tool execution re-checks it.
+ */
+export const projectFolderGrants = sqliteTable('project_folder_grants', {
+  id: text('id').primaryKey(),
+  projectId: text('project_id')
+    .notNull()
+    .references(() => projects.id),
+  path: text('path').notNull(),
+  createdAt: text('created_at').notNull(),
+});
+
 export const tasks = sqliteTable('tasks', {
   id: text('id').primaryKey(),
   title: text('title').notNull(),
@@ -46,6 +72,9 @@ export const tasks = sqliteTable('tasks', {
   constraints: text('constraints'),
   /** JSON array of http(s) URLs, or null. */
   startingUrls: text('starting_urls'),
+  projectId: text('project_id'),
+  /** 'research_brief' | 'project_update' (spec workflows). */
+  kind: text('kind').notNull().default('research_brief'),
   state: text('state').notNull(),
   attemptCount: integer('attempt_count').notNull().default(0),
   lastRunId: text('last_run_id'),

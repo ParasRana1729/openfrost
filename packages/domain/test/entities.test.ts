@@ -96,7 +96,22 @@ describe('run transitions', () => {
 
 describe('conversation and message schemas', () => {
   it('accepts a valid conversation and message', () => {
-    expect(conversationSchema.parse({ id: 'c1', title: 'Research chat', createdAt: NOW })).toBeTruthy();
+    expect(
+      conversationSchema.parse({
+        id: 'c1',
+        title: 'Research chat',
+        projectId: null,
+        createdAt: NOW,
+      }),
+    ).toBeTruthy();
+    expect(
+      conversationSchema.parse({
+        id: 'c1',
+        title: 'Research chat',
+        projectId: 'project-1',
+        createdAt: NOW,
+      }).projectId,
+    ).toBe('project-1');
     expect(
       messageSchema.parse({
         id: 'm1',

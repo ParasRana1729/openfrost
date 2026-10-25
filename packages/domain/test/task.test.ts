@@ -20,6 +20,8 @@ function sampleTask(overrides: Partial<Task> = {}): Task {
     request: 'Compare Obsidian, Logseq, and Notion for research notes.',
     constraints: null,
     startingUrls: null,
+    projectId: null,
+    kind: 'research_brief',
     state: 'queued',
     attemptCount: 0,
     lastRunId: null,
@@ -119,6 +121,33 @@ describe('createTaskRequest schema', () => {
     expect(() =>
       createTaskRequestSchema.parse({ title: 't', request: 'x', extra: 1 }),
     ).toThrowError();
+  });
+
+  it('accepts an optional project scope and task kind', () => {
+    const parsed = createTaskRequestSchema.parse({
+      title: 'Update',
+      request: 'Prepare a progress update from my notes.',
+      projectId: 'project-1',
+      kind: 'project_update',
+    });
+    expect(parsed.projectId).toBe('project-1');
+    expect(parsed.kind).toBe('project_update');
+  });
+
+  it('requires a project for project updates and defaults the kind', () => {
+    expect(() =>
+      createTaskRequestSchema.parse({ title: 'Update', request: 'x', kind: 'project_update' }),
+    ).toThrowError();
+    const plain = createTaskRequestSchema.parse({ title: 'Research', request: 'x' });
+    expect(plain.kind).toBeUndefined();
+    // Research briefs may be scoped to a project without becoming updates.
+    expect(() =>
+      createTaskRequestSchema.parse({
+        title: 'Research',
+        request: 'x',
+        projectId: 'project-1',
+      }),
+    ).not.toThrowError();
   });
 });
 
