@@ -9,7 +9,7 @@ export const makeTaskRoutes = (ctx: AppContext): FastifyPluginAsync => async (ap
 
   app.post('/tasks', async (request, reply) => {
     const input = createTaskRequestSchema.parse(request.body);
-    const task = await ctx.executor.enqueue(input.title, input.request);
+    const task = await ctx.executor.enqueue(input);
     return reply.code(202).send({ task });
   });
 

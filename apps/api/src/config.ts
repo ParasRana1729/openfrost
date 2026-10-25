@@ -8,6 +8,9 @@ export interface ApiConfig {
   /** Browser origins allowed to call the API (the local web app). */
   webOrigins: string[];
   sessionTtlMs: number;
+  /** 'fake' is a dev/test hook that scripts a research run without any API key. */
+  provider: 'openai' | 'fake';
+  openaiModel: string;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
@@ -19,11 +22,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     .split(',')
     .map((origin) => origin.trim())
     .filter((origin) => origin.length > 0);
+  const provider = env.OPENFROST_PROVIDER === 'fake' ? 'fake' : 'openai';
   return {
     host: '127.0.0.1',
     port,
     homeDir: env.OPENFROST_HOME ?? resolveHome(),
     webOrigins,
     sessionTtlMs: 30 * 24 * 60 * 60 * 1000,
+    provider,
+    openaiModel: env.OPENFROST_OPENAI_MODEL ?? 'gpt-4.1-mini',
   };
 }

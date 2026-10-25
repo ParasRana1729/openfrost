@@ -27,7 +27,7 @@ describe('settings API', () => {
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({
       provider: 'openai',
-      model: null,
+      model: 'gpt-4.1-mini',
       hasProviderKey: false,
     });
     expect(res.json().executionLimits).toMatchObject({ maxSteps: 12 });

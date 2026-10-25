@@ -49,8 +49,8 @@ describe('cancellation', () => {
       { type: 'hang', ms: 5_000 },
       { type: 'final', text: 'should not run' },
     ]);
-    const occupying = await executor.enqueue('Occupying', 'request');
-    const queued = await executor.enqueue('Queued', 'request');
+    const occupying = await executor.enqueue({ title: 'Occupying', request: 'request' });
+    const queued = await executor.enqueue({ title: 'Queued', request: 'request' });
     await settle();
 
     const canceled = executor.cancel(queued.id);
@@ -73,8 +73,8 @@ describe('cancellation', () => {
       limits,
       now: () => at(0),
     });
-    const active = await executor.enqueue('Active', 'request');
-    const waiting = await executor.enqueue('Waiting', 'request');
+    const active = await executor.enqueue({ title: 'Active', request: 'request' });
+    const waiting = await executor.enqueue({ title: 'Waiting', request: 'request' });
     await settle();
     expect(store.tasks.get(active.id)?.state).toBe('running');
     expect(provider.calls).toHaveLength(1);
@@ -93,7 +93,7 @@ describe('cancellation', () => {
 
   it('is a no-op for terminal tasks', async () => {
     const executor = makeExecutor([{ type: 'final', text: 'done' }]);
-    const task = await executor.enqueue('Done', 'request');
+    const task = await executor.enqueue({ title: 'Done', request: 'request' });
     await executor.whenIdle();
     expect(executor.cancel(task.id).state).toBe('completed');
   });
@@ -136,7 +136,7 @@ describe('restart recovery', () => {
 
   it('shutdown interrupts the in-flight run; a fresh start does not double-mark it', async () => {
     const executor = makeExecutor([{ type: 'hang', ms: 30_000 }]);
-    const task = await executor.enqueue('Shutdown', 'request');
+    const task = await executor.enqueue({ title: 'Shutdown', request: 'request' });
     await settle();
     expect(store.tasks.get(task.id)?.state).toBe('running');
 
@@ -157,7 +157,7 @@ describe('restart recovery', () => {
     expect(result.interruptedRuns).toBe(0);
     expect(result.dispatchPaused).toBe(false);
 
-    const task = await executor.enqueue('After clean recover', 'request');
+    const task = await executor.enqueue({ title: 'After clean recover', request: 'request' });
     await executor.whenIdle();
     expect(store.tasks.get(task.id)?.state).toBe('completed');
   });

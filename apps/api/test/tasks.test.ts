@@ -64,6 +64,57 @@ describe('task lifecycle over the API', () => {
     expect(body.events.map((e: { type: string }) => e.type)).toContain('task.completed');
   });
 
+  it('accepts constraints and starting urls and returns them on the task', async () => {
+    const create = await app.built.app.inject({
+      method: 'POST',
+      url: '/api/tasks',
+      headers: jarHeaders(app),
+      payload: {
+        title: 'Sourced research',
+        request: 'Compare the two products for personal use.',
+        constraints: 'Prefer open-source; budget under $20/month.',
+        startingUrls: ['https://example.com/', 'https://www.iana.org/'],
+      },
+    });
+    expect(create.statusCode).toBe(202);
+    const taskId = create.json().task.id as string;
+    expect(create.json().task.constraints).toContain('open-source');
+    expect(create.json().task.startingUrls).toEqual([
+      'https://example.com/',
+      'https://www.iana.org/',
+    ]);
+
+    const detail = await app.built.app.inject({
+      method: 'GET',
+      url: `/api/tasks/${taskId}`,
+      headers: { cookie: app.cookie! },
+    });
+    expect(detail.statusCode).toBe(200);
+    expect(detail.json().task.constraints).toContain('open-source');
+    expect(detail.json().task.startingUrls).toHaveLength(2);
+
+    // Let the run finish so the recovery test below sees only its own
+    // crashed task in a running state.
+    await waitFor(async () => {
+      const tasks = await listTasks();
+      return tasks.some((t) => t.id === taskId && t.state === 'failed');
+    });
+  });
+
+  it('rejects invalid starting urls', async () => {
+    const res = await app.built.app.inject({
+      method: 'POST',
+      url: '/api/tasks',
+      headers: jarHeaders(app),
+      payload: {
+        title: 'Bad urls',
+        request: 'x',
+        startingUrls: ['ftp://example.com/'],
+      },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
   it('rejects retrying a task that is not in a requeueable state', async () => {
     const create = await app.built.app.inject({
       method: 'POST',
@@ -74,7 +125,9 @@ describe('task lifecycle over the API', () => {
     const taskId = create.json().task.id as string;
     await waitFor(async () => {
       const tasks = await listTasks();
-      return tasks.some((t) => t.id === taskId && t.state !== 'queued');
+      return tasks.some(
+        (t) => t.id === taskId && (t.state === 'failed' || t.state === 'completed'),
+      );
     });
     // The scripted provider has run out; the task failed or completed and a
     // completed task cannot be requeued (409), a failed one can.
@@ -89,7 +142,9 @@ describe('task lifecycle over the API', () => {
 
 describe('dispatch review after recovery', () => {
   it('shows interrupted tasks and lets the owner resume dispatch', async () => {
-    // Simulate a crashed run directly in the store, then recover.
+    // Ensure no run from earlier tests is still in flight, then simulate a
+    // crashed run directly in the store and recover.
+    await app.built.executor.whenIdle();
     const crashed = app.store.tasks.create(
       { title: 'Crashed', request: 'r' },
       new Date().toISOString(),
