@@ -98,7 +98,14 @@ export default function SettingsPage() {
           ) : (
             'no key configured'
           )}
-          . Model-backed execution starts with the S02 research slice.
+          .{' '}
+          {settings?.model ? (
+            <>
+              Model: {settings.model}.
+            </>
+          ) : (
+            'Model: not configured — set OPENFROST_OPENAI_MODEL.'
+          )}
         </p>
         <label htmlFor="apikey">{settings?.hasProviderKey ? 'Replace key' : 'OpenAI API key'}</label>
         <input
@@ -156,6 +163,10 @@ export default function SettingsPage() {
             </tr>
           </tbody>
         </table>
+        <p className="muted">
+          Retrieval times reported in saved research briefs come from real page
+          fetches, so slow sites use more of the run&rsquo;s wall-clock budget.
+        </p>
       </div>
 
       <div className="panel">

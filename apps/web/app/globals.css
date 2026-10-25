@@ -401,3 +401,95 @@ td code {
   color: var(--ink);
   font-weight: 600;
 }
+
+/* Rendered report markdown (.md): report typography on the frost tokens.
+   Scoped here so code blocks and other <pre> content keep their own look. */
+.md {
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.md h1,
+.md h2,
+.md h3,
+.md h4,
+.md h5,
+.md h6 {
+  margin: 18px 0 6px;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+}
+
+.md h1 {
+  font-size: 18px;
+}
+
+.md h2 {
+  font-size: 16.5px;
+}
+
+.md h3 {
+  font-size: 15px;
+}
+
+.md h4,
+.md h5,
+.md h6 {
+  font-size: 14px;
+}
+
+.md > :first-child {
+  margin-top: 0;
+}
+
+.md p {
+  margin: 8px 0;
+}
+
+.md ul,
+.md ol {
+  margin: 8px 0;
+  padding-left: 24px;
+}
+
+.md li {
+  margin: 3px 0;
+}
+
+.md blockquote {
+  margin: 10px 0;
+  padding: 6px 14px;
+  border-left: 3px solid var(--line-strong);
+  border-radius: 0 7px 7px 0;
+  background: var(--panel-inset);
+  color: var(--muted);
+}
+
+.md pre {
+  margin: 10px 0;
+}
+
+.md code {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  background: var(--panel-inset);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 1px 5px;
+}
+
+.md pre code {
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+.md hr {
+  border: none;
+  border-top: 1px solid var(--line-strong);
+  margin: 16px 0;
+}
+
+.md a {
+  overflow-wrap: anywhere;
+}
