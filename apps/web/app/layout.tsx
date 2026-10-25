@@ -1,7 +1,32 @@
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
-import Link from 'next/link';
+import { Anton, Archivo, JetBrains_Mono } from 'next/font/google';
+import { SidebarNav } from '../components/SidebarNav';
 import './globals.css';
+
+/**
+ * The polar-instrument type stack, self-hosted by next/font (no runtime
+ * font fetches): Anton carries the display moments, Archivo the UI,
+ * JetBrains Mono the machine truth.
+ */
+const display = Anton({
+  subsets: ['latin'],
+  weight: '400',
+  variable: '--font-display',
+  display: 'swap',
+});
+
+const body = Archivo({
+  subsets: ['latin'],
+  variable: '--font-body',
+  display: 'swap',
+});
+
+const mono = JetBrains_Mono({
+  subsets: ['latin'],
+  variable: '--font-mono',
+  display: 'swap',
+});
 
 export const metadata: Metadata = {
   title: 'OpenFrost',
@@ -12,12 +37,12 @@ function FlakeMark() {
   return (
     <svg
       viewBox="0 0 24 24"
-      width="17"
-      height="17"
+      width="18"
+      height="18"
       aria-hidden="true"
       fill="none"
       stroke="currentColor"
-      strokeWidth="1.6"
+      strokeWidth="1.5"
       strokeLinecap="round"
     >
       {[0, 60, 120].map((rotation) => (
@@ -33,21 +58,25 @@ function FlakeMark() {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" className={`${display.variable} ${body.variable} ${mono.variable}`}>
       <body>
-        <nav className="nav">
-          <span className="brand">
-            <FlakeMark />
-            OpenFrost
-          </span>
-          <span className="links">
-            <Link href="/">Home</Link>
-            <Link href="/tasks">Tasks</Link>
-            <Link href="/projects">Projects</Link>
-            <Link href="/settings">Settings</Link>
-          </span>
-        </nav>
-        <main className="main">{children}</main>
+        <div className="shell">
+          <aside className="sidebar">
+            <span className="brand">
+              <FlakeMark />
+              OpenFrost
+            </span>
+            <SidebarNav />
+            <div className="sidebar-foot">
+              <span className="foot-row">
+                <span className="dot dot-idle" aria-hidden="true" />
+                local runtime
+              </span>
+              <span className="foot-row">loopback only</span>
+            </div>
+          </aside>
+          <main className="main">{children}</main>
+        </div>
       </body>
     </html>
   );

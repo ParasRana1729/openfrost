@@ -1,27 +1,57 @@
+/*
+ * OpenFrost — "Polar Instrument" interface.
+ *
+ * A self-hosted runtime drawn as a precision instrument on a polar night:
+ * condensed display type for the moments that matter, a fono-grade mono for
+ * everything the machine says, hairline structure, and exactly one electric
+ * ice accent. The room is dark and still while idle; when a run owns the
+ * machine, a cold frost bloom rises behind the content (body[data-busy]).
+ */
+
 :root {
-  /* Frost tokens: icy surfaces, deep glacial ink, one cold accent. Amber
-     stays the single warm interruption (warnings, paused dispatch). */
-  --bg: #eef2f6;
-  --panel: #ffffff;
-  --panel-inset: #f6f9fb;
-  --ink: #16283a;
-  --muted: #55687a;
-  --line: #d9e2ea;
-  --line-strong: #bfd0dc;
-  --accent: #0d6a8f;
-  --accent-ink: #ffffff;
-  --accent-soft: #e2eef5;
-  --accent-console: #8fc1dd;
-  --warn-bg: #fdf3e1;
-  --warn-line: #dfb25e;
-  --warn-ink: #7a5a17;
-  --ok: #177245;
-  --bad: #b3362c;
-  --console-bg: #0e2233;
-  --console-line: #1e3c52;
-  --console-ink: #d8e6ef;
-  --console-muted: #8ca6b8;
-  --mono: "Cascadia Mono", "Consolas", ui-monospace, "Cascadia Code", monospace;
+  /* Surfaces — deep indigo night, layered by one step each. */
+  --bg: #06090f;
+  --panel: #0b111c;
+  --panel-inset: #080d16;
+  --raised: #101827;
+  --console-bg: #04070c;
+  --console-line: #12203a;
+
+  --line: #18233a;
+  --line-strong: #26375c;
+
+  /* Ink */
+  --ink: #eaf1f8;
+  --muted: #8fa5bb;
+  --faint: #5a7089;
+
+  /* The single accent: electric ice. Status colors mark states only. */
+  --ice: #45c6f2;
+  --ice-strong: #8fdcf9;
+  --ice-dim: #2a89b8;
+  --ice-wash: rgba(69, 198, 242, 0.09);
+  --ice-edge: rgba(69, 198, 242, 0.45);
+  --on-ice: #04090f;
+
+  --ok: #45e0a6;
+  --warn: #e5b45e;
+  --warn-bg: rgba(229, 180, 94, 0.08);
+  --bad: #f2796b;
+
+  --sans: var(--font-body), "Segoe UI", system-ui, sans-serif;
+  --display: var(--font-display), "Arial Narrow", sans-serif;
+  --mono: var(--font-mono), "Cascadia Mono", Consolas, ui-monospace, monospace;
+
+  /* The reserved bloom, drawn once behind the whole shell. */
+  --bloom:
+    radial-gradient(46% 34% at 30% 0%, rgba(69, 198, 242, 0.24), transparent 70%),
+    radial-gradient(38% 30% at 78% 4%, rgba(94, 224, 178, 0.13), transparent 70%),
+    radial-gradient(60% 44% at 55% -10%, rgba(38, 90, 166, 0.32), transparent 72%);
+
+  /* Radii by hierarchy: composer 10, panels 8, rows and inputs 6. */
+  --r-composer: 10px;
+  --r-panel: 8px;
+  --r-row: 6px;
 }
 
 * {
@@ -32,75 +62,555 @@ html,
 body {
   margin: 0;
   padding: 0;
-  background: var(--bg);
-  color: var(--ink);
-  font-family:
-    "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
-  font-size: 15px;
-  line-height: 1.55;
 }
 
-:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 14.5px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  position: relative;
+}
+
+/* The frost bloom: invisible while idle, rises while a run owns the machine. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background: var(--bloom);
+  opacity: 0;
+  transition: opacity 900ms ease;
+  pointer-events: none;
+  z-index: 0;
+}
+
+body[data-busy='true']::before {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body::before {
+    transition: none;
+  }
 }
 
 a {
-  color: var(--accent);
+  color: var(--ice);
   text-decoration: none;
 }
 
 a:hover {
+  color: var(--ice-strong);
   text-decoration: underline;
 }
 
-.nav {
+:focus-visible {
+  outline: 2px solid var(--ice);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: rgba(69, 198, 242, 0.3);
+}
+
+.mono {
+  font-family: var(--mono);
+}
+
+/* ---------------------------------- shell ---------------------------------- */
+
+.shell {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 24px;
-  background: var(--panel);
-  border-bottom: 1px solid var(--line);
+  min-height: 100vh;
+  position: relative;
+  z-index: 1;
+}
+
+.sidebar {
+  width: 208px;
+  flex: 0 0 208px;
+  display: flex;
+  flex-direction: column;
+  padding: 20px 12px 16px;
+  border-right: 1px solid var(--line);
+  background:
+    repeating-linear-gradient(
+      115deg,
+      transparent 0 34px,
+      rgba(143, 220, 249, 0.022) 34px 35px,
+      transparent 35px 68px,
+      rgba(143, 220, 249, 0.014) 68px 69px
+    ),
+    var(--panel-inset);
+  position: sticky;
+  top: 0;
+  height: 100vh;
 }
 
 .brand {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  font-weight: 650;
-  font-size: 15.5px;
-  letter-spacing: -0.01em;
+  font-family: var(--display);
+  font-size: 17px;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
   color: var(--ink);
+  padding: 2px 10px 18px;
 }
 
 .brand svg {
-  color: var(--accent);
+  color: var(--ice);
+  flex: 0 0 auto;
 }
 
-.nav .links {
+.sidebar .links {
   display: flex;
-  gap: 16px;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sidebar .links a {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 12.5px;
+  padding: 7px 10px;
+  border-radius: var(--r-row);
+  border-left: 2px solid transparent;
+}
+
+.sidebar .links a:hover {
+  color: var(--ink);
+  background: var(--panel);
+  text-decoration: none;
+}
+
+.sidebar .links a[data-active='true'] {
+  color: var(--ice-strong);
+  background: var(--ice-wash);
+  border-left-color: var(--ice);
+}
+
+.sidebar-foot {
+  margin-top: auto;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: var(--faint);
+}
+
+.foot-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
 }
 
 .main {
+  flex: 1;
+  min-width: 0;
   max-width: 880px;
   margin: 0 auto;
-  padding: 24px 20px 64px;
+  padding: 34px 30px 80px;
 }
 
-/* The dispatch strip: one precise line describing the runtime. */
+@media (max-width: 760px) {
+  .shell {
+    flex-direction: column;
+  }
+
+  .sidebar {
+    width: 100%;
+    flex: none;
+    height: auto;
+    position: static;
+    flex-direction: row;
+    align-items: center;
+    padding: 10px 14px;
+    border-right: none;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .brand {
+    padding: 0 12px 0 0;
+  }
+
+  .sidebar .links {
+    flex-direction: row;
+    gap: 4px;
+    overflow-x: auto;
+  }
+
+  .sidebar .links a {
+    padding: 6px 9px;
+    border-left: none;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+  }
+
+  .sidebar .links a[data-active='true'] {
+    border-left: none;
+    border-bottom-color: var(--ice);
+  }
+
+  .sidebar-foot {
+    display: none;
+  }
+
+  .main {
+    padding: 20px 16px 56px;
+  }
+}
+
+/* --------------------------------- panels --------------------------------- */
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r-panel);
+  padding: 18px 20px;
+  margin-bottom: 14px;
+}
+
+.panel h1 {
+  margin: 0 0 10px;
+  font-family: var(--sans);
+  font-size: 17px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.panel > h2 {
+  margin: 0 0 12px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--faint);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.panel > h2::before {
+  content: "";
+  width: 14px;
+  height: 2px;
+  background: var(--ice);
+  flex: 0 0 auto;
+}
+
+.panel > p {
+  margin: 6px 0;
+}
+
+.muted {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.note {
+  background: var(--warn-bg);
+  border: 1px solid rgba(229, 180, 94, 0.38);
+  border-radius: var(--r-row);
+  padding: 10px 14px;
+  margin: 10px 0;
+  color: var(--ink);
+}
+
+.error {
+  color: var(--bad);
+  margin-top: 8px;
+}
+
+.empty {
+  color: var(--muted);
+  padding: 24px 8px;
+  text-align: center;
+}
+
+.empty strong {
+  display: block;
+  color: var(--ink);
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* --------------------------------- forms ---------------------------------- */
+
+label {
+  display: block;
+  font-weight: 600;
+  font-size: 12.5px;
+  margin: 14px 0 5px;
+  color: var(--muted);
+}
+
+input,
+textarea,
+select {
+  width: 100%;
+  font: inherit;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-row);
+  padding: 9px 12px;
+  background: var(--panel-inset);
+  color: var(--ink);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--faint);
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  outline: 2px solid var(--ice-edge);
+  outline-offset: -1px;
+  border-color: var(--ice-edge);
+}
+
+textarea {
+  min-height: 88px;
+  resize: vertical;
+}
+
+button {
+  font: inherit;
+  font-weight: 600;
+  border: 1px solid var(--line-strong);
+  background: var(--panel);
+  color: var(--ink);
+  border-radius: var(--r-row);
+  padding: 7px 14px;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+button:hover:not(:disabled) {
+  background: var(--raised);
+  border-color: var(--ice-dim);
+}
+
+button.primary {
+  background: var(--ice);
+  border-color: var(--ice);
+  color: var(--on-ice);
+}
+
+button.primary:hover:not(:disabled) {
+  background: var(--ice-strong);
+  border-color: var(--ice-strong);
+  box-shadow: 0 0 18px rgba(69, 198, 242, 0.35);
+}
+
+button.primary:disabled {
+  background: var(--panel);
+  border-color: var(--line);
+  color: var(--faint);
+}
+
+button:disabled {
+  opacity: 1;
+  cursor: not-allowed;
+}
+
+button:disabled:not(.primary) {
+  opacity: 0.45;
+}
+
+/* Provider choice: a segmented control of radio-like buttons. */
+.segmented {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  background: var(--panel-inset);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-row);
+}
+
+.segmented button {
+  border-color: transparent;
+  background: transparent;
+  border-radius: 4px;
+  padding: 5px 15px;
+  font-weight: 550;
+  font-family: var(--mono);
+  font-size: 12.5px;
+}
+
+.segmented button:hover:not(:disabled) {
+  background: var(--ice-wash);
+}
+
+.segmented button[aria-checked='true'] {
+  background: var(--ice);
+  border-color: var(--ice);
+  color: var(--on-ice);
+  font-weight: 700;
+}
+
+/* ------------------- hero composer (the instrument head) ------------------- */
+
+.hero-title {
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: clamp(26px, 4.2vw, 40px);
+  line-height: 1.08;
+  letter-spacing: 0.015em;
+  text-transform: uppercase;
+  color: var(--ink);
+  margin: 4px 0 6px;
+  max-width: 21ch;
+}
+
+.hero-title em {
+  font-style: normal;
+  color: var(--ice);
+}
+
+.hero-sub {
+  color: var(--muted);
+  font-size: 14px;
+  margin: 0 0 16px;
+  max-width: 62ch;
+}
+
+.composer {
+  position: relative;
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-composer);
+  padding: 18px 18px 14px;
+  margin-bottom: 14px;
+}
+
+/* Corner brackets: an instrument reticle around the prompt surface. */
+.composer::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  pointer-events: none;
+  background:
+    linear-gradient(var(--ice), var(--ice)) top left / 18px 2px,
+    linear-gradient(var(--ice), var(--ice)) top left / 2px 18px,
+    linear-gradient(var(--ice), var(--ice)) top right / 18px 2px,
+    linear-gradient(var(--ice), var(--ice)) top right / 2px 18px,
+    linear-gradient(var(--ice), var(--ice)) bottom left / 18px 2px,
+    linear-gradient(var(--ice), var(--ice)) bottom left / 2px 18px,
+    linear-gradient(var(--ice), var(--ice)) bottom right / 18px 2px,
+    linear-gradient(var(--ice), var(--ice)) bottom right / 2px 18px;
+  background-repeat: no-repeat;
+}
+
+body[data-busy='true'] .composer {
+  border-color: var(--ice-edge);
+}
+
+.composer label {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--faint);
+  margin: 0 0 4px;
+}
+
+.composer textarea {
+  min-height: 92px;
+  font-size: 15.5px;
+  border: none;
+  background: transparent;
+  padding: 2px 2px 10px;
+}
+
+.composer textarea:focus {
+  outline: none;
+}
+
+.composer-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.composer-hint {
+  margin-left: auto;
+  color: var(--faint);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.chip-toggle {
+  border-radius: 4px;
+  padding: 5px 13px;
+  font-size: 12.5px;
+  font-weight: 550;
+  font-family: var(--mono);
+  background: transparent;
+  border-color: var(--line-strong);
+  color: var(--muted);
+}
+
+.chip-toggle:hover:not(:disabled) {
+  color: var(--ink);
+  border-color: var(--ice-dim);
+}
+
+.chip-toggle[aria-pressed='true'] {
+  background: var(--ice-wash);
+  border-color: var(--ice-edge);
+  color: var(--ice-strong);
+  font-weight: 700;
+}
+
+.composer select {
+  width: auto;
+  min-width: 170px;
+  padding: 5px 10px;
+  font-size: 13px;
+}
+
+/* --------------------------- runtime status strip -------------------------- */
+
 .strip {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 14px;
   flex-wrap: wrap;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 9px 16px;
+  background: var(--console-bg);
+  border: 1px solid var(--console-line);
+  border-radius: var(--r-row);
+  padding: 8px 14px;
   margin-bottom: 16px;
   font-family: var(--mono);
-  font-size: 12.5px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+body[data-busy='true'] .strip {
+  border-color: var(--ice-dim);
 }
 
 .strip-seg {
@@ -111,19 +621,30 @@ a:hover {
 }
 
 .strip-label {
-  color: var(--muted);
+  color: var(--faint);
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.1em;
 }
 
 .strip-sep {
   width: 1px;
-  height: 16px;
-  background: var(--line);
+  height: 13px;
+  background: var(--console-line);
+}
+
+.strip-ok {
+  color: var(--ok);
+}
+
+.strip-paused {
+  color: var(--warn);
 }
 
 .dot {
   display: inline-block;
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
 }
 
@@ -132,312 +653,225 @@ a:hover {
 }
 
 .dot-running {
-  background: var(--accent);
+  background: var(--ice);
+  animation: pulse 1.5s ease-in-out infinite;
+  box-shadow: 0 0 10px rgba(69, 198, 242, 0.7);
 }
 
-.strip-ok {
-  color: var(--ok);
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
 }
 
-.strip-paused {
-  color: var(--warn-ink);
+@media (prefers-reduced-motion: reduce) {
+  .dot-running {
+    animation: none;
+  }
 }
 
-.panel {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 18px 20px;
-  margin-bottom: 16px;
-}
-
-.panel h1,
-.panel h2 {
-  margin: 0 0 10px;
-  font-size: 19px;
-  font-weight: 650;
-  letter-spacing: -0.01em;
-}
-
-.panel p {
-  margin: 6px 0;
-}
-
-.muted {
-  color: var(--muted);
-  font-size: 13.5px;
-}
-
-.note {
-  background: var(--warn-bg);
-  border: 1px solid var(--warn-line);
-  border-radius: 8px;
-  padding: 10px 14px;
-  margin: 10px 0;
-  color: var(--ink);
-}
-
-button {
-  font: inherit;
-  border: 1px solid var(--line-strong);
-  background: var(--panel);
-  color: var(--ink);
-  border-radius: 7px;
-  padding: 6px 14px;
-  cursor: pointer;
-  transition: background-color 120ms ease, border-color 120ms ease;
-}
-
-button:hover:not(:disabled) {
-  background: var(--panel-inset);
-}
-
-button.primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--accent-ink);
-}
-
-button.primary:hover:not(:disabled) {
-  background: #0b5c7d;
-}
-
-button:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-/* Provider choice: a small segmented control of radio-like buttons. */
-.segmented {
-  display: inline-flex;
-  gap: 2px;
-  padding: 2px;
-  background: var(--panel-inset);
-  border: 1px solid var(--line-strong);
-  border-radius: 8px;
-}
-
-.segmented button {
-  border-color: transparent;
-  background: transparent;
-  border-radius: 6px;
-  padding: 4px 16px;
-}
-
-.segmented button:hover:not(:disabled) {
-  background: var(--accent-soft);
-}
-
-.segmented button[aria-checked='true'] {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--accent-ink);
-}
-
-.segmented button[aria-checked='true']:hover:not(:disabled) {
-  background: #0b5c7d;
-}
-
-label {
-  display: block;
-  font-weight: 600;
-  margin: 12px 0 4px;
-}
-
-input,
-textarea {
-  width: 100%;
-  font: inherit;
-  border: 1px solid var(--line-strong);
-  border-radius: 7px;
-  padding: 8px 10px;
-  background: #fff;
-  color: var(--ink);
-}
-
-input:focus,
-textarea:focus {
-  outline: 2px solid var(--accent);
-  outline-offset: -1px;
-}
-
-textarea {
-  min-height: 90px;
-  resize: vertical;
-}
-
-.error {
-  color: var(--bad);
-  margin-top: 8px;
-}
-
-.row {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  flex-wrap: wrap;
-}
+/* -------------------------------- task rows -------------------------------- */
 
 .task {
+  background: var(--panel);
   border: 1px solid var(--line);
-  border-left-width: 3px;
-  border-radius: 8px;
-  padding: 12px 14px;
-  margin-bottom: 10px;
-  background: #fff;
+  border-left: 3px solid var(--line);
+  border-radius: var(--r-panel);
+  padding: 13px 16px;
+  margin-bottom: 9px;
+  transition: border-color 120ms ease;
 }
 
-.task[data-state="running"],
-.task[data-state="awaiting_approval"] {
-  border-left-color: var(--accent);
+.task:hover {
+  border-color: var(--line-strong);
 }
 
-.task[data-state="completed"] {
+.task[data-state='running'],
+.task[data-state='awaiting_approval'] {
+  border-left-color: var(--ice);
+}
+
+.task[data-state='completed'] {
   border-left-color: var(--ok);
 }
 
-.task[data-state="failed"],
-.task[data-state="interrupted"] {
+.task[data-state='failed'],
+.task[data-state='interrupted'] {
   border-left-color: var(--bad);
 }
 
-.task[data-state="queued"] {
+.task[data-state='queued'] {
   border-left-color: var(--line-strong);
 }
 
 .task .head {
   display: flex;
+  align-items: baseline;
   justify-content: space-between;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.task .head strong {
+  font-weight: 650;
 }
 
 .task .actions {
   display: flex;
   gap: 8px;
+  margin-top: 10px;
 }
 
 .chip {
   display: inline-block;
-  border-radius: 999px;
-  padding: 1px 10px;
   font-family: var(--mono);
-  font-size: 11.5px;
-  font-weight: 500;
+  font-size: 10.5px;
+  letter-spacing: 0.05em;
+  padding: 2px 9px;
+  border-radius: 4px;
   border: 1px solid var(--line-strong);
-  background: #fff;
   color: var(--muted);
+  white-space: nowrap;
 }
 
 .chip.running,
 .chip.awaiting_approval {
-  border-color: var(--accent);
-  color: var(--accent);
-  background: var(--accent-soft);
+  color: var(--ice-strong);
+  border-color: var(--ice-edge);
+  background: var(--ice-wash);
 }
 
 .chip.completed {
-  border-color: var(--ok);
   color: var(--ok);
+  border-color: rgba(69, 224, 166, 0.4);
+  background: rgba(69, 224, 166, 0.07);
 }
 
 .chip.failed,
 .chip.interrupted {
-  border-color: var(--bad);
   color: var(--bad);
+  border-color: rgba(242, 121, 107, 0.4);
+  background: rgba(242, 121, 107, 0.07);
 }
 
-pre {
-  background: var(--panel-inset);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 12px;
-  overflow-x: auto;
-  font-family: var(--mono);
-  font-size: 12.5px;
-  white-space: pre-wrap;
-}
+/* --------------------------------- console --------------------------------- */
 
-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13.5px;
-}
-
-th,
-td {
-  text-align: left;
-  border-bottom: 1px solid var(--line);
-  padding: 6px 8px;
-  vertical-align: top;
-}
-
-td.mono,
-td code {
-  font-family: var(--mono);
-  font-size: 12.5px;
-}
-
-/* The runtime console: system data reads as a local terminal, not a feed. */
 .console {
   background: var(--console-bg);
   border: 1px solid var(--console-line);
-  border-radius: 10px;
-  padding: 12px 16px;
+  border-radius: var(--r-row);
+  padding: 9px 0;
   font-family: var(--mono);
-  font-size: 12.5px;
-  color: var(--console-ink);
-  overflow-x: auto;
+  font-size: 11.5px;
+  max-height: 320px;
+  overflow-y: auto;
 }
 
 .console-row {
   display: flex;
-  gap: 12px;
   align-items: baseline;
-  padding: 4px 0;
-  border-bottom: 1px solid var(--console-line);
-  white-space: nowrap;
+  gap: 12px;
+  padding: 3px 14px;
+  color: var(--muted);
 }
 
 .console-row:last-child {
-  border-bottom: none;
+  padding-bottom: 5px;
 }
 
 .console-type {
-  color: var(--accent-console);
+  color: var(--ice);
+  min-width: 150px;
 }
 
 .console-ref {
-  color: var(--console-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
+  color: var(--faint);
 }
 
 .console-time {
   margin-left: auto;
-  color: var(--console-muted);
+  color: var(--faint);
+  font-size: 10.5px;
 }
 
 .console-empty {
-  color: var(--console-muted);
-  padding: 4px 0;
+  padding: 14px;
+  color: var(--faint);
 }
 
-.empty {
+/* --------------------------------- tables ---------------------------------- */
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+th {
+  text-align: left;
+  font-weight: 600;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--faint);
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line-strong);
+}
+
+td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+
+tbody tr:last-child td {
+  border-bottom: none;
+}
+
+td.mono {
+  font-family: var(--mono);
+  font-size: 11.5px;
+}
+
+/* ------------------------------ projects page ------------------------------ */
+
+.grant-heading {
+  margin: 14px 0 6px;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--faint);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+}
+
+.grant-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 12px;
+  margin: 4px 0;
+  background: var(--panel-inset);
+  border: 1px solid var(--line);
+  border-radius: var(--r-row);
+  overflow-wrap: anywhere;
+}
+
+.grant-row .mono {
+  font-size: 11.5px;
   color: var(--muted);
 }
 
-.empty strong {
-  color: var(--ink);
-  font-weight: 600;
-}
+/* ----------------------------- markdown reader ----------------------------- */
 
-/* Rendered report markdown (.md): report typography on the frost tokens.
-   Scoped here so code blocks and other <pre> content keep their own look. */
 .md {
-  font-size: 14px;
-  line-height: 1.6;
+  line-height: 1.68;
+  font-size: 14.5px;
 }
 
 .md h1,
@@ -446,27 +880,36 @@ td code {
 .md h4,
 .md h5,
 .md h6 {
-  margin: 18px 0 6px;
-  line-height: 1.3;
+  font-family: var(--sans);
+  font-weight: 650;
   letter-spacing: -0.01em;
+  margin: 24px 0 8px;
+  line-height: 1.3;
 }
 
 .md h1 {
-  font-size: 18px;
+  font-size: 22px;
+  margin-top: 4px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line-strong);
 }
 
 .md h2 {
-  font-size: 16.5px;
+  font-size: 15px;
+  color: var(--ice-strong);
+  padding-left: 12px;
+  border-left: 2px solid var(--ice);
 }
 
 .md h3 {
-  font-size: 15px;
+  font-size: 14px;
 }
 
 .md h4,
 .md h5,
 .md h6 {
-  font-size: 14px;
+  font-size: 13.5px;
+  color: var(--muted);
 }
 
 .md > :first-child {
@@ -475,37 +918,44 @@ td code {
 
 .md p {
   margin: 8px 0;
+  max-width: 76ch;
 }
 
 .md ul,
 .md ol {
   margin: 8px 0;
-  padding-left: 24px;
+  padding-left: 22px;
 }
 
 .md li {
-  margin: 3px 0;
+  margin: 4px 0;
+  max-width: 74ch;
 }
 
 .md blockquote {
   margin: 10px 0;
   padding: 6px 14px;
-  border-left: 3px solid var(--line-strong);
-  border-radius: 0 7px 7px 0;
-  background: var(--panel-inset);
+  border-left: 2px solid var(--ice-edge);
+  background: var(--ice-wash);
+  border-radius: 0 var(--r-row) var(--r-row) 0;
   color: var(--muted);
 }
 
 .md pre {
   margin: 10px 0;
+  background: var(--console-bg);
+  border: 1px solid var(--console-line);
+  border-radius: var(--r-row);
+  padding: 12px 14px;
+  overflow-x: auto;
 }
 
 .md code {
   font-family: var(--mono);
-  font-size: 12.5px;
+  font-size: 12px;
   background: var(--panel-inset);
   border: 1px solid var(--line);
-  border-radius: 5px;
+  border-radius: 4px;
   padding: 1px 5px;
 }
 
@@ -518,54 +968,9 @@ td code {
 .md hr {
   border: none;
   border-top: 1px solid var(--line-strong);
-  margin: 16px 0;
+  margin: 18px 0;
 }
 
 .md a {
   overflow-wrap: anywhere;
-}
-
-select {
-  font: inherit;
-  border: 1px solid var(--line-strong);
-  border-radius: 7px;
-  padding: 8px 10px;
-  background: #fff;
-  color: var(--ink);
-}
-
-select:focus {
-  outline: 2px solid var(--accent);
-  outline-offset: -1px;
-}
-
-/* Projects: granted-folder rows and headings inside project cards. */
-.grant-heading {
-  margin: 14px 0 6px;
-  font-size: 13.5px;
-  font-weight: 650;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.grant-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 6px 10px;
-  margin: 4px 0;
-  background: var(--panel-inset);
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  overflow-wrap: anywhere;
-}
-
-.grant-row .mono {
-  font-size: 12.5px;
-}
-
-.mono {
-  font-family: var(--mono);
 }
