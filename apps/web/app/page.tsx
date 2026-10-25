@@ -6,6 +6,7 @@ import type { Event, Project, ProjectFolderGrant, Task, TaskKind } from '@openfr
 import { ApiError, getJson, mutate } from '../lib/api';
 import { formatTimestamp } from '../lib/format';
 import { useSession } from '../lib/useSession';
+import { useBusyGlow } from '../components/useBusyGlow';
 
 interface ProjectOption extends Project {
   grants: ProjectFolderGrant[];
@@ -38,6 +39,7 @@ export default function HomePage() {
   const [startingUrlsText, setStartingUrlsText] = useState('');
   const [showDetails, setShowDetails] = useState(false);
   const inFlight = useRef(false);
+  useBusyGlow(tasks?.executor.busy ?? false);
 
   const refreshAll = useCallback(async () => {
     if (inFlight.current) {
@@ -154,7 +156,7 @@ export default function HomePage() {
     <>
       {tasks?.executor.dispatchPaused ? (
         <div className="panel">
-          <h2>Dispatch paused after recovery</h2>
+          <h1>Dispatch paused after recovery</h1>
           <p className="muted">
             Unfinished runs from a previous session were marked interrupted. Review
             them under Tasks, then resume dispatch when ready.
@@ -165,10 +167,15 @@ export default function HomePage() {
         </div>
       ) : null}
 
+      <h1 className="hero-title">What should OpenFrost work on?</h1>
+      <p className="hero-sub">
+        One local assistant, one machine. It researches the public web or reads a
+        project&rsquo;s granted notes, runs one task at a time, and saves what it
+        made — with its sources.
+      </p>
+
       <div className="composer">
-        <label htmlFor="composer-request" className="muted" style={{ marginTop: 0 }}>
-          Give OpenFrost work
-        </label>
+        <label htmlFor="composer-request">Task</label>
         <textarea
           id="composer-request"
           value={request}

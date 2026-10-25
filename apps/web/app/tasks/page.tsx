@@ -9,6 +9,7 @@ import { formatTimestamp } from '../../lib/format';
 import { useSession } from '../../lib/useSession';
 import { DispatchStrip } from '../../components/DispatchStrip';
 import { MarkdownView } from '../../components/MarkdownView';
+import { useBusyGlow } from '../../components/useBusyGlow';
 
 interface ExecutorStatus {
   busy: boolean;
@@ -90,6 +91,7 @@ export default function TasksPage() {
   const [detail, setDetail] = useState<TaskDetail | null>(null);
   const [model, setModel] = useState<string | null>(null);
   const inFlight = useRef(false);
+  useBusyGlow(data?.executor.busy ?? false);
 
   const refreshTasks = useCallback(async () => {
     if (inFlight.current) {
@@ -452,12 +454,12 @@ export default function TasksPage() {
 
       {detail ? (
         <div className="panel">
-          <h2>
+          <h1>
             {detail.task.title}{' '}
             <span className={`chip ${detail.task.state}`}>
               {detail.task.state.replace('_', ' ')}
             </span>
-          </h2>
+          </h1>
           <p className="muted">{detail.task.request}</p>
           <p className="muted">
             <strong>Workflow:</strong> {KIND_LABEL[detail.task.kind] ?? detail.task.kind}

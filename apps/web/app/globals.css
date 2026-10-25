@@ -1,54 +1,57 @@
 /*
- * OpenFrost — "Frost Night" interface.
+ * OpenFrost — "Polar Instrument" interface.
  *
- * One environment, not a page theme: a Windows-first local runtime rendered
- * in the OS's own type (Segoe UI Variable, Cascadia Mono) on blue-shifted
- * dark surfaces. Depth comes from surface steps and 1px cool lines; the one
- * soft shadow is reserved for the composer and the active nav item. Status
- * colors mark states only — they never decorate.
+ * A self-hosted runtime drawn as a precision instrument on a polar night:
+ * condensed display type for the moments that matter, a fono-grade mono for
+ * everything the machine says, hairline structure, and exactly one electric
+ * ice accent. The room is dark and still while idle; when a run owns the
+ * machine, a cold frost bloom rises behind the content (body[data-busy]).
  */
 
 :root {
-  /* Surfaces — every tone blue-shifted; nothing pure black or neutral grey. */
-  --bg: #0a1220;
-  --panel: #0f1b2c;
-  --panel-inset: #0c1626;
-  --raised: #14233a;
-  --console-bg: #060d16;
-  --console-line: #14263c;
+  /* Surfaces — deep indigo night, layered by one step each. */
+  --bg: #06090f;
+  --panel: #0b111c;
+  --panel-inset: #080d16;
+  --raised: #101827;
+  --console-bg: #04070c;
+  --console-line: #12203a;
 
-  --line: #1b2c42;
-  --line-strong: #2a4160;
+  --line: #18233a;
+  --line-strong: #26375c;
 
   /* Ink */
-  --ink: #e7f0f9;
-  --muted: #93a9be;
-  --faint: #5e7891;
+  --ink: #eaf1f8;
+  --muted: #8fa5bb;
+  --faint: #5a7089;
 
-  /* The single accent: glacial ice. Status colors mark states only. */
-  --ice: #6fc6ee;
-  --ice-strong: #9bdbf7;
-  --ice-wash: rgba(111, 198, 238, 0.1);
-  --ice-edge: rgba(111, 198, 238, 0.42);
-  --accent-ink: #04121e;
+  /* The single accent: electric ice. Status colors mark states only. */
+  --ice: #45c6f2;
+  --ice-strong: #8fdcf9;
+  --ice-dim: #2a89b8;
+  --ice-wash: rgba(69, 198, 242, 0.09);
+  --ice-edge: rgba(69, 198, 242, 0.45);
+  --on-ice: #04090f;
 
-  --ok: #52d6a5;
+  --ok: #45e0a6;
   --warn: #e5b45e;
-  --warn-bg: rgba(229, 180, 94, 0.09);
+  --warn-bg: rgba(229, 180, 94, 0.08);
   --bad: #f2796b;
 
-  --mono: "Cascadia Mono", "Cascadia Code", Consolas, ui-monospace, monospace;
-  --sans: "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", system-ui,
-    -apple-system, sans-serif;
-  --sans-display: "Segoe UI Variable Display", "Segoe UI Variable Text",
-    "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  --sans: var(--font-body), "Segoe UI", system-ui, sans-serif;
+  --display: var(--font-display), "Arial Narrow", sans-serif;
+  --mono: var(--font-mono), "Cascadia Mono", Consolas, ui-monospace, monospace;
 
-  --shadow-raised: 0 12px 34px rgba(2, 8, 16, 0.55);
+  /* The reserved bloom, drawn once behind the whole shell. */
+  --bloom:
+    radial-gradient(46% 34% at 30% 0%, rgba(69, 198, 242, 0.24), transparent 70%),
+    radial-gradient(38% 30% at 78% 4%, rgba(94, 224, 178, 0.13), transparent 70%),
+    radial-gradient(60% 44% at 55% -10%, rgba(38, 90, 166, 0.32), transparent 72%);
 
-  /* Radii by hierarchy: composer 14, panels 12, rows and inputs 9. */
-  --r-composer: 14px;
-  --r-panel: 12px;
-  --r-row: 9px;
+  /* Radii by hierarchy: composer 10, panels 8, rows and inputs 6. */
+  --r-composer: 10px;
+  --r-panel: 8px;
+  --r-row: 6px;
 }
 
 * {
@@ -65,9 +68,32 @@ body {
   background: var(--bg);
   color: var(--ink);
   font-family: var(--sans);
-  font-size: 15px;
+  font-size: 14.5px;
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
+  position: relative;
+}
+
+/* The frost bloom: invisible while idle, rises while a run owns the machine. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background: var(--bloom);
+  opacity: 0;
+  transition: opacity 900ms ease;
+  pointer-events: none;
+  z-index: 0;
+}
+
+body[data-busy='true']::before {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body::before {
+    transition: none;
+  }
 }
 
 a {
@@ -86,7 +112,7 @@ a:hover {
 }
 
 ::selection {
-  background: rgba(111, 198, 238, 0.28);
+  background: rgba(69, 198, 242, 0.3);
 }
 
 .mono {
@@ -98,17 +124,26 @@ a:hover {
 .shell {
   display: flex;
   min-height: 100vh;
+  position: relative;
+  z-index: 1;
 }
 
 .sidebar {
-  width: 230px;
-  flex: 0 0 230px;
+  width: 208px;
+  flex: 0 0 208px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 18px 12px 16px;
+  padding: 20px 12px 16px;
   border-right: 1px solid var(--line);
-  background: var(--panel-inset);
+  background:
+    repeating-linear-gradient(
+      115deg,
+      transparent 0 34px,
+      rgba(143, 220, 249, 0.022) 34px 35px,
+      transparent 35px 68px,
+      rgba(143, 220, 249, 0.014) 68px 69px
+    ),
+    var(--panel-inset);
   position: sticky;
   top: 0;
   height: 100vh;
@@ -117,13 +152,13 @@ a:hover {
 .brand {
   display: inline-flex;
   align-items: center;
-  gap: 9px;
-  font-family: var(--sans-display);
-  font-weight: 650;
-  font-size: 16px;
-  letter-spacing: -0.01em;
+  gap: 8px;
+  font-family: var(--display);
+  font-size: 17px;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
   color: var(--ink);
-  padding: 4px 10px 14px;
+  padding: 2px 10px 18px;
 }
 
 .brand svg {
@@ -142,9 +177,9 @@ a:hover {
   align-items: center;
   gap: 10px;
   color: var(--muted);
-  font-size: 14px;
-  font-weight: 500;
-  padding: 8px 10px;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  padding: 7px 10px;
   border-radius: var(--r-row);
   border-left: 2px solid transparent;
 }
@@ -156,27 +191,35 @@ a:hover {
 }
 
 .sidebar .links a[data-active='true'] {
-  color: var(--ink);
-  background: var(--raised);
+  color: var(--ice-strong);
+  background: var(--ice-wash);
   border-left-color: var(--ice);
-  box-shadow: var(--shadow-raised);
 }
 
 .sidebar-foot {
   margin-top: auto;
   padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
   font-family: var(--mono);
-  font-size: 11px;
-  line-height: 1.7;
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
   color: var(--faint);
+}
+
+.foot-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
 }
 
 .main {
   flex: 1;
   min-width: 0;
-  max-width: 900px;
+  max-width: 880px;
   margin: 0 auto;
-  padding: 30px 28px 72px;
+  padding: 34px 30px 80px;
 }
 
 @media (max-width: 760px) {
@@ -197,19 +240,20 @@ a:hover {
   }
 
   .brand {
-    padding: 0 10px 0 0;
+    padding: 0 12px 0 0;
   }
 
   .sidebar .links {
     flex-direction: row;
     gap: 4px;
+    overflow-x: auto;
   }
 
   .sidebar .links a {
-    padding: 6px 10px;
+    padding: 6px 9px;
     border-left: none;
     border-bottom: 2px solid transparent;
-    border-radius: 6px 6px 0 0;
+    border-radius: 0;
   }
 
   .sidebar .links a[data-active='true'] {
@@ -232,17 +276,37 @@ a:hover {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--r-panel);
-  padding: 20px 22px;
-  margin-bottom: 16px;
+  padding: 18px 20px;
+  margin-bottom: 14px;
 }
 
-.panel h1,
-.panel h2 {
+.panel h1 {
   margin: 0 0 10px;
-  font-family: var(--sans-display);
-  font-size: 18px;
+  font-family: var(--sans);
+  font-size: 17px;
   font-weight: 650;
   letter-spacing: -0.01em;
+}
+
+.panel > h2 {
+  margin: 0 0 12px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--faint);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.panel > h2::before {
+  content: "";
+  width: 14px;
+  height: 2px;
+  background: var(--ice);
+  flex: 0 0 auto;
 }
 
 .panel > p {
@@ -251,12 +315,12 @@ a:hover {
 
 .muted {
   color: var(--muted);
-  font-size: 13.5px;
+  font-size: 13px;
 }
 
 .note {
   background: var(--warn-bg);
-  border: 1px solid rgba(229, 180, 94, 0.4);
+  border: 1px solid rgba(229, 180, 94, 0.38);
   border-radius: var(--r-row);
   padding: 10px 14px;
   margin: 10px 0;
@@ -270,14 +334,13 @@ a:hover {
 
 .empty {
   color: var(--muted);
-  padding: 22px 8px;
+  padding: 24px 8px;
   text-align: center;
 }
 
 .empty strong {
   display: block;
   color: var(--ink);
-  font-family: var(--sans-display);
   font-weight: 600;
   margin-bottom: 4px;
 }
@@ -294,7 +357,7 @@ a:hover {
 label {
   display: block;
   font-weight: 600;
-  font-size: 13.5px;
+  font-size: 12.5px;
   margin: 14px 0 5px;
   color: var(--muted);
 }
@@ -336,32 +399,44 @@ button {
   background: var(--panel);
   color: var(--ink);
   border-radius: var(--r-row);
-  padding: 7px 15px;
+  padding: 7px 14px;
   cursor: pointer;
-  transition: background-color 120ms ease, border-color 120ms ease;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
 }
 
 button:hover:not(:disabled) {
   background: var(--raised);
+  border-color: var(--ice-dim);
 }
 
 button.primary {
   background: var(--ice);
   border-color: var(--ice);
-  color: var(--accent-ink);
+  color: var(--on-ice);
 }
 
 button.primary:hover:not(:disabled) {
   background: var(--ice-strong);
   border-color: var(--ice-strong);
+  box-shadow: 0 0 18px rgba(69, 198, 242, 0.35);
+}
+
+button.primary:disabled {
+  background: var(--panel);
+  border-color: var(--line);
+  color: var(--faint);
 }
 
 button:disabled {
-  opacity: 0.45;
+  opacity: 1;
   cursor: not-allowed;
 }
 
-/* Provider choice: a small segmented control of radio-like buttons. */
+button:disabled:not(.primary) {
+  opacity: 0.45;
+}
+
+/* Provider choice: a segmented control of radio-like buttons. */
 .segmented {
   display: inline-flex;
   gap: 2px;
@@ -374,9 +449,11 @@ button:disabled {
 .segmented button {
   border-color: transparent;
   background: transparent;
-  border-radius: 7px;
-  padding: 5px 16px;
-  font-weight: 500;
+  border-radius: 4px;
+  padding: 5px 15px;
+  font-weight: 550;
+  font-family: var(--mono);
+  font-size: 12.5px;
 }
 
 .segmented button:hover:not(:disabled) {
@@ -386,29 +463,80 @@ button:disabled {
 .segmented button[aria-checked='true'] {
   background: var(--ice);
   border-color: var(--ice);
-  color: var(--accent-ink);
-  font-weight: 600;
+  color: var(--on-ice);
+  font-weight: 700;
 }
 
-.segmented button[aria-checked='true']:hover:not(:disabled) {
-  background: var(--ice-strong);
-  border-color: var(--ice-strong);
+/* ------------------- hero composer (the instrument head) ------------------- */
+
+.hero-title {
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: clamp(26px, 4.2vw, 40px);
+  line-height: 1.08;
+  letter-spacing: 0.015em;
+  text-transform: uppercase;
+  color: var(--ink);
+  margin: 4px 0 6px;
+  max-width: 21ch;
 }
 
-/* ------------------------- composer (the ice pane) ------------------------ */
+.hero-title em {
+  font-style: normal;
+  color: var(--ice);
+}
+
+.hero-sub {
+  color: var(--muted);
+  font-size: 14px;
+  margin: 0 0 16px;
+  max-width: 62ch;
+}
 
 .composer {
-  background: var(--raised);
-  border: 1px solid var(--ice-edge);
+  position: relative;
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
   border-radius: var(--r-composer);
-  padding: 16px 18px 14px;
-  box-shadow: var(--shadow-raised);
-  margin-bottom: 16px;
+  padding: 18px 18px 14px;
+  margin-bottom: 14px;
+}
+
+/* Corner brackets: an instrument reticle around the prompt surface. */
+.composer::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  pointer-events: none;
+  background:
+    linear-gradient(var(--ice), var(--ice)) top left / 18px 2px,
+    linear-gradient(var(--ice), var(--ice)) top left / 2px 18px,
+    linear-gradient(var(--ice), var(--ice)) top right / 18px 2px,
+    linear-gradient(var(--ice), var(--ice)) top right / 2px 18px,
+    linear-gradient(var(--ice), var(--ice)) bottom left / 18px 2px,
+    linear-gradient(var(--ice), var(--ice)) bottom left / 2px 18px,
+    linear-gradient(var(--ice), var(--ice)) bottom right / 18px 2px,
+    linear-gradient(var(--ice), var(--ice)) bottom right / 2px 18px;
+  background-repeat: no-repeat;
+}
+
+body[data-busy='true'] .composer {
+  border-color: var(--ice-edge);
+}
+
+.composer label {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--faint);
+  margin: 0 0 4px;
 }
 
 .composer textarea {
-  min-height: 96px;
-  font-size: 16px;
+  min-height: 92px;
+  font-size: 15.5px;
   border: none;
   background: transparent;
   padding: 2px 2px 10px;
@@ -430,14 +558,16 @@ button:disabled {
 .composer-hint {
   margin-left: auto;
   color: var(--faint);
-  font-size: 12.5px;
+  font-family: var(--mono);
+  font-size: 11px;
 }
 
 .chip-toggle {
-  border-radius: 999px;
-  padding: 5px 14px;
-  font-size: 13px;
-  font-weight: 500;
+  border-radius: 4px;
+  padding: 5px 13px;
+  font-size: 12.5px;
+  font-weight: 550;
+  font-family: var(--mono);
   background: transparent;
   border-color: var(--line-strong);
   color: var(--muted);
@@ -445,20 +575,21 @@ button:disabled {
 
 .chip-toggle:hover:not(:disabled) {
   color: var(--ink);
+  border-color: var(--ice-dim);
 }
 
 .chip-toggle[aria-pressed='true'] {
   background: var(--ice-wash);
   border-color: var(--ice-edge);
   color: var(--ice-strong);
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .composer select {
   width: auto;
-  min-width: 180px;
+  min-width: 170px;
   padding: 5px 10px;
-  font-size: 13.5px;
+  font-size: 13px;
 }
 
 /* --------------------------- runtime status strip -------------------------- */
@@ -474,8 +605,12 @@ button:disabled {
   padding: 8px 14px;
   margin-bottom: 16px;
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: 11.5px;
   color: var(--muted);
+}
+
+body[data-busy='true'] .strip {
+  border-color: var(--ice-dim);
 }
 
 .strip-seg {
@@ -488,13 +623,13 @@ button:disabled {
 .strip-label {
   color: var(--faint);
   text-transform: uppercase;
-  font-size: 10.5px;
-  letter-spacing: 0.08em;
+  font-size: 10px;
+  letter-spacing: 0.1em;
 }
 
 .strip-sep {
   width: 1px;
-  height: 14px;
+  height: 13px;
   background: var(--console-line);
 }
 
@@ -508,8 +643,8 @@ button:disabled {
 
 .dot {
   display: inline-block;
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
 }
 
@@ -519,7 +654,8 @@ button:disabled {
 
 .dot-running {
   background: var(--ice);
-  animation: pulse 1.6s ease-in-out infinite;
+  animation: pulse 1.5s ease-in-out infinite;
+  box-shadow: 0 0 10px rgba(69, 198, 242, 0.7);
 }
 
 @keyframes pulse {
@@ -545,8 +681,13 @@ button:disabled {
   border: 1px solid var(--line);
   border-left: 3px solid var(--line);
   border-radius: var(--r-panel);
-  padding: 14px 18px;
-  margin-bottom: 10px;
+  padding: 13px 16px;
+  margin-bottom: 9px;
+  transition: border-color 120ms ease;
+}
+
+.task:hover {
+  border-color: var(--line-strong);
 }
 
 .task[data-state='running'],
@@ -575,8 +716,7 @@ button:disabled {
 }
 
 .task .head strong {
-  font-family: var(--sans-display);
-  font-weight: 600;
+  font-weight: 650;
 }
 
 .task .actions {
@@ -588,9 +728,10 @@ button:disabled {
 .chip {
   display: inline-block;
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 10.5px;
+  letter-spacing: 0.05em;
   padding: 2px 9px;
-  border-radius: 999px;
+  border-radius: 4px;
   border: 1px solid var(--line-strong);
   color: var(--muted);
   white-space: nowrap;
@@ -605,15 +746,15 @@ button:disabled {
 
 .chip.completed {
   color: var(--ok);
-  border-color: rgba(82, 214, 165, 0.4);
-  background: rgba(82, 214, 165, 0.08);
+  border-color: rgba(69, 224, 166, 0.4);
+  background: rgba(69, 224, 166, 0.07);
 }
 
 .chip.failed,
 .chip.interrupted {
   color: var(--bad);
   border-color: rgba(242, 121, 107, 0.4);
-  background: rgba(242, 121, 107, 0.08);
+  background: rgba(242, 121, 107, 0.07);
 }
 
 /* --------------------------------- console --------------------------------- */
@@ -622,10 +763,10 @@ button:disabled {
   background: var(--console-bg);
   border: 1px solid var(--console-line);
   border-radius: var(--r-row);
-  padding: 10px 0;
+  padding: 9px 0;
   font-family: var(--mono);
-  font-size: 12px;
-  max-height: 340px;
+  font-size: 11.5px;
+  max-height: 320px;
   overflow-y: auto;
 }
 
@@ -653,7 +794,7 @@ button:disabled {
 .console-time {
   margin-left: auto;
   color: var(--faint);
-  font-size: 11px;
+  font-size: 10.5px;
 }
 
 .console-empty {
@@ -666,16 +807,17 @@ button:disabled {
 table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: 12.5px;
 }
 
 th {
   text-align: left;
   font-weight: 600;
-  color: var(--faint);
-  font-size: 11.5px;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  color: var(--faint);
   padding: 6px 10px;
   border-bottom: 1px solid var(--line-strong);
 }
@@ -690,15 +832,21 @@ tbody tr:last-child td {
   border-bottom: none;
 }
 
+td.mono {
+  font-family: var(--mono);
+  font-size: 11.5px;
+}
+
 /* ------------------------------ projects page ------------------------------ */
 
 .grant-heading {
   margin: 14px 0 6px;
-  font-size: 11.5px;
+  font-family: var(--mono);
+  font-size: 10px;
   font-weight: 600;
   color: var(--faint);
   text-transform: uppercase;
-  letter-spacing: 0.07em;
+  letter-spacing: 0.14em;
 }
 
 .grant-row {
@@ -715,14 +863,14 @@ tbody tr:last-child td {
 }
 
 .grant-row .mono {
-  font-size: 12px;
+  font-size: 11.5px;
   color: var(--muted);
 }
 
 /* ----------------------------- markdown reader ----------------------------- */
 
 .md {
-  line-height: 1.65;
+  line-height: 1.68;
   font-size: 14.5px;
 }
 
@@ -732,32 +880,35 @@ tbody tr:last-child td {
 .md h4,
 .md h5,
 .md h6 {
-  font-family: var(--sans-display);
+  font-family: var(--sans);
+  font-weight: 650;
   letter-spacing: -0.01em;
-  margin: 22px 0 8px;
+  margin: 24px 0 8px;
   line-height: 1.3;
 }
 
 .md h1 {
-  font-size: 21px;
+  font-size: 22px;
   margin-top: 4px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--line);
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line-strong);
 }
 
 .md h2 {
-  font-size: 16.5px;
+  font-size: 15px;
   color: var(--ice-strong);
+  padding-left: 12px;
+  border-left: 2px solid var(--ice);
 }
 
 .md h3 {
-  font-size: 15px;
+  font-size: 14px;
 }
 
 .md h4,
 .md h5,
 .md h6 {
-  font-size: 14px;
+  font-size: 13.5px;
   color: var(--muted);
 }
 
@@ -801,10 +952,10 @@ tbody tr:last-child td {
 
 .md code {
   font-family: var(--mono);
-  font-size: 12.5px;
+  font-size: 12px;
   background: var(--panel-inset);
   border: 1px solid var(--line);
-  border-radius: 5px;
+  border-radius: 4px;
   padding: 1px 5px;
 }
 
