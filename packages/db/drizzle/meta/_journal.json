@@ -29,6 +29,13 @@
       "when": 1792942838948,
       "tag": "0003_approvals",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1792949911152,
+      "tag": "0004_memory",
+      "breakpoints": true
     }
   ]
 }

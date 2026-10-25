@@ -6,3 +6,5 @@ export * from './event.js';
 export * from './settings.js';
 export * from './project.js';
 export * from './approval.js';
+export * from './memory.js';
+export * from './memoryFile.js';

@@ -18,7 +18,7 @@ let store: Store;
 beforeAll(() => {
   home = mkdtempSync(join(tmpdir(), 'openfrost-db-test-'));
   opened = openDatabase(home);
-  store = createStore(opened.db);
+  store = createStore(opened.db, { home: opened.home });
 });
 
 afterAll(() => {
@@ -30,7 +30,7 @@ describe('persistence across restart', () => {
   it('retains tasks, runs, events, conversations, messages, and artifacts after reopen', () => {
     const restartHome = mkdtempSync(join(tmpdir(), 'openfrost-restart-test-'));
     const first = openDatabase(restartHome);
-    const firstStore = createStore(first.db);
+    const firstStore = createStore(first.db, { home: first.home });
     try {
       const conversation = firstStore.conversations.create('Research chat', NOW);
       firstStore.messages.add(conversation.id, 'user', 'Compare options A and B', NOW);
@@ -57,7 +57,7 @@ describe('persistence across restart', () => {
       // Simulate a full restart: close the handle, reopen the same home.
       first.sqlite.close();
       const reopened = openDatabase(restartHome);
-      const store2 = createStore(reopened.db);
+      const store2 = createStore(reopened.db, { home: reopened.home });
       try {
         const taskAfter = store2.tasks.get(task.id);
         expect(taskAfter?.state).toBe('completed');
