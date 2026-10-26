@@ -1,4 +1,5 @@
 import Image from 'next/image';
+import { HeroScene } from '../components/HeroScene';
 import { MotionLayer } from '../components/MotionLayer';
 import { ProductTour } from '../components/ProductTour';
 import { TaskPreview } from '../components/TaskPreview';
@@ -28,50 +29,6 @@ const faqs = [
   ['How does file export work?', 'A new report can be exported to a granted destination after you review the exact proposal. The destination is checked again when the write runs.'],
 ] as const;
 
-function SampleQueue() {
-  return (
-    <div className="mosaic-ui queue-sample" data-ui>
-      <span className="screen-meta">Local queue <i /></span>
-      <strong>Compare backup approaches</strong>
-      <div className="ui-rule" />
-      <span>Research brief <b>Waiting</b></span>
-    </div>
-  );
-}
-
-function SampleProject() {
-  return (
-    <div className="mosaic-ui project-sample" data-ui>
-      <span className="screen-meta">Project scope</span>
-      <strong>Northstar notes</strong>
-      <span className="file-line"><i /> README.md <small>Granted</small></span>
-      <span className="file-line"><i /> roadmap.md <small>Granted</small></span>
-    </div>
-  );
-}
-
-function SampleArtifact() {
-  return (
-    <div className="mosaic-ui artifact-sample" data-ui>
-      <span className="screen-meta">Saved artifact · Markdown</span>
-      <strong>Project update</strong>
-      <div className="artifact-lines"><i /><i /><i /></div>
-      <span>Evidence attached · 4 sources</span>
-    </div>
-  );
-}
-
-function SampleProvider() {
-  return (
-    <div className="mosaic-ui provider-sample" data-ui>
-      <span className="screen-meta">Settings</span>
-      <strong>One provider active</strong>
-      <div><span>OpenRouter</span><b>Active</b></div>
-      <small>Keys protected with Windows DPAPI</small>
-    </div>
-  );
-}
-
 export default function Home() {
   return (
     <>
@@ -88,25 +45,20 @@ export default function Home() {
 
       <main id="top">
         <section className="masthead wrap" aria-label="OpenFrost product overview">
-          <div className="masthead-grid" data-reveal>
-            <div className="mosaic-image mosaic-image-one"><Image src="/images/real-snowflake-flickr-alexey-kljatov-6.jpg" alt="A delicate, branching snow crystal photographed against a deep blue background" fill priority unoptimized sizes="(max-width: 760px) 100vw, 40vw" /></div>
-            <div className="mosaic-image mosaic-image-two"><Image src="/images/snowflake-flickr-alexey-kljatov.jpg" alt="A geometric snow crystal in close-up" fill unoptimized sizes="(max-width: 760px) 50vw, 22vw" /></div>
-            <SampleQueue />
-            <SampleProject />
-            <SampleArtifact />
-            <SampleProvider />
-          </div>
           <div className="hero-copy" data-reveal>
-                <h1>One task at a time.<br /><span className="accent-type">Work worth keeping.</span></h1>
+            <h1>AI gets<br />to work.</h1>
             <div className="hero-under">
-              <p>A personal assistant for research, project updates, and weekly plans. Each run has a clear scope; finished work keeps its sources.</p>
+              <p>Research briefs, project updates, and weekly plans—finished, sourced, and ready to keep.</p>
               <div className="hero-actions">
                 <a className="primary-link" href={repositoryUrl} target="_blank" rel="noreferrer">Explore the source <span aria-hidden="true">↗</span></a>
-                <a className="text-link" href="#work">See how it works <span aria-hidden="true">↓</span></a>
+                <a className="text-link" href="#work">See what it does <span aria-hidden="true">↓</span></a>
               </div>
             </div>
           </div>
-          <div className="hero-caption"><span>A personal assistant that gives finished work a place to stay.</span></div>
+          <div className="hero-stage" data-reveal>
+            <HeroScene />
+          </div>
+          <div className="hero-caption"><span>A personal AI OS for work with somewhere to go.</span><span>Illustrative workspace · Scroll to explore</span></div>
         </section>
 
         <section className="signal-strip wrap" aria-label="Supported providers">
@@ -161,6 +113,10 @@ export default function Home() {
             <div className="crystal-photo"><Image src="/images/snow-crystals.jpg" alt="A single snow crystal catching light against a black background" fill unoptimized sizes="(max-width: 760px) 100vw, 48vw" /></div>
             <figcaption>Snow crystals · ComputerHotline</figcaption>
           </figure>
+          <figure>
+            <div className="crystal-photo"><Image src="/images/snowflake-flickr-alexey-kljatov.jpg" alt="A sharply defined snowflake photographed against a dark surface" fill unoptimized sizes="(max-width: 760px) 100vw, 48vw" /></div>
+            <figcaption>Snowflake · Alexey Kljatov</figcaption>
+          </figure>
         </section>
 
         <section className="workbench-section">
@@ -197,7 +153,7 @@ export default function Home() {
             <div data-reveal><h2>A run has edges.</h2><p>Default execution limits keep a task bounded and legible.</p></div>
             <ul className="limit-list">
               {executionLimits.map(([value, label]) => (
-                <li key={label} data-reveal><strong>{value}</strong><span>{label}</span></li>
+                <li key={label} data-reveal><strong>{value} {label}</strong></li>
               ))}
             </ul>
           </div>

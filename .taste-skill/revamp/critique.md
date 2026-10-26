@@ -11,3 +11,17 @@ Top three problems (most visible first), each with the screenshot it shows in an
 3. Snow and frost photographs set the product material but do not prove the live app visually. The interface examples are labeled as illustrative; replace or supplement them with approved real Control Center captures when those are ready, as seen in `.taste-skill/revamp/production-final/desktop-fold.jpg`.
 
 The production inspection reports zero failures. Its remaining warnings are the broad type-size range, the tablet card-row pattern, and the absence of video. The available video search returned only an unrelated 27-minute film, so no footage is used.
+
+ROUND 2
+Seen in one second: an electric-blue poster with “AI gets to work,” a snow crystal, and an overlapping illustrative Control Center.
+Idea (one sentence): OpenFrost’s bounded, source-backed task record becomes a poster collage of its granted scope, local queue, and kept artifact.
+Live thing: Visitors can switch among the three workflows, edit a sample request, preview its illustrative result, and switch the workspace view.
+Layout words by section: hero=full-bleed poster collage / providers=colour strip / workflow=split list / work types=staggered artefacts / photographs=three-up gallery / sample=interactive split / workspace=product tour / boundary=local-to-provider diagram / limits=colour field / build=split / FAQ=accordion / footer=wordmark
+Scores: design 9 · usability 8.5 · creativity 9 · content 8.5 → overall 8.8
+Caps applied: none
+Top three problems (most visible first), each with the screenshot it shows in and the fix:
+1. The inspector still counts 16 font sizes, from the 13px interface copy to the 290px footer wordmark. The jumps are intentionally poster-led, but the next refinement could consolidate the smaller interface sizes; see `.taste-skill/revamp/flashy/release-candidate/desktop-page-01.jpg`.
+2. No short, relevant video of the local Control Center exists in the repository, and the prior search returned only an unrelated long film. Keep the four credited snowflake photographs until real footage exists; see `desktop-fold.jpg` and `desktop-page-01.jpg` in the release-candidate folder.
+3. One mobile running-text sample remains at 5:1 contrast, below the skill’s 7:1 preference. The primary reading text is bright; raising every secondary note would erase the visual hierarchy. Recheck that specific note if the copy or background changes; see `mobile-page-01.jpg`.
+
+The production inspector reports 0 FAIL and 3 defended warnings across desktop, tablet, and phone. Four real photographs are used and credited in the footer. CSS motion is reduced for `prefers-reduced-motion`.

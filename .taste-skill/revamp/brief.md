@@ -48,3 +48,15 @@ The existing interactive task preview stays editable and changes across the thre
 - Redraw 2, stats: replaced a chart with four quiet figure lines because there is no real time series and only four verified execution limits.
 - Redraw 3, CTA: replaced a photo/person CTA with a single “Build” action because no installer is available and a download claim would be false.
 - No suitable short video was found. The page uses four sourced photographs and original interface fragments instead of unrelated footage.
+
+## User-directed flash pass — 2026-10-26
+
+The owner said the prior revision still felt too restrained and asked for a flashy redesign with modern motion. The visual direction borrows from a streetwear poster: electric blue fields, acid-lime accents, very large condensed type, and a photographic crystal framed as the material that carries the OpenFrost name. The existing Anton/Archivo faces remain; the blue/lime contrast is a deliberate palette redraw to meet the owner's request for more impact.
+
+**Idea:** OpenFrost's bounded task record becomes a poster collage: a real snow crystal behind an illustrative Control Center, with granted scope and a saved artifact floating into view.
+
+**Hero copy:** “AI gets to work.” The standfirst names the three workflows and the source-backed result; the source repository remains the primary action because no installer exists.
+
+**Motion:** A slow crystal drift, floating scope/result fragments, an entering sample workspace, animated local-status indicator, interactive workflow and workspace tabs, hover response, and the existing scroll reveals. Every continuous motion stops under `prefers-reduced-motion`.
+
+**Reviewed production result:** the skill inspector reports 0 FAIL at 1440, 768, and 390px. It still warns on the wide display-to-interface size range, absent relevant video, and one soft-grey text contrast sample. The final screenshots are `.taste-skill/revamp/flashy/release-candidate/desktop-fold.jpg`, `tablet-fold.jpg`, and `mobile-fold.jpg`; every listed page sheet was also reviewed. The sample workspace is illustrative, and the existing footer credits the four snow-crystal photographs.
