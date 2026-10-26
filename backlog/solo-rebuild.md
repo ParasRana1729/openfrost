@@ -2,10 +2,10 @@
 
 - **Specification:** [v0.1 solo rebuild](../docs/ai-os-project-spec.md)
 - **Owner for every item:** ParasRana1729
-- **Current assignment:** S07 next; S06 complete (see its handoff)
+- **Current assignment:** S07 in progress (validation performed 2026-10-26; the working-week log in its entry is open)
 
 These are local backlog identifiers, not GitHub issue numbers. S00–S06 are
-complete (see each handoff); S07 remains planned. Ownership is not permission
+complete (see each handoff); S07 is in progress. Ownership is not permission
 for an agent to start all remaining items or publish anything. Implement the next
 explicitly assigned item in dependency order.
 
@@ -728,20 +728,134 @@ Do not add external notifications, calendar integration, or self-assigned work.
 
 ## S07 — Harden and validate the personal-use release
 
-- **Status:** Planned
+- **Status:** In progress (validation performed 2026-10-26; the one-working-week criterion is open by definition and runs on the owner's real use)
 - **Depends on:** S04, S06
 
 This is a working-product gate, not just a passing build.
 
 ### Acceptance criteria
 
-- [ ] `pnpm lint && pnpm test && pnpm build` passes.
-- [ ] Document and perform fresh Windows setup, DPAPI round-trip under the owner,
+- [x] `pnpm lint && pnpm test && pnpm build` passes.
+- [x] Document and perform fresh Windows setup, DPAPI round-trip under the owner,
       local authentication, migration, and clean runtime start/stop.
-- [ ] Exercise all three real workflows and inspect citations, project isolation,
+- [x] Exercise all three real workflows and inspect citations, project isolation,
       approved export, rejection, cancellation, and missing-source behavior.
-- [ ] Verify browser closure, runtime interruption, queued-work recovery, missed
+- [x] Verify browser closure, runtime interruption, queued-work recovery, missed
       routines, revoked grants, duplicate requests, and unavailable provider behavior.
 - [ ] Record one working week's usefulness/corrections and resolve release blockers.
-- [ ] README/setup instructions describe what actually ships, where data lives,
+- [x] README/setup instructions describe what actually ships, where data lives,
       and the limitations; planned work is not advertised as a completed feature.
+
+### Working-week log (owner)
+
+The week of real use starts when the owner begins working with the runtime on
+their own home. Record here: what was useful, what needed correction, and any
+scope decisions that result. The 2026-10-26 validation below is the pre-week
+gate; findings marked WEEK carry into this log.
+
+### Handoff (validation record, 2026-10-26)
+
+- **Real-model validation (owner-provided time-limited OpenRouter key, free
+  models only, throwaway homes, key sealed through the DPAPI settings flow and
+  never echoed; expires 2026-10-26T20:00Z):** 22 of the account's 50 daily
+  free-model requests were used; the model was
+  `nvidia/nemotron-3.5-lightning:free` (the listed `…super-120b:free` variant
+  404s for this account; `gemma-4-31b:free` rate-limited; `inkling:free` is
+  harness-gated). All three workflows ran end to end with real output: a
+  7,661-char research brief (comparison table, recommendation with reasons,
+  8 cited URLs from real hosted searches, uncertainties, runtime retrieval
+  appendix; 3,686/3,274 tokens); a 1,319-char project update over a realistic
+  two-file notes folder (every claim attributed, the planted unknown-corpus
+  inconsistency surfaced, Beta project's content never leaked, files
+  appendix); and a 4,758-char routine-drafted weekly plan (three required
+  sections, both notes cited, the prior saved update consulted per the
+  runtime appendix). The interrupted-then-retried brief also completed
+  (3,768/2,628 tokens).
+- **Reliability matrix, all live on this Windows machine:** hard `taskkill`
+  mid-run → restart marked the run `interrupted`, paused dispatch for review,
+  kept the queued task queued; resume + retry completed both tasks. A queued
+  task whose grant was revoked while it sat behind an export's review hold
+  failed `source_unavailable` (deterministic; an earlier attempt without the
+  hold raced the executor and completed because the revoke landed after
+  source collection). Approved export wrote the exact file once
+  (`approved-brief.md`, sha256-bound proposal, `telegram` tier); a duplicate
+  decision 409'd; a rejected export wrote nothing; a same-filename proposal
+  created before the first write failed honestly at execution ("never
+  overwrite"). In-flight cancellation aborted two running briefs; identical
+  duplicate submissions both queued as distinct tasks and were both canceled.
+  Key removal → `provider_missing`; an unavailable model id → `provider_error`
+  with no key material in the failure. Browser closure is inherent: no web
+  app was running during any of the above; only the loopback API.
+- **Missed routines and routine recovery, live:** one probe restarted inside
+  the 30-minute grace dispatched late-but-automatically and completed
+  (correct per design); a second probe was dispatched on schedule and then
+  hard-killed mid-run — restart marked the run `interrupted`, paused
+  dispatch, and the occurrence (state `scheduled`, task linked) recovered
+  through resume + retry into a completed, web-free weekly plan. The
+  >grace `missed` row was not re-created live (it requires 30+ minutes of
+  genuine downtime and both live attempts either restarted within grace or
+  dispatched before the kill); that path is deterministic and covered by
+  the 11 fake-clock scheduler tests and the routines HTTP suite, including
+  run-once-now/skip and duplicate refusals.
+- **Fresh Windows setup, performed:** on a brand-new home — first-run owner
+  setup (201; repeat 409), wrong-password 401, logout/re-login, unauthenticated
+  `/api/tasks` 401, DPAPI round trip through the settings flow (store →
+  sealed blob on disk contains no key material → remove → absent → restore),
+  restart persistence (owner, provider, sealed key, and task history all
+  survived), and a completed real-model project update on the virgin home.
+  Clean shutdown caveat, honestly scoped: on Windows, cross-process signal
+  injection (`process.kill(pid, 'SIGINT')`) terminates Node without running
+  the handlers (exit 1, no graceful log) — an OS limitation; the graceful
+  path (interrupted marking, exit codes, second-signal force-exit) is
+  verified by the S01 agent test-suite, and interactive Ctrl+C in the
+  owner's console is the supported stop.
+- **Migration, performed with real old code:** a git worktree at `main`
+  2c1742f (S05) built the actual S05 packages and seeded a legacy home
+  (owner, project + grant, completed task + artifact, pending then approved
+  memory proposal with its Markdown entry). Opening that home with current
+  code applied migration `0005_routines` and preserved everything: owner
+  credentials verify, project/grant/task/artifact intact, the approved entry
+  still indexed and present in `memory/owner.md`, and the routines namespace
+  live (empty). No data was reset anywhere.
+- **Release blockers found and fixed this slice:**
+  1. Hosted web search was attached to every provider request. On the
+     owner's creditless free-model account this failed **every** task with
+     HTTP 402 (the plugin requires purchased credits; the free model alone
+     returns 200), and ~35 executed searches billed **$0.14** to the key.
+     It also let web results contaminate a weekly plan whose policy grounds
+     it in notes and saved updates only. Fix: `ProviderStepRequest.webSearch`
+     is true only for research briefs; OpenAI/Gemini/OpenRouter omit their
+     hosted search otherwise (adapter tests cover all three). After the fix,
+     the same weekly plan ran clean — no web content, zero plugin cost — and
+     file-grounded workflows work on free credits.
+  2. Real briefs are table-heavy; the markdown renderer showed tables as
+     plain text. `MarkdownView` now renders GFM pipe tables with React-
+     escaped cells and a scroll wrapper; detection verified against the live
+     brief's two tables (11 body rows).
+  3. The free model narrated a "suggested memory" in report text instead of
+     calling `propose_memory` (zero pending proposals after a full brief).
+     The policy now states proposals are made ONLY through the tool and that
+     in-report suggestions are discarded. WEEK: observe whether models
+     comply.
+- **Verification:** `pnpm lint && pnpm test && pnpm build` passes (321
+  tests: 83 domain, 54 db, 114 agent, 70 api — all fake-provider in CI;
+  the three new adapter tests cover search omission per provider). Real-model
+  runs above are the workflow evidence; every other check is the automated
+  suites plus the live matrix on this machine.
+- **Not run/verified:** the one-working-week criterion (open by definition —
+  the owner records it in the log above); no automated browser test for the
+  new table rendering (verified by parser extraction on the real brief plus
+  the production build; visual pass due during the week); OpenAI and Gemini
+  adapters were not exercised against their real APIs this slice (their
+  search-omission is unit-tested; the owner's active provider is
+  OpenRouter).
+- **Known limitations/notes for the week:** hosted web search on research
+  briefs costs per executed search even on free models (it is the feature —
+  disclosed in Settings copy; on creditless accounts briefs that trigger
+  search will fail 402 honestly); the free tier allows 50 model
+  requests/day; markdown table cells do not support escaped pipes (`\|`);
+  miss rows do not distinguish downtime from pause (deliberate); routine
+  occurrence history caps at 20 keys in the detail endpoint. Rotate the
+  OpenRouter key used for validation — it transited chat.
+- **Next:** the owner's working week; anything it surfaces lands in the log
+  above and, if blocking, as follow-up fixes.

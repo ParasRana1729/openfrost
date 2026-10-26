@@ -49,6 +49,7 @@ const stepRequest = {
   ],
   step: 1,
   signal: new AbortController().signal,
+  webSearch: true,
 };
 
 function completion(
@@ -104,6 +105,23 @@ describe('OpenRouterProvider request shape', () => {
     ]);
 
     expect(result).toMatchObject({ kind: 'final', text: 'Brief body' });
+  });
+
+  it('omits the web plugin entirely for file-grounded runs (webSearch false)', async () => {
+    const { fetchImpl, requests } = scriptedFetch(() =>
+      jsonResponse(completion({ role: 'assistant', content: 'Done.' })),
+    );
+    const provider = new OpenRouterProvider({
+      model: 'openrouter/auto',
+      getApiKey: async () => FAKE_KEY,
+      fetchImpl,
+    });
+
+    await provider.step({ ...stepRequest, webSearch: false });
+
+    // The hosted plugin bills per search even on free models and breaks
+    // creditless accounts outright; file-grounded workflows never send it.
+    expect(requests[0]?.body.plugins).toBeUndefined();
   });
 
   it('maps tool-call history onto assistant tool_calls and tool-role messages', async () => {

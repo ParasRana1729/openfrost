@@ -28,6 +28,7 @@ function stepRequest(overrides?: Partial<ProviderStepRequest>): ProviderStepRequ
     tools,
     step: 1,
     signal: new AbortController().signal,
+    webSearch: true,
     ...overrides,
   };
 }
@@ -119,6 +120,25 @@ describe('GeminiProvider', () => {
       expect(result.citations).toEqual([{ url: 'https://example.com/a', title: 'Example A' }]);
       expect(result.usage).toEqual({ inputTokens: 900, outputTokens: 220 });
     }
+  });
+
+  it('omits google_search grounding for file-grounded runs (webSearch false)', async () => {
+    const { fetchImpl, calls } = fakeFetch(200, {
+      candidates: [{ content: { parts: [{ text: 'Done.' }] } }],
+    });
+    const provider = new GeminiProvider({
+      model: 'gemini-test',
+      getApiKey: async () => FAKE_KEY,
+      fetchImpl,
+    });
+
+    await provider.step(stepRequest({ webSearch: false }));
+
+    const body = JSON.parse(String(calls[0]?.init.body)) as {
+      tools: Array<Record<string, unknown>>;
+    };
+    expect(body.tools.some((tool) => 'google_search' in tool)).toBe(false);
+    expect(body.tools).toHaveLength(1);
   });
 
   it('maps function calls and counts searches from grounding queries', async () => {

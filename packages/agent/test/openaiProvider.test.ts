@@ -49,6 +49,7 @@ const stepRequest = {
   ],
   step: 1,
   signal: new AbortController().signal,
+  webSearch: true,
 };
 
 describe('OpenAIProvider request shape', () => {
@@ -98,6 +99,23 @@ describe('OpenAIProvider request shape', () => {
     ]);
 
     expect(result).toMatchObject({ kind: 'final', text: 'Brief body' });
+  });
+
+  it('drops the hosted web_search tool for file-grounded runs (webSearch false)', async () => {
+    const { fetchImpl, requests } = scriptedFetch(() =>
+      jsonResponse({ status: 'completed', output: [{ type: 'message', content: [{ type: 'output_text', text: 'Done.' }] }] }),
+    );
+    const provider = new OpenAIProvider({
+      model: 'gpt-test',
+      getApiKey: async () => FAKE_KEY,
+      fetchImpl,
+    });
+
+    await provider.step({ ...stepRequest, webSearch: false });
+
+    const tools = requests[0]?.body.tools as Array<Record<string, unknown>>;
+    expect(tools.some((tool) => tool.type === 'web_search')).toBe(false);
+    expect(tools).toHaveLength(1);
   });
 });
 

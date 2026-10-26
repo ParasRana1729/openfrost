@@ -921,6 +921,12 @@ td.mono {
   max-width: 76ch;
 }
 
+/* Report tables can be wide; scroll them inside the panel. */
+.md .table-wrap {
+  margin: 10px 0;
+  overflow-x: auto;
+}
+
 .md ul,
 .md ol {
   margin: 8px 0;

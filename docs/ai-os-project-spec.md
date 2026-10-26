@@ -2,12 +2,13 @@
 
 ## Solo rebuild specification — v0.1
 
-- **Status:** Accepted product direction; S00–S06 implemented, S07 planned
+- **Status:** Accepted product direction; S00–S06 implemented, S07 in progress (validation performed 2026-10-26; the one-working-week gate runs on the owner's real use)
 - **Owner and first user:** ParasRana1729
 - **Platform:** Windows-first, local runtime
 - **Primary interface:** Local web app
 
-**Repository state: S06 weekly planning implemented.** The workspace,
+**Repository state: S06 weekly planning implemented; S07 validation
+performed.** The workspace,
 shared Zod contracts, SQLite persistence, DPAPI secret storage, authenticated
 loopback API/UI, bounded single-run executor, the research-brief workflow
 (OpenAI, Gemini, and OpenRouter adapters with hosted web search, an
@@ -20,8 +21,11 @@ memory (canonical Markdown files, inspectable proposals, scope-isolated
 retrieval, external-edit detection), and owner-confirmed weekly planning
 routines (project-scoped templates, IANA time zones, weekly/daily cadences,
 deduplicated occurrences, missed-occurrence review) exist and are covered by
-CI. S07 release hardening is not implemented yet: capabilities below that
-depend on it are requirements to implement, not existing functionality. The
+CI. S07 release hardening is in progress: its 2026-10-26 validation pass
+(real-model workflows on a free OpenRouter model, the reliability matrix,
+fresh setup, and a real S05→current migration) is recorded in the backlog;
+the one-working-week gate remains open. Capabilities below that depend on it
+are requirements to implement, not existing functionality. The
 [solo backlog](../backlog/solo-rebuild.md) is the delivery plan and per-slice
 progress record.
 

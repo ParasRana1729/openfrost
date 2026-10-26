@@ -8,8 +8,8 @@ import type { ReactNode } from 'react';
  * the DOM as a React child, which React always escapes. Anchors are emitted
  * only for URLs that parse as http(s); every other scheme or target stays
  * plain text. Supported surface is deliberately small: headings, paragraphs,
- * unordered/ordered lists, blockquotes, horizontal rules, fenced code, and
- * inline bold, code, and links.
+ * unordered/ordered lists, blockquotes, horizontal rules, GFM-style tables,
+ * fenced code, and inline bold, code, and links.
  */
 
 const FENCE = '```';
@@ -24,6 +24,24 @@ function safeHttpUrl(raw: string): string | null {
   } catch {
     return null;
   }
+}
+
+/** GFM table delimiter row: `| --- | :---: |` (pipes optional at the edges). */
+function isTableDelimiter(line: string): boolean {
+  const trimmed = line.trim();
+  if (!/^\|?[\s:|-]+\|?$/.test(trimmed) || !trimmed.includes('-')) {
+    return false;
+  }
+  return trimmed.replace(/^\||\|$/g, '').trim().split('|').length >= 2;
+}
+
+function splitTableRow(line: string): string[] {
+  return line
+    .trim()
+    .replace(/^\|/, '')
+    .replace(/\|$/, '')
+    .split('|')
+    .map((cell) => cell.trim());
 }
 
 /** Renders inline bold, code, and http(s)-only links; the rest stays text. */
@@ -156,6 +174,45 @@ function renderBlocks(lines: readonly string[], depth: number): ReactNode[] {
       continue;
     }
 
+    // GFM table: a `|`-row followed by a delimiter row. Cells are split on
+    // unescaped pipes and rendered inline; nothing here becomes HTML.
+    if (line.includes('|') && isTableDelimiter(lines[i + 1] ?? '')) {
+      const header = splitTableRow(line);
+      i += 2;
+      const rows: string[][] = [];
+      while (
+        i < lines.length &&
+        (lines[i] ?? '').includes('|') &&
+        (lines[i] ?? '').trim().length > 0
+      ) {
+        rows.push(splitTableRow(lines[i] ?? ''));
+        i += 1;
+      }
+      blocks.push(
+        <div className="table-wrap" key={key}>
+          <table>
+            <thead>
+              <tr>
+                {header.map((cell, index) => (
+                  <th key={index}>{renderInline(cell)}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, rowIndex) => (
+                <tr key={rowIndex}>
+                  {row.map((cell, cellIndex) => (
+                    <td key={cellIndex}>{renderInline(cell)}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>,
+      );
+      continue;
+    }
+
     if (/^\s*\d+\. /.test(line)) {
       const items: string[] = [];
       while (i < lines.length && /^\s*\d+\. /.test(lines[i] ?? '')) {
@@ -175,7 +232,12 @@ function renderBlocks(lines: readonly string[], depth: number): ReactNode[] {
     const paragraph: string[] = [];
     while (i < lines.length) {
       const current = lines[i] ?? '';
-      if (current.trim() === '' || isBlockStart(current)) {
+      if (
+        current.trim() === '' ||
+        isBlockStart(current) ||
+        // A table start also interrupts a paragraph.
+        (current.includes('|') && isTableDelimiter(lines[i + 1] ?? ''))
+      ) {
         break;
       }
       paragraph.push(current);
