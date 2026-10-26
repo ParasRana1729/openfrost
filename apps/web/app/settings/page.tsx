@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { AssistantSettings, ExportDestination, ProviderId } from '@openfrost/domain';
 import { ApiError, getJson, mutate } from '../../lib/api';
 import { useSession } from '../../lib/useSession';
+import { useToast } from '../../components/ToastProvider';
 
 const PROVIDER_LABEL: Record<ProviderId, string> = {
   openai: 'OpenAI',
@@ -17,6 +18,7 @@ const MAX_MODEL_LENGTH = 100;
 
 export default function SettingsPage() {
   const { session, loading } = useSession();
+  const { showToast } = useToast();
   const [settings, setSettings] = useState<AssistantSettings | null>(null);
   // The provider the owner is currently editing. Initialized once from the
   // active provider on first load, then kept sticky across refreshes so a
@@ -29,7 +31,6 @@ export default function SettingsPage() {
   );
   const [apiKey, setApiKey] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [destinations, setDestinations] = useState<ExportDestination[]>([]);
   const [destPath, setDestPath] = useState('');
@@ -86,7 +87,6 @@ export default function SettingsPage() {
   const chooseProvider = (next: ProviderId) => {
     setSelected(next);
     setModelDraft(null);
-    setNotice(null);
     setError(null);
     void refreshSettings();
   };
@@ -101,7 +101,6 @@ export default function SettingsPage() {
     const trimmedModel = modelValue.trim();
     setBusy(true);
     setError(null);
-    setNotice(null);
     try {
       await mutate({
         method: 'PUT',
@@ -113,12 +112,12 @@ export default function SettingsPage() {
         csrfToken: csrf,
       });
       setModelDraft(null);
-      setNotice(
-        `${PROVIDER_LABEL[selectedProvider]} saved as the active provider. It takes effect on the next task run.`,
-      );
+      showToast('success', `${PROVIDER_LABEL[selectedProvider]} is now the active provider.`);
       await refreshSettings();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not save provider settings');
+      const message = err instanceof ApiError ? err.message : 'Could not save provider settings';
+      setError(message);
+      showToast('error', message);
     } finally {
       setBusy(false);
     }
@@ -134,7 +133,6 @@ export default function SettingsPage() {
     }
     setBusy(true);
     setError(null);
-    setNotice(null);
     try {
       await mutate({
         method: 'PUT',
@@ -143,12 +141,12 @@ export default function SettingsPage() {
         csrfToken: csrf,
       });
       setApiKey('');
-      setNotice(
-        `${PROVIDER_LABEL[selectedProvider]} key stored (DPAPI-protected). It is never shown again or logged.`,
-      );
+      showToast('success', `${PROVIDER_LABEL[selectedProvider]} key saved securely.`);
       await refreshSettings();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not store key');
+      const message = err instanceof ApiError ? err.message : 'Could not store key';
+      setError(message);
+      showToast('error', message);
     } finally {
       setBusy(false);
     }
@@ -159,19 +157,26 @@ export default function SettingsPage() {
       setError('Session is still loading — try again in a moment.');
       return;
     }
+    const confirmed = window.confirm(
+      `Remove the stored ${PROVIDER_LABEL[selectedProvider]} key? You will need to add it again before using ${PROVIDER_LABEL[selectedProvider]}.`,
+    );
+    if (!confirmed) {
+      return;
+    }
     setBusy(true);
     setError(null);
-    setNotice(null);
     try {
       await mutate({
         method: 'DELETE',
         path: `/api/settings/provider-key?provider=${selectedProvider}`,
         csrfToken: csrf,
       });
-      setNotice(`Stored ${PROVIDER_LABEL[selectedProvider]} key removed.`);
+      showToast('success', `${PROVIDER_LABEL[selectedProvider]} key removed.`);
       await refreshSettings();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not remove key');
+      const message = err instanceof ApiError ? err.message : 'Could not remove key';
+      setError(message);
+      showToast('error', message);
     } finally {
       setBusy(false);
     }
@@ -183,7 +188,6 @@ export default function SettingsPage() {
     }
     setDestBusy(true);
     setError(null);
-    setNotice(null);
     try {
       const result = await mutate<{ destination: ExportDestination }>({
         method: 'POST',
@@ -192,10 +196,12 @@ export default function SettingsPage() {
         csrfToken: csrf,
       });
       setDestPath('');
-      setNotice(`Destination granted: ${result.destination.path}`);
+      showToast('success', `Export destination granted: ${result.destination.path}`);
       await refreshDestinations();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not grant destination');
+      const message = err instanceof ApiError ? err.message : 'Could not grant destination';
+      setError(message);
+      showToast('error', message);
     } finally {
       setDestBusy(false);
     }
@@ -213,9 +219,12 @@ export default function SettingsPage() {
         path: `/api/exports/destinations/${destinationId}`,
         csrfToken: csrf,
       });
+      showToast('success', 'Export destination removed.');
       await refreshDestinations();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not remove destination');
+      const message = err instanceof ApiError ? err.message : 'Could not remove destination';
+      setError(message);
+      showToast('error', message);
     } finally {
       setDestBusy(false);
     }
@@ -334,11 +343,15 @@ export default function SettingsPage() {
           >
             Save key
           </button>
-          <button disabled={busy || !csrf || !selectedHasKey} onClick={() => void removeKey()}>
-            Remove stored key
+          <button
+            className="danger-text-button"
+            type="button"
+            disabled={busy || !csrf || !selectedHasKey}
+            onClick={() => void removeKey()}
+          >
+            Remove key
           </button>
         </div>
-        {notice ? <p style={{ color: 'var(--ok)' }}>{notice}</p> : null}
         {error ? <p className="error">{error}</p> : null}
       </div>
 

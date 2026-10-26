@@ -12,6 +12,7 @@ import { WEEKDAY_NAMES as WEEKDAYS } from '@openfrost/domain';
 import { ApiError, getJson, mutate } from '../../lib/api';
 import { formatTimestamp } from '../../lib/format';
 import { useSession } from '../../lib/useSession';
+import { useToast } from '../../components/ToastProvider';
 
 interface RoutineListEntry {
   routine: Routine;
@@ -93,10 +94,10 @@ function emptyForm(projects: ProjectOption[]): FormState {
 
 export default function RoutinesPage() {
   const { session, loading } = useSession();
+  const { showToast } = useToast();
   const [entries, setEntries] = useState<RoutineListEntry[]>([]);
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   /** Editing target routine id; null = closed form, 'new' = create. */
   const [editing, setEditing] = useState<'new' | string | null>(null);
@@ -142,14 +143,12 @@ export default function RoutinesPage() {
 
   const startCreate = () => {
     setError(null);
-    setNotice(null);
     setEditing('new');
     setForm(emptyForm(projects));
   };
 
   const startEdit = (routine: Routine) => {
     setError(null);
-    setNotice(null);
     setEditing(routine.id);
     setForm(formFromRoutine(routine, projects));
   };
@@ -187,11 +186,11 @@ export default function RoutinesPage() {
     };
     setBusy(true);
     setError(null);
-    setNotice(null);
     try {
       if (editing === 'new') {
         await mutate({ method: 'POST', path: '/api/routines', body: payload, csrfToken: csrf });
-        setNotice(
+        showToast(
+          'success',
           'Routine saved as a paused draft. Review the template, scope, time zone, ' +
             'and cadence below, then enable it.',
         );
@@ -202,13 +201,15 @@ export default function RoutinesPage() {
           body: payload,
           csrfToken: csrf,
         });
-        setNotice('Routine updated. Schedule changes apply from the next tick.');
+        showToast('success', 'Routine updated. Schedule changes apply from the next tick.');
       }
       setEditing(null);
       setForm(null);
       await refresh();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not save the routine');
+      const message = err instanceof ApiError ? err.message : 'Could not save the routine';
+      setError(message);
+      showToast('error', message);
     } finally {
       setBusy(false);
     }
@@ -220,16 +221,17 @@ export default function RoutinesPage() {
     }
     setBusy(true);
     setError(null);
-    setNotice(null);
     try {
       await fn();
-      setNotice(label);
+      showToast('success', label);
       await refresh();
       if (expanded !== null) {
         await refreshDetail(expanded);
       }
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Action failed');
+      const message = err instanceof ApiError ? err.message : 'Action failed';
+      setError(message);
+      showToast('error', message);
     } finally {
       setBusy(false);
     }
@@ -261,7 +263,6 @@ export default function RoutinesPage() {
           Plan contents (request, notes, and update excerpts) are sent to the
           configured model provider, like every other task.
         </p>
-        {notice ? <p style={{ color: 'var(--ok)' }}>{notice}</p> : null}
         {error ? <p className="error">{error}</p> : null}
 
         {projects.length === 0 ? (

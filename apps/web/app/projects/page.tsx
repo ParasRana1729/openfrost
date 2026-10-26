@@ -6,6 +6,7 @@ import type { Project, ProjectFolderGrant } from '@openfrost/domain';
 import { ApiError, getJson, mutate } from '../../lib/api';
 import { formatTimestamp } from '../../lib/format';
 import { useSession } from '../../lib/useSession';
+import { useToast } from '../../components/ToastProvider';
 
 interface ProjectWithGrants extends Project {
   grants: ProjectFolderGrant[];
@@ -13,9 +14,9 @@ interface ProjectWithGrants extends Project {
 
 export default function ProjectsPage() {
   const { session, loading } = useSession();
+  const { showToast } = useToast();
   const [projects, setProjects] = useState<ProjectWithGrants[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   // Create form state
@@ -48,20 +49,23 @@ export default function ProjectsPage() {
 
   const run = async (action: () => Promise<string | void>) => {
     if (!csrf) {
-      setError('Session is still loading — try again in a moment.');
+      const message = 'Session is still loading — try again in a moment.';
+      setError(message);
+      showToast('error', message);
       return;
     }
     setBusy(true);
     setError(null);
-    setNotice(null);
     try {
       const message = await action();
       if (typeof message === 'string') {
-        setNotice(message);
+        showToast('success', message);
       }
       await refreshProjects();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Request failed');
+      const message = err instanceof ApiError ? err.message : 'Request failed';
+      setError(message);
+      showToast('error', message);
     } finally {
       setBusy(false);
     }
@@ -89,7 +93,6 @@ export default function ProjectsPage() {
     setEditId(project.id);
     setEditName(project.name);
     setEditInstructions(project.instructions ?? '');
-    setNotice(null);
     setError(null);
   };
 
@@ -192,7 +195,6 @@ export default function ProjectsPage() {
       </div>
 
       {error ? <p className="error">{error}</p> : null}
-      {notice ? <p className="muted">{notice}</p> : null}
 
       <div className="panel">
         <h2>Your projects</h2>

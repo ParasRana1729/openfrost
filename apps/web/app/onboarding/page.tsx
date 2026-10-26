@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ApiError, getJson, mutate } from '../../lib/api';
 import type { SessionInfo } from '../../lib/api';
+import { useToast } from '../../components/ToastProvider';
 
 /**
  * First-run onboarding. The disclosures below are a product requirement
@@ -12,6 +13,7 @@ import type { SessionInfo } from '../../lib/api';
  */
 export default function OnboardingPage() {
   const router = useRouter();
+  const { showToast } = useToast();
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -20,11 +22,15 @@ export default function OnboardingPage() {
   const submit = async () => {
     setError(null);
     if (password.length < 8) {
-      setError('Use at least 8 characters.');
+      const message = 'Use at least 8 characters.';
+      setError(message);
+      showToast('error', message);
       return;
     }
     if (password !== confirm) {
-      setError('Passwords do not match.');
+      const message = 'Passwords do not match.';
+      setError(message);
+      showToast('error', message);
       return;
     }
     setBusy(true);
@@ -39,15 +45,19 @@ export default function OnboardingPage() {
       // stored the session cookie.
       const session = await getJson<SessionInfo>('/api/auth/session');
       if (!session.authenticated) {
-        setError(
-          'Account created, but this browser is not keeping the session cookie. Allow cookies for this site and sign in again.',
-        );
+        const message =
+          'Account created, but this browser is not keeping the session cookie. Allow cookies for this site and sign in again.';
+        setError(message);
+        showToast('error', message);
         setBusy(false);
         return;
       }
+      showToast('success', 'Owner account created.');
       router.replace('/');
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Setup failed');
+      const message = err instanceof ApiError ? err.message : 'Setup failed';
+      setError(message);
+      showToast('error', message);
       setBusy(false);
     }
   };

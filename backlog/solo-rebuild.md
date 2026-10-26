@@ -2,10 +2,11 @@
 
 - **Specification:** [v0.1 solo rebuild](../docs/ai-os-project-spec.md)
 - **Owner for every item:** ParasRana1729
-- **Current assignment:** S07 in progress (pre-week validation performed 2026-10-26; the owner-use gate remains open)
+- **Current assignment:** S08 Phase 1 Control Center usability; S07's one-working-week owner-use gate remains open
 
 These are local backlog identifiers, not GitHub issue numbers. S00–S06 are
-complete (see each handoff); S07 is in progress. Ownership is not permission
+complete (see each handoff); S07 remains in progress and S08 Phase 1 is being
+implemented on a topic branch. Ownership is not permission
 for an agent to start all remaining items or publish anything. Implement the next
 explicitly assigned item in dependency order.
 
@@ -883,3 +884,53 @@ gate; findings marked WEEK carry into this log.
   Checks pass for this focused follow-up; it does not close S07 or the open
   owner-use gate.
 - Next: continue the owner's working-week log and resolve any issues it surfaces.
+
+## S08 — Improve Control Center clarity and feedback (Phase 1)
+
+- **Status:** Implementation and local verification complete on `feat/ui-phase1-quick-wins`; PR and landing pending
+- **Depends on:** S01–S06 (existing local UI and workflows)
+
+Implement the first, visible usability slice from the owner-provided UI/UX plan.
+This slice is limited to Phase 1 quick wins; the task lifecycle redesign,
+provider Save and test flow, and later polish remain future work. S08 does not
+close S07's working-week release gate or add new runtime capabilities.
+
+### Acceptance criteria
+
+- [x] Assistant workflow modes read as one segmented choice; optional fields are
+      grouped under an “Advanced options” disclosure.
+- [x] “Queue task” is the clear primary action. Its disabled state stays legible
+      and explains what the owner must provide before queuing.
+- [x] Provider-key removal is visually secondary and requires confirmation.
+- [x] Sidebar status reflects whether the local API is reachable and fits as a
+      compact status chip.
+- [x] The shared toast region reports successes and failures across setup,
+      task, project, memory, routine, and settings actions.
+- [x] Scrollable activity feeds are keyboard-focusable and labeled.
+- [x] The Assistant heading and composer fit with recent activity in the desktop
+      viewport; the composer remains usable at a narrow viewport.
+- [x] Axe audits report zero violations on the Assistant (desktop and mobile)
+      and Settings pages. Axe marks contrast checks incomplete because of
+      gradients and pseudo-elements; the foreground/background token pairs were
+      manually reviewed and exceed 4.5:1.
+- [x] `pnpm lint`, `pnpm test` (325 tests), `pnpm build`, and `git diff --check`
+      pass.
+- [x] Manual browser workflow in an isolated temporary home: create the owner,
+      queue and complete a fake-provider brief, observe the queue toast, store a
+      disposable fake key, cancel key removal, then confirm removal.
+
+### Handoff
+
+- Implemented: accessible workflow toggles, queue readiness copy, advanced
+  disclosure, reduced hero type size, API-backed runtime status, danger text
+  treatment and confirmation for key removal, and global timed toasts for
+  success/error feedback.
+- Accessibility: axe-core 4.12.1 reported zero violations on the Assistant and
+  Settings screens. One incomplete color-contrast rule requires manual review;
+  the applicable token pairs were calculated above WCAG AA's 4.5:1 threshold.
+- Not run: a standalone Lighthouse audit or automated browser test suite; this
+  repository has no existing UI browser-test harness. The task feed/run-detail
+  redesign, Settings Save and test flow, and remaining Phase 2–4 items were not
+  implemented in this slice.
+- Next: Phase 2 — readable task feed and run detail with failure explanations,
+  progress, and queue visibility.

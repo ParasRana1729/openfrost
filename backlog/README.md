@@ -15,6 +15,7 @@ Use **[solo-rebuild.md](solo-rebuild.md)** with the
 | S05 | Owner-approved memory | S03 |
 | S06 | Weekly planning routines | S03, S05 |
 | S07 | Release hardening and real-use evaluation | S04, S06 |
+| S08 | Control Center usability quick wins (Phase 1) | S01–S06 |
 
 All items belong to ParasRana1729. IDs are local planning identifiers, **not**
 GitHub issue numbers. Work one assigned slice at a time; each entry contains its
@@ -30,3 +31,5 @@ evaluation remains open. The S07 follow-up in
 redaction and NAT64 hardening; it does not complete S07. See the
 [solo backlog](solo-rebuild.md)
 handoffs for evidence, scope, and limitations.
+S08 Phase 1 improves the existing Control Center and does not close or alter
+the S07 one-working-week release gate.

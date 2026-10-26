@@ -11,7 +11,7 @@ Read these in order:
 1. [AGENTS.md](../AGENTS.md): engineering and security constraints.
 2. [Product one-pager](./product-one-pager.md): the promise and first three jobs.
 3. [Full specification](./ai-os-project-spec.md): behavior and release gates.
-4. [Solo backlog](../backlog/solo-rebuild.md): the assigned S00–S07 slice.
+4. [Solo backlog](../backlog/solo-rebuild.md): the assigned S00–S08 slice.
 
 Then inspect current `origin/main`, relevant recent commits/PRs, and the assigned
 entry's handoff. Those are shared context; do not assume another agent's private
@@ -23,11 +23,14 @@ open. The S07 follow-up in
 [PR #28](https://github.com/ParasRana1729/openfrost/pull/28) adds provider-key
 redaction and NAT64 hardening; it does not complete S07. Check the solo backlog
 handoffs for evidence, status, and limitations before building.
+S08 Phase 1 Control Center usability is a separate UI slice and does not close
+the S07 owner-use gate.
 
 ## 2. Set up and choose one slice
 
-Start with the current assignment. S07 release validation is active; S06 weekly
-planning is already implemented. Check the solo backlog entry and handoffs,
+Start with the current assignment. S07's owner-use gate remains open; S08 Phase 1
+Control Center usability is a separate UI slice. S06 weekly planning is already
+implemented. Check the solo backlog entry and handoffs,
 then confirm dependencies in the code. The toolchain exists: `pnpm install`,
 `pnpm lint`, `pnpm test`, `pnpm build`, and `pnpm dev` are the working commands.
 
@@ -65,8 +68,8 @@ change repository settings, or deploy under this authorization.
 
 Replace the placeholder with the specific task before sending the assignment;
 the merge authorization applies to that scope, not the whole backlog. Check the
-backlog for the current assignment; S00–S06 are implemented, and S07's owner-use
-gate remains open.
+backlog for the current assignment; S00–S06 are implemented, S07's owner-use
+gate remains open, and S08 Phase 1 usability is tracked separately.
 
 ## 4. Verify the implementation
 

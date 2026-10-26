@@ -2,7 +2,7 @@
 
 ## Solo rebuild specification — v0.1
 
-- **Status:** Accepted product direction; S00–S06 implemented, S07 in progress (validation performed 2026-10-26; the one-working-week gate runs on the owner's real use)
+- **Status:** Accepted product direction; S00–S06 implemented, S07 in progress (validation performed 2026-10-26; the one-working-week gate runs on the owner's real use), S08 Phase 1 UI usability in progress on a topic branch
 - **Owner and first user:** ParasRana1729
 - **Platform:** Windows-first, local runtime
 - **Primary interface:** Local web app
@@ -29,7 +29,8 @@ are requirements to implement, not existing functionality. The S07 follow-up in
 [PR #28](https://github.com/ParasRana1729/openfrost/pull/28) adds provider-key
 redaction and NAT64 hardening; it does not complete S07. The
 [solo backlog](../backlog/solo-rebuild.md) is the delivery plan and per-slice
-progress record.
+progress record. S08 Phase 1 improves the existing Control Center and does not
+change the product scope or close the S07 owner-use gate.
 
 ## 1. Product promise
 
@@ -313,6 +314,7 @@ Build one slice at a time; no delivery dates are implied.
 6. **S05 — Memory:** editable, owner-approved preferences and project facts.
 7. **S06 — Weekly planning:** confirmed routines, missed handling, and deduplication.
 8. **S07 — Release hardening:** Windows setup, recovery tests, and real-use evaluation.
+9. **S08 — Control Center usability:** Phase 1 quick wins for clearer task entry, feedback, and runtime status.
 
 Release v0.1 only when:
 

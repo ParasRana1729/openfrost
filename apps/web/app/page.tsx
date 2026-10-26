@@ -14,6 +14,7 @@ import { ApiError, getJson, mutate } from '../lib/api';
 import { formatTimestamp } from '../lib/format';
 import { useSession } from '../lib/useSession';
 import { useBusyGlow } from '../components/useBusyGlow';
+import { useToast } from '../components/ToastProvider';
 
 interface ProjectOption extends Project {
   grants: ProjectFolderGrant[];
@@ -61,8 +62,9 @@ export default function HomePage() {
   const [projectId, setProjectId] = useState('');
   const [constraints, setConstraints] = useState('');
   const [startingUrlsText, setStartingUrlsText] = useState('');
-  const [showDetails, setShowDetails] = useState(false);
   const inFlight = useRef(false);
+  const advancedOptionsRef = useRef<HTMLDetailsElement>(null);
+  const { showToast } = useToast();
   useBusyGlow(tasks?.executor.busy ?? false);
 
   const refreshAll = useCallback(async () => {
@@ -130,6 +132,20 @@ export default function HomePage() {
   const projectUpdateInvalid = kind === 'project_update' && projectId === '';
   const canSubmit =
     !!csrf && request.trim().length > 0 && !projectUpdateInvalid && urlsValid;
+  const queueHint =
+    !csrf
+      ? 'Checking your local session…'
+      : request.trim().length === 0
+        ? 'Describe the work you need first.'
+        : projectUpdateInvalid
+          ? projects.length === 0
+            ? 'Create a project before preparing a project update.'
+            : 'Choose a project to prepare its update.'
+          : !urlsValid
+            ? 'Fix the starting URLs before queuing this brief.'
+            : tasks?.executor.busy
+              ? 'The active run finishes first; this task will wait.'
+              : 'Ready to queue. The task runs in the background.';
 
   const submitTask = async () => {
     if (!canSubmit) {
@@ -157,10 +173,15 @@ export default function HomePage() {
       setRequest('');
       setConstraints('');
       setStartingUrlsText('');
-      setShowDetails(false);
+      if (advancedOptionsRef.current) {
+        advancedOptionsRef.current.open = false;
+      }
+      showToast('success', 'Task added to the queue.');
       await refreshAll();
     } catch (err) {
-      setActionError(err instanceof ApiError ? err.message : 'Could not create task');
+      const message = err instanceof ApiError ? err.message : 'Could not create task';
+      setActionError(message);
+      showToast('error', message);
     }
   };
 
@@ -170,9 +191,12 @@ export default function HomePage() {
     }
     try {
       await mutate({ method: 'POST', path: '/api/dispatch/resume', csrfToken: session.csrfToken });
+      showToast('success', 'Task dispatch resumed.');
       await Promise.all([refreshAll(), refresh()]);
     } catch (err) {
-      setActionError(err instanceof ApiError ? err.message : 'Resume failed');
+      const message = err instanceof ApiError ? err.message : 'Resume failed';
+      setActionError(message);
+      showToast('error', message);
     }
   };
 
@@ -255,54 +279,58 @@ export default function HomePage() {
           placeholder="Describe the task — a question to research, or notes to turn into a project update. It runs in the background."
         />
         <div className="composer-bar">
-          <button
-            type="button"
-            className="chip-toggle"
-            aria-pressed={kind === 'research_brief'}
-            onClick={() => setKind('research_brief')}
-          >
-            Research brief
-          </button>
-          <button
-            type="button"
-            className="chip-toggle"
-            aria-pressed={kind === 'project_update'}
-            onClick={() => setKind('project_update')}
-          >
-            Project update
-          </button>
-          {kind === 'project_update' ? (
-            <select
-              aria-label="Project"
-              value={projectId}
-              onChange={(e) => setProjectId(e.target.value)}
+          <div className="composer-options">
+            <div className="segmented composer-workflows" role="group" aria-label="Task workflow">
+              <button
+                type="button"
+                className="chip-toggle"
+                aria-pressed={kind === 'research_brief'}
+                onClick={() => setKind('research_brief')}
+              >
+                Research brief
+              </button>
+              <button
+                type="button"
+                className="chip-toggle"
+                aria-pressed={kind === 'project_update'}
+                onClick={() => setKind('project_update')}
+              >
+                Project update
+              </button>
+            </div>
+            {kind === 'project_update' ? (
+              <select
+                aria-label="Project for update"
+                value={projectId}
+                onChange={(e) => setProjectId(e.target.value)}
+              >
+                <option value="">Choose project…</option>
+                {projects.map((project) => (
+                  <option key={project.id} value={project.id}>
+                    {project.name}
+                  </option>
+                ))}
+              </select>
+            ) : null}
+          </div>
+          <div className="composer-primary-action">
+            <span className="queue-hint" id="queue-task-hint" aria-live="polite">
+              {queueHint}
+            </span>
+            <button
+              type="button"
+              className="primary"
+              aria-describedby="queue-task-hint"
+              disabled={!canSubmit}
+              onClick={() => void submitTask()}
             >
-              <option value="">Choose project…</option>
-              {projects.map((project) => (
-                <option key={project.id} value={project.id}>
-                  {project.name}
-                </option>
-              ))}
-            </select>
-          ) : null}
-          <button
-            type="button"
-            className="chip-toggle"
-            aria-pressed={showDetails}
-            onClick={() => setShowDetails((value) => !value)}
-          >
-            Details
-          </button>
-          <button
-            className="primary"
-            disabled={!canSubmit}
-            onClick={() => void submitTask()}
-          >
-            Queue task
-          </button>
+              Queue task
+            </button>
+          </div>
         </div>
-        {showDetails ? (
-          <div style={{ paddingTop: 4 }}>
+        <details className="advanced-options" ref={advancedOptionsRef}>
+          <summary>Advanced options</summary>
+          <div className="advanced-fields">
             <label htmlFor="composer-constraints">Constraints (optional)</label>
             <textarea
               id="composer-constraints"
@@ -327,7 +355,7 @@ export default function HomePage() {
               </>
             ) : null}
           </div>
-        ) : null}
+        </details>
         {kind === 'project_update' && projects.length === 0 ? (
           <p className="error" style={{ marginTop: 10 }}>
             A project update needs a project with a granted folder. Create one on
@@ -340,16 +368,12 @@ export default function HomePage() {
             {MAX_STARTING_URLS}).
           </p>
         ) : null}
-        <p className="muted" style={{ marginTop: 10, marginBottom: 0 }}>
-          One run executes at a time; everything else queues. Closing the browser
-          does not stop a run.
-        </p>
       </div>
 
       <div className="panel">
-        <h2>Runtime activity</h2>
+        <h2>Recent activity</h2>
         {actionError ? <p className="error">{actionError}</p> : null}
-        <div className="console">
+        <div className="console" role="region" aria-label="Recent activity" tabIndex={0}>
           {events.length === 0 ? (
             <div className="console-empty">
               Quiet. Queue a task above and the runtime will report here.

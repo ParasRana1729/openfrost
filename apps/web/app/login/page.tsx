@@ -5,10 +5,12 @@ import { useRouter } from 'next/navigation';
 import { ApiError, getJson, mutate } from '../../lib/api';
 import type { SessionInfo } from '../../lib/api';
 import { useSession } from '../../lib/useSession';
+import { useToast } from '../../components/ToastProvider';
 
 export default function LoginPage() {
   const router = useRouter();
   const { session, loading } = useSession();
+  const { showToast } = useToast();
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -34,15 +36,19 @@ export default function LoginPage() {
       // this page with no explanation.
       const session = await getJson<SessionInfo>('/api/auth/session');
       if (!session.authenticated) {
-        setError(
-          'Signed in, but this browser is not keeping the session cookie. Allow cookies for this site and try again.',
-        );
+        const message =
+          'Signed in, but this browser is not keeping the session cookie. Allow cookies for this site and try again.';
+        setError(message);
+        showToast('error', message);
         setBusy(false);
         return;
       }
+      showToast('success', 'Signed in.');
       router.replace('/');
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Login failed');
+      const message = err instanceof ApiError ? err.message : 'Login failed';
+      setError(message);
+      showToast('error', message);
       setBusy(false);
     }
   };

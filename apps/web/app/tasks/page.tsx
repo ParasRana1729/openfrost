@@ -19,6 +19,7 @@ import { useSession } from '../../lib/useSession';
 import { DispatchStrip } from '../../components/DispatchStrip';
 import { MarkdownView } from '../../components/MarkdownView';
 import { useBusyGlow } from '../../components/useBusyGlow';
+import { useToast } from '../../components/ToastProvider';
 
 interface ExecutorStatus {
   busy: boolean;
@@ -104,6 +105,7 @@ function isHttpUrl(url: string): boolean {
 
 export default function TasksPage() {
   const { session, loading, refresh } = useSession();
+  const { showToast } = useToast();
   const [data, setData] = useState<TasksResponse | null>(null);
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -253,9 +255,12 @@ export default function TasksPage() {
       setRequest('');
       setConstraints('');
       setStartingUrlsText('');
+      showToast('success', 'Task added to the queue.');
       await refreshTasks();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not create task');
+      const message = err instanceof ApiError ? err.message : 'Could not create task';
+      setError(message);
+      showToast('error', message);
     }
   };
 
@@ -265,9 +270,12 @@ export default function TasksPage() {
     }
     try {
       await mutate({ method: 'POST', path: `/api/tasks/${taskId}/cancel`, csrfToken: csrf });
+      showToast('success', 'Cancellation requested for this task.');
       await refreshTasks();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Cancel failed');
+      const message = err instanceof ApiError ? err.message : 'Cancel failed';
+      setError(message);
+      showToast('error', message);
     }
   };
 
@@ -277,9 +285,12 @@ export default function TasksPage() {
     }
     try {
       await mutate({ method: 'POST', path: `/api/tasks/${taskId}/retry`, csrfToken: csrf });
+      showToast('success', 'Task queued for another run.');
       await refreshTasks();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Retry failed');
+      const message = err instanceof ApiError ? err.message : 'Retry failed';
+      setError(message);
+      showToast('error', message);
     }
   };
 
@@ -289,9 +300,12 @@ export default function TasksPage() {
     }
     try {
       await mutate({ method: 'POST', path: '/api/dispatch/resume', csrfToken: csrf });
+      showToast('success', 'Task dispatch resumed.');
       await Promise.all([refreshTasks(), refresh()]);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Resume failed');
+      const message = err instanceof ApiError ? err.message : 'Resume failed';
+      setError(message);
+      showToast('error', message);
     }
   };
 
@@ -301,7 +315,9 @@ export default function TasksPage() {
       setExportOpen(false);
       setExportFilename('');
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not load task');
+      const message = err instanceof ApiError ? err.message : 'Could not load task';
+      setError(message);
+      showToast('error', message);
     }
   };
 
@@ -326,10 +342,13 @@ export default function TasksPage() {
         csrfToken: csrf,
       });
       setExportOpen(false);
+      showToast('success', 'Export request sent for approval.');
       setDetail(await getJson<TaskDetail>(`/api/tasks/${detail.task.id}`));
       await refreshTasks();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not propose the export');
+      const message = err instanceof ApiError ? err.message : 'Could not propose the export';
+      setError(message);
+      showToast('error', message);
     } finally {
       setExportBusy(false);
     }
@@ -348,10 +367,13 @@ export default function TasksPage() {
         body: { decision },
         csrfToken: csrf,
       });
+      showToast('success', decision === 'granted' ? 'Export approved.' : 'Export rejected.');
       setDetail(await getJson<TaskDetail>(`/api/tasks/${detail.task.id}`));
       await refreshTasks();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not record the decision');
+      const message = err instanceof ApiError ? err.message : 'Could not record the decision';
+      setError(message);
+      showToast('error', message);
     } finally {
       setExportBusy(false);
     }
@@ -775,7 +797,7 @@ export default function TasksPage() {
             </tbody>
           </table>
           <h2>Activity</h2>
-          <div className="console">
+          <div className="console" role="region" aria-label="Task activity" tabIndex={0}>
             {detail.events.length === 0 ? (
               <div className="console-empty">No recorded activity for this task.</div>
             ) : (
