@@ -1,6 +1,7 @@
 import {
   ProviderError,
   ProviderMissingError,
+  redactSecret,
   type LlmProvider,
   type ProviderCitation,
   type ProviderStepRequest,
@@ -104,7 +105,7 @@ export class OpenAIProvider implements LlmProvider {
 
     if (!response.ok) {
       throw new ProviderError(
-        `OpenAI request failed with HTTP ${response.status}: ${await errorDetail(response)}`,
+        `OpenAI request failed with HTTP ${response.status}: ${await errorDetail(response, apiKey)}`,
       );
     }
 
@@ -221,10 +222,10 @@ function toUsage(value: unknown): ProviderUsage {
   };
 }
 
-async function errorDetail(response: Response): Promise<string> {
+async function errorDetail(response: Response, apiKey: string): Promise<string> {
   let raw = '';
   try {
-    raw = await response.text();
+    raw = redactSecret(await response.text(), apiKey);
   } catch {
     return 'no response body';
   }

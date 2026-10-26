@@ -218,7 +218,7 @@ describe('OpenAIProvider response mapping', () => {
 describe('OpenAIProvider error handling', () => {
   it('throws ProviderError on non-2xx without leaking the API key', async () => {
     const { fetchImpl } = scriptedFetch(() =>
-      jsonResponse({ error: { message: 'Incorrect API key provided' } }, 401),
+      jsonResponse({ error: { message: `Incorrect API key provided: ${FAKE_KEY}` } }, 401),
     );
     const provider = new OpenAIProvider({
       model: 'gpt-test',
@@ -234,6 +234,7 @@ describe('OpenAIProvider error handling', () => {
     const message = err instanceof Error ? err.message : '';
     expect(message).toContain('HTTP 401');
     expect(message).toContain('Incorrect API key provided');
+    expect(message).toContain('[redacted]');
     expect(message).not.toContain(FAKE_KEY);
   });
 

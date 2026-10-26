@@ -6,6 +6,7 @@ import type {
   ProviderUsage,
   ToolDefinition,
 } from './provider.js';
+import { redactSecret } from './provider.js';
 import { ProviderError, ProviderMissingError } from './provider.js';
 
 const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
@@ -122,7 +123,8 @@ export class GeminiProvider implements LlmProvider {
       if (err instanceof Error && err.name === 'AbortError') {
         throw err;
       }
-      throw new ProviderError(`Gemini request failed: ${err instanceof Error ? err.message : String(err)}`);
+      const message = err instanceof Error ? err.message : String(err);
+      throw new ProviderError(`Gemini request failed: ${redactSecret(message, apiKey)}`);
     }
 
     if (!response.ok) {
@@ -130,7 +132,7 @@ export class GeminiProvider implements LlmProvider {
       try {
         const parsed = (await response.json()) as GeminiResponse;
         if (parsed.error?.message) {
-          detail = `HTTP ${response.status}: ${truncate(parsed.error.message)}`;
+          detail = `HTTP ${response.status}: ${truncate(redactSecret(parsed.error.message, apiKey))}`;
         }
       } catch {
         // Non-JSON error body; the status line is enough.
