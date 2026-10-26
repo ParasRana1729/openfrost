@@ -11,6 +11,7 @@ import type {
 import { ApiError, getJson, mutate } from '../../lib/api';
 import { formatTimestamp } from '../../lib/format';
 import { useSession } from '../../lib/useSession';
+import { useToast } from '../../components/ToastProvider';
 
 function scopeLabel(
   scope: 'global' | 'project',
@@ -26,9 +27,9 @@ function sourceLabel(source: MemoryEntry['source']): string {
 
 export default function MemoryPage() {
   const { session, loading } = useSession();
+  const { showToast } = useToast();
   const [snapshot, setSnapshot] = useState<MemorySnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [proposalDrafts, setProposalDrafts] = useState<Record<string, string>>({});
   const [entryDrafts, setEntryDrafts] = useState<Record<string, string>>({});
@@ -54,20 +55,23 @@ export default function MemoryPage() {
 
   const run = async (action: () => Promise<string | void>) => {
     if (!csrf) {
-      setError('Session is still loading — try again in a moment.');
+      const message = 'Session is still loading — try again in a moment.';
+      setError(message);
+      showToast('error', message);
       return;
     }
     setBusy(true);
     setError(null);
-    setNotice(null);
     try {
       const message = await action();
       if (typeof message === 'string') {
-        setNotice(message);
+        showToast('success', message);
       }
       await refresh();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Request failed');
+      const message = err instanceof ApiError ? err.message : 'Request failed';
+      setError(message);
+      showToast('error', message);
     } finally {
       setBusy(false);
     }
@@ -318,7 +322,6 @@ export default function MemoryPage() {
       </div>
 
       {error ? <p className="error">{error}</p> : null}
-      {notice ? <p className="muted">{notice}</p> : null}
 
       {externalChanges.length > 0 || problemLines.length > 0 ? (
         <div className="panel">

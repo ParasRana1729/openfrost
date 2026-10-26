@@ -131,14 +131,14 @@ packages/domain          Shared Zod contracts
 packages/db              SQLite, Drizzle migrations, DPAPI secret storage
 packages/agent           Provider adapters, execution loop, bounded tools
 docs/                    Product specification and developer guide
-backlog/                  S00–S07 plan, acceptance criteria, and handoffs
+backlog/                  S00–S08 plan, acceptance criteria, and handoffs
 ```
 
 ## Project docs
 
 - [Product one-pager](docs/product-one-pager.md)
 - [Product specification](docs/ai-os-project-spec.md)
-- [S00–S07 backlog](backlog/solo-rebuild.md)
+- [S00–S08 backlog](backlog/solo-rebuild.md)
 - [Developer guide](docs/AI_DEVELOPER_GUIDE.md)
 - [Contributing](CONTRIBUTING.md)
 - [Engineering and security guidance](AGENTS.md)

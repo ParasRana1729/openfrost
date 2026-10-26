@@ -2,6 +2,8 @@ import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import { Anton, Archivo, JetBrains_Mono } from 'next/font/google';
 import { SidebarNav } from '../components/SidebarNav';
+import { RuntimeStatus } from '../components/RuntimeStatus';
+import { ToastProvider } from '../components/ToastProvider';
 import './globals.css';
 
 /**
@@ -67,15 +69,11 @@ export default function RootLayout({ children }: { children: ReactNode }) {
               OpenFrost
             </span>
             <SidebarNav />
-            <div className="sidebar-foot">
-              <span className="foot-row">
-                <span className="dot dot-idle" aria-hidden="true" />
-                local runtime
-              </span>
-              <span className="foot-row">loopback only</span>
-            </div>
+            <RuntimeStatus />
           </aside>
-          <main className="main">{children}</main>
+          <main className="main">
+            <ToastProvider>{children}</ToastProvider>
+          </main>
         </div>
       </body>
     </html>

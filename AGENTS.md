@@ -7,7 +7,8 @@ before changing the repository.
 
 **Current state: S00–S06 are implemented on `main`. S07 release hardening is in
 progress; pre-week validation was performed 2026-10-26, and the one-working-week
-owner-use gate remains open.** The pnpm workspace,
+owner-use gate remains open. S08 Phase 1 Control Center usability work is being
+implemented on `feat/ui-phase1-quick-wins`; it does not close S07.** The pnpm workspace,
 shared Zod contracts, SQLite persistence, DPAPI secret storage, authenticated
 loopback API/UI, the bounded single-run executor, the research-brief workflow
 (OpenAI, Gemini, and OpenRouter adapters with hosted web search and an
@@ -36,7 +37,7 @@ weekly planning through a local web app. Projects scope context; they are not
 separate assistant personalities.
 
 - Product authority: [`docs/ai-os-project-spec.md`](docs/ai-os-project-spec.md).
-- Current work: [`backlog/solo-rebuild.md`](backlog/solo-rebuild.md), S00–S07.
+- Current work: [`backlog/solo-rebuild.md`](backlog/solo-rebuild.md), S00–S08.
 - Planned behavior and checked documentation tasks are not proof that a product
   feature is implemented. Inspect actual files and verify dependencies before
   claiming anything works.
@@ -101,7 +102,7 @@ not a description of an existing runtime.
 
 ## 4. Working on an assigned item
 
-1. Read its S00–S07 entry in the active backlog and relevant spec sections.
+1. Read its S00–S08 entry in the active backlog and relevant spec sections.
 2. Confirm dependencies actually work in the current code; documentation or a
    completed planning task is not implementation evidence. S01 starts from an
    empty implementation and must first define the workspace and toolchain.

@@ -9,6 +9,8 @@ use gate remains open. The S07 follow-up in
 [PR #28](https://github.com/ParasRana1729/openfrost/pull/28) adds provider-key
 redaction and NAT64 hardening; it does not complete S07. Check the
 [solo backlog](backlog/solo-rebuild.md) for current evidence and limitations.
+S08 Phase 1 Control Center usability is a separate UI slice and does not close
+the S07 owner-use gate.
 
 Follow the authoritative instructions instead of assuming planned architecture
 already exists. Implement only the explicitly assigned slice.

@@ -8,7 +8,7 @@ assigned entry in the [solo backlog](backlog/solo-rebuild.md) before starting.
 
 ## 1. Scope and branches
 
-- Work on one explicitly assigned active backlog item. S00–S07 are local IDs,
+- Work on one explicitly assigned active backlog item. S00–S08 are local IDs,
   not GitHub issue numbers.
 - Confirm dependencies in the code, not just in planning documents.
 - Use a topic branch, for example `feat/s02-research-brief`,
@@ -19,6 +19,8 @@ assigned entry in the [solo backlog](backlog/solo-rebuild.md) before starting.
   redaction and NAT64 hardening; it does not complete S07. Build only what the
   assigned slice needs and verify dependencies
   in the actual code; do not infer capabilities from the spec.
+- S08 Phase 1 Control Center usability is a separate UI slice; it does not close
+  S07 or change the release gate.
 - Keep unrelated cleanup and destructive operations out of an assigned slice
   unless explicitly authorized.
 
