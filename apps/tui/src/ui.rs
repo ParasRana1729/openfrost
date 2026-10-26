@@ -1,0 +1,1355 @@
+//! Rendering. Restrained, text-first layouts: no flash, high-contrast
+//! monochrome with a small set of semantic colors.
+
+use ratatui::layout::{Constraint, Layout, Rect};
+use ratatui::style::{Color, Modifier, Style};
+use ratatui::text::{Line, Span};
+use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Tabs, Wrap};
+use ratatui::Frame;
+
+use crate::app::{
+    truncate, App, ComposerField, ConfirmAction, Dialog, Screen, Tab, TaskFilter, ALL_TABS,
+};
+use crate::contracts::{
+    ApprovalState, MemoryScope, RoutineOccurrenceState, RoutineState, RunState, TaskKind, TaskState,
+};
+
+fn accent() -> Style {
+    Style::default().fg(Color::Cyan)
+}
+
+fn muted() -> Style {
+    Style::default().fg(Color::DarkGray)
+}
+
+fn selected_style() -> Style {
+    Style::default()
+        .bg(Color::DarkGray)
+        .add_modifier(Modifier::BOLD)
+}
+
+fn kind_label(kind: &TaskKind) -> &'static str {
+    match kind {
+        TaskKind::ResearchBrief => "brief",
+        TaskKind::ProjectUpdate => "update",
+        TaskKind::ExportReport => "export",
+        TaskKind::WeeklyPlan => "weekly plan",
+    }
+}
+
+pub fn render(app: &mut App, frame: &mut Frame) {
+    match app.screen {
+        Screen::Connecting => render_connecting(app, frame),
+        Screen::Login => render_auth(
+            app,
+            frame,
+            "Sign in to OpenFrost",
+            "Owner password (Enter to sign in)",
+        ),
+        Screen::Onboarding => render_auth(
+            app,
+            frame,
+            "Welcome to OpenFrost",
+            "Choose an owner password (min 8 chars; Enter to create the account)",
+        ),
+        Screen::Main => render_main(app, frame),
+    }
+    if let Some(dialog) = &app.dialog {
+        render_dialog(app, frame, dialog);
+    }
+}
+
+fn render_connecting(app: &App, frame: &mut Frame) {
+    let area = frame.area();
+    let text = vec![
+        Line::from("OpenFrost"),
+        Line::from(""),
+        Line::styled(
+            "Connecting to the local API on 127.0.0.1:8787\u{2026}",
+            muted(),
+        ),
+    ];
+    if let Some(notice) = &app.notice {
+        let mut lines = text;
+        lines.push(Line::from(""));
+        lines.push(Line::styled(
+            notice.message.clone(),
+            Style::default().fg(Color::Red),
+        ));
+        lines.push(Line::styled(
+            "Retrying\u{2026} start the API with `pnpm dev` if it is not running.",
+            muted(),
+        ));
+        frame.render_widget(
+            Paragraph::new(lines)
+                .wrap(Wrap { trim: false })
+                .block(block("OpenFrost")),
+            area,
+        );
+    } else {
+        frame.render_widget(
+            Paragraph::new(text)
+                .wrap(Wrap { trim: false })
+                .block(block("OpenFrost")),
+            area,
+        );
+    }
+}
+
+fn block(title: &str) -> Block<'static> {
+    Block::default()
+        .borders(Borders::ALL)
+        .title(Span::styled(title.to_string(), accent()))
+}
+
+fn render_auth(app: &mut App, frame: &mut Frame, title: &str, hint: &str) {
+    let area = frame.area();
+    let vertical =
+        Layout::vertical([Constraint::Percentage(35), Constraint::Length(7)]).split(area);
+    frame.render_widget(
+        Paragraph::new(vec![
+            Line::from(Span::styled(
+                "OpenFrost",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            )),
+            Line::from(
+                "A local AI assistant for research briefs, project updates, and weekly planning.",
+            ),
+        ]),
+        vertical[0],
+    );
+    let chunks = Layout::vertical([
+        Constraint::Length(3),
+        Constraint::Length(1),
+        Constraint::Length(1),
+    ])
+    .split(vertical[1]);
+    app.auth.set_block(block(title));
+    frame.render_widget(&app.auth, chunks[0]);
+    frame.render_widget(
+        Paragraph::new(Line::styled(hint.to_string(), muted())),
+        chunks[1],
+    );
+    if app.auth_busy {
+        frame.render_widget(
+            Paragraph::new(Line::styled(
+                "Checking with the API\u{2026}".to_string(),
+                muted(),
+            )),
+            chunks[2],
+        );
+    }
+}
+
+fn render_main(app: &mut App, frame: &mut Frame) {
+    let area = frame.area();
+    let chunks = Layout::vertical([
+        Constraint::Length(1),
+        Constraint::Min(5),
+        Constraint::Length(1),
+    ])
+    .split(area);
+    let (header, body, status) = (chunks[0], chunks[1], chunks[2]);
+
+    let tab_titles: Vec<Line> = ALL_TABS
+        .iter()
+        .enumerate()
+        .map(|(index, tab)| Line::from(format!("{} {}", index + 1, tab.title())))
+        .collect();
+    let active_index = ALL_TABS.iter().position(|tab| *tab == app.tab).unwrap_or(0);
+    frame.render_widget(
+        Tabs::new(tab_titles)
+            .select(active_index)
+            .highlight_style(accent().add_modifier(Modifier::BOLD))
+            .block(Block::default().borders(Borders::BOTTOM)),
+        header,
+    );
+
+    match app.tab {
+        Tab::Assistant => render_assistant(app, frame, body),
+        Tab::Tasks => render_tasks(app, frame, body),
+        Tab::Projects => render_projects(app, frame, body),
+        Tab::Memory => render_memory(app, frame, body),
+        Tab::Routines => render_routines(app, frame, body),
+        Tab::Settings => render_settings(app, frame, body),
+    }
+
+    render_status_bar(app, frame, status);
+}
+
+fn render_status_bar(app: &App, frame: &mut Frame, area: Rect) {
+    let mut spans = Vec::new();
+    match &app.tasks.executor {
+        Some(executor) => {
+            if executor.dispatchPaused {
+                spans.push(Span::styled(
+                    " DISPATCH PAUSED (resume from Tasks: press r on a failed task after review) ",
+                    Style::default().fg(Color::Black).bg(Color::Yellow),
+                ));
+            }
+            if executor.busy {
+                spans.push(Span::styled(
+                    " executor busy ",
+                    Style::default().fg(Color::Black).bg(Color::Cyan),
+                ));
+            } else {
+                spans.push(Span::styled(" executor idle ", muted()));
+            }
+            let queued = app
+                .tasks
+                .tasks
+                .iter()
+                .filter(|task| task.state == TaskState::Queued)
+                .count();
+            if queued > 0 {
+                spans.push(Span::styled(format!(" queue: {queued} "), muted()));
+            }
+        }
+        None => spans.push(Span::styled(" API status unknown ", muted())),
+    }
+    if let Some(notice) = &app.notice {
+        let style = if notice.is_error {
+            Style::default().fg(Color::Red)
+        } else {
+            Style::default().fg(Color::Green)
+        };
+        spans.push(Span::styled(format!(" {} ", notice.message), style));
+    }
+    let approvals = app.assistant.approvals.len();
+    if approvals > 0 {
+        spans.push(Span::styled(
+            format!(" {approvals} approval(s) pending "),
+            Style::default().fg(Color::Magenta),
+        ));
+    }
+    spans.push(Span::styled("  Alt+1..6 tabs | Ctrl+C quit", muted()));
+    frame.render_widget(Line::from(spans), area);
+}
+
+// ---------------------------------------------------------------------------
+// Assistant
+// ---------------------------------------------------------------------------
+
+fn render_assistant(app: &mut App, frame: &mut Frame, area: Rect) {
+    let chunks =
+        Layout::horizontal([Constraint::Percentage(55), Constraint::Percentage(45)]).split(area);
+    render_composer(app, frame, chunks[0]);
+    render_activity(app, frame, chunks[1]);
+}
+
+fn composer_row(frame: &mut Frame, area: Rect, label: &str, focused: bool) {
+    let style = if focused {
+        accent().add_modifier(Modifier::BOLD)
+    } else {
+        muted()
+    };
+    let label_area = Rect {
+        width: (label.len() as u16).min(area.width),
+        ..area
+    };
+    frame.render_widget(
+        Paragraph::new(Line::styled(label.to_string(), style)),
+        label_area,
+    );
+}
+
+fn render_composer(app: &mut App, frame: &mut Frame, area: Rect) {
+    let kind_value = if app.assistant.kind_project_update {
+        "project update"
+    } else {
+        "research brief"
+    };
+    let project_value = app
+        .assistant
+        .project_idx
+        .and_then(|index| app.assistant.projects.get(index))
+        .map(|project| project.name.clone())
+        .unwrap_or_else(|| "(no project)".to_string());
+
+    let mut constraints = Vec::new();
+    // Request, kind, project always; advanced fields when open.
+    constraints.push(Constraint::Min(4)); // request
+    constraints.push(Constraint::Length(1)); // kind
+    constraints.push(Constraint::Length(1)); // project
+    if app.assistant.advanced_open {
+        constraints.push(Constraint::Length(1)); // title
+        constraints.push(Constraint::Length(2)); // constraints
+        constraints.push(Constraint::Length(1)); // urls
+    }
+    constraints.push(Constraint::Length(1)); // footer
+    let rows = Layout::vertical(constraints).split(area);
+
+    let focus = app.assistant.focus;
+    let mut row = 0usize;
+
+    let focused_block = |base: Block<'static>, focused: bool| {
+        if focused {
+            base.border_style(accent())
+        } else {
+            base
+        }
+    };
+
+    // Request textarea.
+    app.assistant.request.set_block(focused_block(
+        block("Request (Ctrl+S queue, Tab next, Ctrl+A advanced)"),
+        focus == ComposerField::Request,
+    ));
+    frame.render_widget(&app.assistant.request, rows[row]);
+    row += 1;
+
+    // Kind row.
+    render_select_row(
+        frame,
+        rows[row],
+        "Kind",
+        kind_value,
+        focus == ComposerField::Kind,
+    );
+    row += 1;
+
+    render_select_row(
+        frame,
+        rows[row],
+        "Project",
+        &project_value,
+        focus == ComposerField::Project,
+    );
+    row += 1;
+
+    if app.assistant.advanced_open {
+        app.assistant.title.set_block(focused_block(
+            block("Title (optional)"),
+            focus == ComposerField::Title,
+        ));
+        frame.render_widget(&app.assistant.title, rows[row]);
+        row += 1;
+
+        app.assistant.constraints.set_block(focused_block(
+            block("Constraints (optional)"),
+            focus == ComposerField::Constraints,
+        ));
+        frame.render_widget(&app.assistant.constraints, rows[row]);
+        row += 1;
+
+        app.assistant.starting_urls.set_block(focused_block(
+            block("Starting URLs (optional, space/comma separated)"),
+            focus == ComposerField::StartingUrls,
+        ));
+        frame.render_widget(&app.assistant.starting_urls, rows[row]);
+        row += 1;
+    }
+
+    let hint = if app.assistant.advanced_open {
+        "Ctrl+A hide advanced"
+    } else {
+        "Ctrl+A show advanced (title, constraints, starting URLs)"
+    };
+    composer_row(frame, rows[row], hint, false);
+}
+
+fn render_select_row(frame: &mut Frame, area: Rect, label: &str, value: &str, focused: bool) {
+    let label_style = if focused {
+        accent().add_modifier(Modifier::BOLD)
+    } else {
+        muted()
+    };
+    let line = Line::from(vec![
+        Span::styled(format!("{label}: "), label_style),
+        Span::styled(
+            value.to_string(),
+            if focused { accent() } else { Style::default() },
+        ),
+        if focused {
+            Span::styled("  (h/l change)", muted())
+        } else {
+            Span::raw("")
+        },
+    ]);
+    frame.render_widget(Paragraph::new(line), area);
+}
+
+fn render_activity(app: &mut App, frame: &mut Frame, area: Rect) {
+    let chunks = Layout::vertical([
+        Constraint::Length(app.assistant.approvals.len().min(3) as u16 * 2 + 1),
+        Constraint::Length(
+            app.assistant
+                .routines
+                .iter()
+                .map(|r| r.missedCount)
+                .sum::<i64>()
+                .min(3) as u16
+                + 1,
+        ),
+        Constraint::Min(3),
+    ])
+    .split(area);
+    let (approval_area, routine_area, activity_area) = (chunks[0], chunks[1], chunks[2]);
+
+    // Pending export approvals.
+    let mut approval_lines: Vec<Line> = Vec::new();
+    for approval in app.assistant.approvals.iter().take(3) {
+        approval_lines.push(Line::from(vec![
+            Span::styled(
+                " approval ",
+                Style::default().fg(Color::Black).bg(Color::Magenta),
+            ),
+            Span::raw(" "),
+            Span::styled(
+                format!(
+                    "{} \u{2192} {} ({})",
+                    approval.taskTitle.as_deref().unwrap_or("export"),
+                    approval.approval.filename,
+                    approval.approval.destinationPath
+                ),
+                Style::default(),
+            ),
+        ]));
+        approval_lines.push(Line::styled(
+            "   open it in Tasks \u{2192} Enter \u{2192} g grant / d reject".to_string(),
+            muted(),
+        ));
+    }
+    if approval_lines.is_empty() {
+        approval_lines.push(Line::styled(
+            "No pending export approvals.".to_string(),
+            muted(),
+        ));
+    }
+    frame.render_widget(
+        Paragraph::new(approval_lines).block(block("Approvals")),
+        approval_area,
+    );
+
+    // Missed routines.
+    let mut routine_lines: Vec<Line> = Vec::new();
+    for routine in app
+        .assistant
+        .routines
+        .iter()
+        .filter(|r| r.missedCount > 0)
+        .take(3)
+    {
+        routine_lines.push(Line::from(vec![
+            Span::styled(
+                " missed ",
+                Style::default().fg(Color::Black).bg(Color::Yellow),
+            ),
+            Span::raw(" "),
+            Span::raw(routine.routine.name.clone()),
+            Span::styled(
+                format!(
+                    "  ({} occurrence(s) \u{2014} review in Routines)",
+                    routine.missedCount
+                ),
+                muted(),
+            ),
+        ]));
+    }
+    if routine_lines.is_empty() {
+        routine_lines.push(Line::styled(
+            "No missed routine occurrences.".to_string(),
+            muted(),
+        ));
+    }
+    frame.render_widget(
+        Paragraph::new(routine_lines).block(block("Routines")),
+        routine_area,
+    );
+
+    // Recent activity.
+    let activity: Vec<Line> = app
+        .assistant
+        .events
+        .iter()
+        .map(|event| {
+            let task_part = event
+                .taskId
+                .as_deref()
+                .map(|id| format!(" [{id}]"))
+                .unwrap_or_default();
+            Line::from(vec![
+                Span::styled(
+                    format!("{} ", &event.createdAt[11..19.min(event.createdAt.len())]),
+                    muted(),
+                ),
+                Span::styled(event.kind.clone(), accent()),
+                Span::raw(task_part),
+            ])
+        })
+        .collect();
+    frame.render_widget(
+        Paragraph::new(activity)
+            .wrap(Wrap { trim: false })
+            .block(block("Recent activity")),
+        activity_area,
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Tasks
+// ---------------------------------------------------------------------------
+
+fn render_tasks(app: &mut App, frame: &mut Frame, area: Rect) {
+    if app.tasks.searching {
+        let chunks = Layout::vertical([Constraint::Length(3), Constraint::Min(3)]).split(area);
+        app.tasks
+            .search
+            .set_block(block("Search (/ to focus, Enter apply, Esc clear)"));
+        frame.render_widget(&app.tasks.search, chunks[0]);
+        render_task_list(app, frame, chunks[1]);
+        return;
+    }
+    if app.tasks.detail_open {
+        render_task_detail(app, frame, area);
+        return;
+    }
+    render_task_list(app, frame, area);
+}
+
+fn render_task_list(app: &mut App, frame: &mut Frame, area: Rect) {
+    let visible = app.tasks.visible();
+    let items: Vec<ListItem> = visible
+        .iter()
+        .enumerate()
+        .map(|(index, task)| {
+            let mut spans = vec![
+                Span::styled(
+                    format!(" {:<9} ", task_state_short(&task.state)),
+                    task_state_style(&task.state),
+                ),
+                Span::raw(truncate(&task.title, 44)),
+                Span::styled(format!("  {}", kind_label(&task.kind)), muted()),
+            ];
+            if let Some(error) = &task.error {
+                spans.push(Span::styled(
+                    format!("  {}", truncate(error, 40)),
+                    Style::default().fg(Color::Red),
+                ));
+            }
+            if index == app.tasks.selected {
+                return ListItem::new(Line::from(spans)).style(selected_style());
+            }
+            ListItem::new(Line::from(spans))
+        })
+        .collect();
+    let filter_counts = |filter: TaskFilter| {
+        app.tasks
+            .tasks
+            .iter()
+            .filter(|task| filter.matches(task))
+            .count()
+    };
+    let title = format!(
+        "Tasks \u{2014} {} (f filter, / search, Enter detail, c cancel, r retry) [{} all / {} active / {} done / {} failed]",
+        app.tasks.filter.label(),
+        filter_counts(TaskFilter::All),
+        filter_counts(TaskFilter::Active),
+        filter_counts(TaskFilter::Done),
+        filter_counts(TaskFilter::Failed),
+    );
+    let mut list_state = ListState::default();
+    list_state.select(Some(
+        app.tasks.selected.min(visible.len().saturating_sub(1)),
+    ));
+    frame.render_stateful_widget(List::new(items).block(block(&title)), area, &mut list_state);
+}
+
+fn task_state_short(state: &TaskState) -> &'static str {
+    match state {
+        TaskState::Queued => "queued",
+        TaskState::Running => "running",
+        TaskState::AwaitingApproval => "approval",
+        TaskState::Completed => "done",
+        TaskState::Failed => "failed",
+        TaskState::Canceled => "canceled",
+        TaskState::Interrupted => "intrpt",
+    }
+}
+
+fn task_state_style(state: &TaskState) -> Style {
+    match state {
+        TaskState::Queued => Style::default().fg(Color::Yellow),
+        TaskState::Running => Style::default().fg(Color::Cyan),
+        TaskState::AwaitingApproval => Style::default().fg(Color::Magenta),
+        TaskState::Completed => Style::default().fg(Color::Green),
+        TaskState::Failed => Style::default().fg(Color::Red),
+        TaskState::Canceled | TaskState::Interrupted => muted(),
+    }
+}
+
+fn render_task_detail(app: &mut App, frame: &mut Frame, area: Rect) {
+    let Some(detail) = &app.tasks.detail else {
+        frame.render_widget(
+            Paragraph::new("Loading\u{2026}").block(block("Task detail")),
+            area,
+        );
+        return;
+    };
+    let task = &detail.task;
+    let mut lines: Vec<Line> = Vec::new();
+
+    lines.push(Line::from(vec![
+        Span::styled(
+            format!(" {} ", task_state_short(&task.state)),
+            task_state_style(&task.state),
+        ),
+        Span::raw(" "),
+        Span::styled(
+            task.title.clone(),
+            Style::default().add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            format!(
+                "  {}  attempts: {}",
+                kind_label(&task.kind),
+                task.attemptCount
+            ),
+            muted(),
+        ),
+    ]));
+    lines.push(Line::styled(
+        format!("Request: {}", truncate(&task.request, 160)),
+        Style::default(),
+    ));
+    if let Some(error) = &task.error {
+        lines.push(Line::styled(
+            format!("Error: {error}"),
+            Style::default().fg(Color::Red),
+        ));
+    }
+    if let Some(project) = task.projectId.as_deref() {
+        lines.push(Line::styled(format!("Project: {project}"), muted()));
+    }
+    lines.push(Line::from(""));
+
+    lines.push(Line::styled("Runs", accent().add_modifier(Modifier::BOLD)));
+    for run in &detail.runs {
+        let usage = run
+            .usage
+            .as_ref()
+            .map(|usage| {
+                format!(
+                    " steps {} in {} out {}",
+                    usage.steps, usage.inputChars, usage.outputChars
+                )
+            })
+            .unwrap_or_default();
+        let failure = run
+            .failure
+            .as_ref()
+            .map(|failure| format!(" \u{2013} {} ({})", failure.code, failure.message))
+            .unwrap_or_default();
+        lines.push(Line::from(vec![
+            Span::styled(format!(" attempt {} ", run.attempt), muted()),
+            Span::styled(run_state_label(&run.state), run_state_style(&run.state)),
+            Span::raw(usage),
+            Span::styled(failure, Style::default().fg(Color::Red)),
+        ]));
+    }
+    lines.push(Line::from(""));
+
+    if let Some(approval) = &detail.approval {
+        lines.push(Line::styled(
+            "Export approval",
+            accent().add_modifier(Modifier::BOLD),
+        ));
+        lines.push(Line::from(vec![
+            Span::styled(
+                format!(" {} ", approval_state_label(&approval.state)),
+                approval_state_style(&approval.state),
+            ),
+            Span::raw(format!(
+                "write \"{}\" into {} (risk: {:?})",
+                approval.filename, approval.destinationPath, approval.riskTier
+            )),
+        ]));
+        if approval.state == ApprovalState::Pending {
+            lines.push(Line::styled(
+                " g grant (approves the exact content and destination) | d reject".to_string(),
+                muted(),
+            ));
+        }
+        if let Some(outcome) = &approval.outcome {
+            lines.push(Line::styled(
+                format!(
+                    " wrote {} bytes in {} ms \u{2192} {}",
+                    outcome.bytes, outcome.ms, outcome.file
+                ),
+                Style::default().fg(Color::Green),
+            ));
+        }
+        if let Some(reason) = &approval.refusalReason {
+            lines.push(Line::styled(
+                format!(" refused: {reason}"),
+                Style::default().fg(Color::Red),
+            ));
+        }
+        lines.push(Line::from(""));
+    }
+
+    lines.push(Line::styled(
+        "Events",
+        accent().add_modifier(Modifier::BOLD),
+    ));
+    for event in detail.events.iter().rev().take(20) {
+        lines.push(Line::from(vec![
+            Span::styled(
+                format!(" {} ", &event.createdAt[11..19.min(event.createdAt.len())]),
+                muted(),
+            ),
+            Span::styled(event.kind.clone(), Style::default()),
+        ]));
+    }
+    lines.push(Line::from(""));
+
+    if let Some(artifact) = &detail.artifact {
+        lines.push(Line::styled(
+            "Saved report (scroll with j/k)",
+            accent().add_modifier(Modifier::BOLD),
+        ));
+        let mut scrolled = artifact.markdown.lines().collect::<Vec<_>>();
+        let skip = app.tasks.artifact_scroll as usize;
+        if skip < scrolled.len() {
+            scrolled.drain(..skip);
+        } else {
+            scrolled.clear();
+        }
+        for line in scrolled.into_iter().take(400) {
+            lines.push(Line::from(line.to_string()));
+        }
+    } else if task.resultArtifactId.is_none() && task.state == TaskState::Completed {
+        lines.push(Line::styled("(no saved artifact)", muted()));
+    }
+
+    lines.push(Line::from(""));
+    lines.push(Line::styled(
+        " b/Esc back | c cancel | r retry | e export | j/k scroll".to_string(),
+        muted(),
+    ));
+
+    frame.render_widget(
+        Paragraph::new(lines)
+            .wrap(Wrap { trim: false })
+            .scroll((0, 0))
+            .block(block("Task detail")),
+        area,
+    );
+}
+
+fn run_state_label(state: &RunState) -> &'static str {
+    match state {
+        RunState::Running => "running",
+        RunState::Completed => "completed",
+        RunState::Failed => "failed",
+        RunState::Canceled => "canceled",
+        RunState::Interrupted => "interrupted",
+    }
+}
+
+fn run_state_style(state: &RunState) -> Style {
+    match state {
+        RunState::Running => Style::default().fg(Color::Cyan),
+        RunState::Completed => Style::default().fg(Color::Green),
+        RunState::Failed => Style::default().fg(Color::Red),
+        RunState::Canceled | RunState::Interrupted => muted(),
+    }
+}
+
+fn approval_state_label(state: &ApprovalState) -> &'static str {
+    match state {
+        ApprovalState::Pending => "pending",
+        ApprovalState::Granted => "granted",
+        ApprovalState::Rejected => "rejected",
+        ApprovalState::Canceled => "canceled",
+        ApprovalState::Expired => "expired",
+        ApprovalState::Executed => "executed",
+    }
+}
+
+fn approval_state_style(state: &ApprovalState) -> Style {
+    match state {
+        ApprovalState::Pending => Style::default().fg(Color::Magenta),
+        ApprovalState::Granted => Style::default().fg(Color::Cyan),
+        ApprovalState::Executed => Style::default().fg(Color::Green),
+        ApprovalState::Rejected | ApprovalState::Canceled | ApprovalState::Expired => muted(),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Projects
+// ---------------------------------------------------------------------------
+
+fn render_projects(app: &mut App, frame: &mut Frame, area: Rect) {
+    if app.projects.detail_open {
+        let Some(project) = app.projects.projects.get(app.projects.selected) else {
+            return;
+        };
+        let mut lines: Vec<Line> = vec![
+            Line::styled(
+                project.name.clone(),
+                Style::default().add_modifier(Modifier::BOLD),
+            ),
+            Line::styled(
+                project
+                    .instructions
+                    .clone()
+                    .unwrap_or_else(|| "(no instructions)".to_string()),
+                Style::default(),
+            ),
+            Line::from(""),
+            Line::styled("Granted folders", accent().add_modifier(Modifier::BOLD)),
+        ];
+        for (index, grant) in project.grants.iter().enumerate() {
+            let marker = if index == app.projects.grant_selected {
+                " > "
+            } else {
+                "   "
+            };
+            lines.push(Line::from(format!("{marker}{}", grant.path)));
+        }
+        if project.grants.is_empty() {
+            lines.push(Line::styled(
+                "  (none \u{2014} press g to grant a folder)",
+                muted(),
+            ));
+        }
+        lines.push(Line::from(""));
+        lines.push(Line::styled(
+            " b/Esc back | g grant folder | j/k select grant | x revoke".to_string(),
+            muted(),
+        ));
+        frame.render_widget(
+            Paragraph::new(lines)
+                .wrap(Wrap { trim: false })
+                .block(block("Project detail")),
+            area,
+        );
+        return;
+    }
+    let items: Vec<ListItem> = app
+        .projects
+        .projects
+        .iter()
+        .enumerate()
+        .map(|(index, project)| {
+            let line = Line::from(vec![
+                Span::raw(project.name.clone()),
+                Span::styled(format!("  {} grant(s)", project.grants.len()), muted()),
+            ]);
+            if index == app.projects.selected {
+                ListItem::new(line).style(selected_style())
+            } else {
+                ListItem::new(line)
+            }
+        })
+        .collect();
+    let mut list_state = ListState::default();
+    list_state.select(Some(
+        app.projects
+            .selected
+            .min(app.projects.projects.len().saturating_sub(1)),
+    ));
+    frame.render_stateful_widget(
+        List::new(items).block(block("Projects (n new, Enter detail, e edit)")),
+        area,
+        &mut list_state,
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Memory
+// ---------------------------------------------------------------------------
+
+fn render_memory(app: &mut App, frame: &mut Frame, area: Rect) {
+    let Some(snapshot) = &app.memory.snapshot else {
+        frame.render_widget(
+            Paragraph::new("Loading memory\u{2026}").block(block("Memory")),
+            area,
+        );
+        return;
+    };
+    let mut lines: Vec<Line> = Vec::new();
+    let mut row_index = 0usize;
+
+    lines.push(Line::styled(
+        "Proposals awaiting decision",
+        accent().add_modifier(Modifier::BOLD),
+    ));
+    if snapshot.proposals.is_empty() {
+        lines.push(Line::styled("  (none)".to_string(), muted()));
+        row_index += 1;
+    }
+    for proposal in &snapshot.proposals {
+        let marker = row_marker(app, row_index);
+        let scope = match proposal.scope {
+            MemoryScope::Global => "global".to_string(),
+            MemoryScope::Project => format!(
+                "project {}",
+                snapshot
+                    .projects
+                    .iter()
+                    .find(|view| Some(&view.projectId) == proposal.projectId.as_ref())
+                    .map(|view| view.projectName.as_str())
+                    .unwrap_or("?")
+            ),
+        };
+        lines.push(Line::from(vec![
+            Span::raw(marker),
+            Span::styled(
+                " proposal ",
+                Style::default().fg(Color::Black).bg(Color::Magenta),
+            ),
+            Span::styled(format!("({scope}) "), muted()),
+            Span::raw(truncate(proposal.content.as_deref().unwrap_or(""), 90)),
+        ]));
+        if row_index == app.memory.selected {
+            lines.push(Line::styled("   a approve | x reject".to_string(), muted()));
+        }
+        row_index += 1;
+    }
+    lines.push(Line::from(""));
+
+    lines.push(Line::styled(
+        "Global memory (owner.md)",
+        accent().add_modifier(Modifier::BOLD),
+    ));
+    if snapshot.global.externalChange {
+        lines.push(Line::styled(
+            "  ! file changed outside OpenFrost \u{2014} press R to reload".to_string(),
+            Style::default().fg(Color::Yellow),
+        ));
+    }
+    for problem in &snapshot.global.problems {
+        lines.push(Line::styled(
+            format!("  ! {problem}"),
+            Style::default().fg(Color::Red),
+        ));
+    }
+    for (index, entry) in snapshot.global.entries.iter().enumerate() {
+        let marker = row_marker(app, row_index);
+        lines.push(Line::from(vec![
+            Span::raw(marker),
+            Span::raw(truncate(&entry.content, 100)),
+        ]));
+        if row_index == app.memory.selected {
+            lines.push(Line::styled("   e edit | d delete".to_string(), muted()));
+        }
+        let _ = index;
+        row_index += 1;
+    }
+    lines.push(Line::from(""));
+
+    for (project_index, view) in snapshot.projects.iter().enumerate() {
+        lines.push(Line::styled(
+            format!("{} (project memory)", view.projectName),
+            accent().add_modifier(Modifier::BOLD),
+        ));
+        let _ = project_index;
+        if view.externalChange {
+            lines.push(Line::styled(
+                "  ! file changed outside OpenFrost \u{2014} press R to reload".to_string(),
+                Style::default().fg(Color::Yellow),
+            ));
+        }
+        for problem in &view.problems {
+            lines.push(Line::styled(
+                format!("  ! {problem}"),
+                Style::default().fg(Color::Red),
+            ));
+        }
+        for entry in &view.entries {
+            let marker = row_marker(app, row_index);
+            lines.push(Line::from(vec![
+                Span::raw(marker),
+                Span::raw(truncate(&entry.content, 100)),
+            ]));
+            if row_index == app.memory.selected {
+                lines.push(Line::styled("   e edit | d delete".to_string(), muted()));
+            }
+            row_index += 1;
+        }
+        lines.push(Line::from(""));
+    }
+
+    lines.push(Line::styled(
+        " j/k move | a approve proposal | x reject proposal | e edit entry | d delete entry | R reload from disk".to_string(),
+        muted(),
+    ));
+    frame.render_widget(
+        Paragraph::new(lines)
+            .wrap(Wrap { trim: false })
+            .block(block("Memory")),
+        area,
+    );
+}
+
+fn row_marker(app: &App, row_index: usize) -> &'static str {
+    if row_index == app.memory.selected {
+        " > "
+    } else {
+        "   "
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Routines
+// ---------------------------------------------------------------------------
+
+fn render_routines(app: &mut App, frame: &mut Frame, area: Rect) {
+    if app.routines.detail_open {
+        if let Some(detail) = &app.routines.detail {
+            let mut lines: Vec<Line> = Vec::new();
+            let routine = &detail.view.routine;
+            lines.push(Line::styled(
+                routine.name.clone(),
+                Style::default().add_modifier(Modifier::BOLD),
+            ));
+            lines.push(Line::styled(
+                format!(
+                    "{} \u{2014} {} \u{2014} {} \u{2014} {}",
+                    detail.view.projectName.as_deref().unwrap_or("?"),
+                    match &routine.schedule {
+                        crate::contracts::RoutineSchedule::Weekly { time, .. } => {
+                            format!("weekly at {time}")
+                        }
+                        crate::contracts::RoutineSchedule::Daily { time } =>
+                            format!("daily at {time}"),
+                    },
+                    routine.timezone,
+                    if routine.state == RoutineState::Active {
+                        "active"
+                    } else {
+                        "paused"
+                    }
+                ),
+                muted(),
+            ));
+            lines.push(Line::styled(
+                format!(
+                    "Template: {} \u{2014} {}",
+                    routine.template.title,
+                    truncate(&routine.template.request, 120)
+                ),
+                Style::default(),
+            ));
+            lines.push(Line::from(""));
+            lines.push(Line::styled(
+                "Recent occurrences",
+                accent().add_modifier(Modifier::BOLD),
+            ));
+            for (index, occurrence) in detail.occurrences.iter().enumerate() {
+                let marker = if index == app.routines.occurrence_selected {
+                    " > "
+                } else {
+                    "   "
+                };
+                let state = match occurrence.state {
+                    RoutineOccurrenceState::Scheduled => "scheduled",
+                    RoutineOccurrenceState::Missed => "MISSED",
+                    RoutineOccurrenceState::Skipped => "skipped",
+                };
+                let style = match occurrence.state {
+                    RoutineOccurrenceState::Missed => Style::default().fg(Color::Yellow),
+                    _ => muted(),
+                };
+                let task_part = occurrence
+                    .taskId
+                    .as_deref()
+                    .map(|id| format!(" \u{2192} task {id}"))
+                    .unwrap_or_default();
+                lines.push(Line::from(vec![
+                    Span::raw(marker),
+                    Span::raw(format!("{} ", occurrence.occurrenceKey)),
+                    Span::styled(state.to_string(), style),
+                    Span::styled(task_part, muted()),
+                ]));
+            }
+            if detail.occurrences.is_empty() {
+                lines.push(Line::styled("  (none yet)".to_string(), muted()));
+            }
+            lines.push(Line::from(""));
+            lines.push(Line::styled(
+                " b/Esc back | j/k occurrences | r run missed once now | s skip missed".to_string(),
+                muted(),
+            ));
+            frame.render_widget(
+                Paragraph::new(lines)
+                    .wrap(Wrap { trim: false })
+                    .block(block("Routine detail")),
+                area,
+            );
+        }
+        return;
+    }
+    let items: Vec<ListItem> = app
+        .routines
+        .routines
+        .iter()
+        .enumerate()
+        .map(|(index, view)| {
+            let state = if view.routine.state == RoutineState::Active {
+                "active"
+            } else {
+                "paused"
+            };
+            let mut spans = vec![
+                Span::raw(view.routine.name.clone()),
+                Span::styled(format!("  {state}"), muted()),
+                Span::styled(
+                    format!(
+                        "  next: {}",
+                        view.nextOccurrenceAt.as_deref().unwrap_or("\u{2014}")
+                    ),
+                    muted(),
+                ),
+            ];
+            if view.missedCount > 0 {
+                spans.push(Span::styled(
+                    format!("  {} MISSED", view.missedCount),
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                ));
+            }
+            let line = Line::from(spans);
+            if index == app.routines.selected {
+                ListItem::new(line).style(selected_style())
+            } else {
+                ListItem::new(line)
+            }
+        })
+        .collect();
+    let mut list_state = ListState::default();
+    list_state.select(Some(
+        app.routines
+            .selected
+            .min(app.routines.routines.len().saturating_sub(1)),
+    ));
+    frame.render_stateful_widget(
+        List::new(items).block(block(
+            "Routines (n new, Enter detail, e enable/pause, x remove)",
+        )),
+        area,
+        &mut list_state,
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Settings
+// ---------------------------------------------------------------------------
+
+fn render_settings(app: &mut App, frame: &mut Frame, area: Rect) {
+    let mut lines: Vec<Line> = Vec::new();
+    let selected = app.settings.selected;
+
+    let settings = app.settings.settings.as_ref();
+    let provider = settings.map(|s| s.provider.clone()).unwrap_or_default();
+    let model = settings
+        .and_then(|s| s.model.clone())
+        .unwrap_or_else(|| "\u{2014}".to_string());
+    let has_key = settings.map(|s| s.hasProviderKey).unwrap_or(false);
+
+    lines.push(row_line(
+        0 == selected,
+        "Provider",
+        &format!("{provider}  (model: {model})"),
+    ));
+    lines.push(Line::styled(
+        "     Enter/l to cycle openai \u{2192} gemini \u{2192} openrouter".to_string(),
+        muted(),
+    ));
+    lines.push(row_line(
+        1 == selected,
+        "Provider key",
+        &if has_key {
+            "configured (stored with Windows DPAPI)".to_string()
+        } else {
+            "not set".to_string()
+        },
+    ));
+    lines.push(Line::styled(
+        "     Enter to set a key (masked input); the key is never shown again".to_string(),
+        muted(),
+    ));
+    lines.push(Line::from(""));
+
+    lines.push(Line::styled(
+        "Export destinations",
+        accent().add_modifier(Modifier::BOLD),
+    ));
+    for (index, destination) in app.settings.destinations.iter().enumerate() {
+        let row = 2 + index;
+        let marker = if row == selected { " > " } else { "   " };
+        lines.push(Line::from(vec![
+            Span::raw(marker),
+            Span::raw(destination.path.clone()),
+            Span::styled("  (x remove)", muted()),
+        ]));
+    }
+    if app.settings.destinations.is_empty() {
+        lines.push(Line::styled(
+            "   (none \u{2014} press a to add a folder exports may write into)".to_string(),
+            muted(),
+        ));
+    }
+    lines.push(Line::from(""));
+    lines.push(Line::styled(
+        " j/k move | Enter activate | a add destination | x remove destination".to_string(),
+        muted(),
+    ));
+    frame.render_widget(
+        Paragraph::new(lines)
+            .wrap(Wrap { trim: false })
+            .block(block("Settings")),
+        area,
+    );
+}
+
+fn row_line(active: bool, label: &str, value: &str) -> Line<'static> {
+    Line::from(vec![
+        Span::raw(if active { " > " } else { "   " }),
+        Span::styled(
+            format!("{label}: "),
+            if active {
+                accent().add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().add_modifier(Modifier::BOLD)
+            },
+        ),
+        Span::raw(value.to_string()),
+    ])
+}
+
+// ---------------------------------------------------------------------------
+// Dialogs
+// ---------------------------------------------------------------------------
+
+fn render_dialog(_app: &App, frame: &mut Frame, dialog: &Dialog) {
+    let area = frame.area();
+    let popup = centered_rect(
+        area,
+        66,
+        match dialog {
+            Dialog::Confirm { .. } => 8,
+            Dialog::Form(form) => (form.fields.len() as u16) * 3 + 6,
+        },
+    );
+    frame.render_widget(ratatui::widgets::Clear, popup);
+    match dialog {
+        Dialog::Confirm {
+            title,
+            message,
+            action,
+        } => {
+            let mut lines = vec![
+                Line::from(""),
+                Line::styled(message.clone(), Style::default()),
+            ];
+            if matches!(action, ConfirmAction::CancelTask { .. }) {
+                lines.push(Line::styled(
+                    "In-flight provider requests are aborted; already completed work is not undone.".to_string(),
+                    muted(),
+                ));
+            }
+            lines.push(Line::from(""));
+            lines.push(Line::styled(
+                " Enter confirm | Esc cancel".to_string(),
+                muted(),
+            ));
+            frame.render_widget(
+                Paragraph::new(lines)
+                    .wrap(Wrap { trim: false })
+                    .block(block(title)),
+                popup,
+            );
+        }
+        Dialog::Form(form) => {
+            let mut lines: Vec<Line> = Vec::new();
+            for (index, field) in form.fields.iter().enumerate() {
+                let focused = index == form.focus;
+                match field {
+                    crate::dialog_forms::Field::Text {
+                        label,
+                        masked,
+                        hint,
+                        ..
+                    } => {
+                        let shown = if *masked {
+                            "\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}"
+                                .to_string()
+                        } else {
+                            form.fields[index]
+                                .value()
+                                .lines()
+                                .next()
+                                .unwrap_or("")
+                                .to_string()
+                        };
+                        lines.push(Line::from(vec![
+                            Span::styled(
+                                format!("{label}: "),
+                                if focused {
+                                    accent().add_modifier(Modifier::BOLD)
+                                } else {
+                                    Style::default().add_modifier(Modifier::BOLD)
+                                },
+                            ),
+                            Span::raw(if focused { format!("{shown}_") } else { shown }),
+                        ]));
+                        if let Some(hint) = hint {
+                            lines.push(Line::styled(format!("   {hint}"), muted()));
+                        }
+                    }
+                    crate::dialog_forms::Field::Select {
+                        label,
+                        options,
+                        selected,
+                    } => {
+                        let value = options.get(*selected).cloned().unwrap_or_default();
+                        lines.push(Line::from(vec![
+                            Span::styled(
+                                format!("{label}: "),
+                                if focused {
+                                    accent().add_modifier(Modifier::BOLD)
+                                } else {
+                                    Style::default().add_modifier(Modifier::BOLD)
+                                },
+                            ),
+                            Span::styled(value, if focused { accent() } else { Style::default() }),
+                            Span::styled(if focused { "  (h/l change)" } else { "" }, muted()),
+                        ]));
+                    }
+                }
+            }
+            if let Some(error) = &form.error {
+                lines.push(Line::styled(
+                    format!(" ! {error}"),
+                    Style::default().fg(Color::Red),
+                ));
+            }
+            lines.push(Line::styled(
+                " Tab next field | Ctrl+S submit | Esc cancel".to_string(),
+                muted(),
+            ));
+            frame.render_widget(
+                Paragraph::new(lines)
+                    .wrap(Wrap { trim: false })
+                    .block(block(&form.title)),
+                popup,
+            );
+        }
+    }
+}
+
+fn centered_rect(area: Rect, percent_x: u16, height: u16) -> Rect {
+    let popup_width = area.width * percent_x / 100;
+    Rect {
+        x: area.x + (area.width.saturating_sub(popup_width)) / 2,
+        y: area.y + area.height.saturating_sub(height + 2) / 2,
+        width: popup_width.min(area.width),
+        height: (height + 2).min(area.height),
+    }
+}

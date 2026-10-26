@@ -46,3 +46,10 @@ Thumbs.db
 .taste-skill/revamp/flashy/
 assets/snow-crystal.jpg
 apps/landing/public/images/snow-crystals-2.jpg
+
+# Rust TUI build output
+target/
+
+# Local agent tooling
+.agents/
+.zcode/
