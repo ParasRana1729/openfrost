@@ -5,7 +5,9 @@ before changing the repository.
 
 ## 1. Current direction and authority
 
-**Current state: S06 weekly planning implemented.** The pnpm workspace,
+**Current state: S00–S06 are implemented on `main`. S07 release hardening is in
+progress; pre-week validation was performed 2026-10-26, and the one-working-week
+owner-use gate remains open.** The pnpm workspace,
 shared Zod contracts, SQLite persistence, DPAPI secret storage, authenticated
 loopback API/UI, the bounded single-run executor, the research-brief workflow
 (OpenAI, Gemini, and OpenRouter adapters with hosted web search and an
@@ -19,8 +21,12 @@ detection), and owner-confirmed weekly planning routines (project-scoped
 templates with IANA time zones and weekly/daily schedules, deduplicated
 local-date occurrences across ticks/restarts/clock changes/DST, one missed
 occurrence per routine for review with run-once-now/skip) exist and are
-covered by `pnpm lint && pnpm test && pnpm build` and CI. S07 release
-hardening is not implemented; do not claim it works. Do not invent APIs,
+covered by `pnpm lint && pnpm test && pnpm build` and CI. S07 validation and
+remaining release work are recorded in the active backlog; do not claim S07 is
+complete until its owner-use gate is met. Draft
+[PR #28](https://github.com/ParasRana1729/openfrost/pull/28) contains provider-key
+redaction and NAT64 hardening; its implementation checkpoint passed CI but is
+part of the S07 follow-up, not completion of S07. Do not invent APIs,
 scripts, migrations, tools, or passing checks beyond what the repository
 actually contains.
 

@@ -200,12 +200,34 @@ describe('GeminiProvider', () => {
 
   it('maps HTTP errors to ProviderError without leaking the key', async () => {
     const { provider } = makeProvider(400, {
-      error: { message: 'API key not valid. Please pass a valid API key.' },
+      error: { message: `API key not valid: ${FAKE_KEY}` },
     });
     const err = await provider.step(stepRequest()).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(ProviderError);
     if (err instanceof ProviderError) {
       expect(err.message).toContain('400');
+      expect(err.message).toContain('[redacted]');
+      expect(err.message).not.toContain(FAKE_KEY);
+    }
+  });
+
+  it('redacts the key from transport errors', async () => {
+    const fetchImpl: typeof fetch = async () => {
+      throw new Error(`transport failed with ${FAKE_KEY}`);
+    };
+    const provider = new GeminiProvider({
+      model: 'gemini-2.5-flash',
+      getApiKey: async () => FAKE_KEY,
+      fetchImpl,
+    });
+
+    const err = await provider.step(stepRequest()).then(
+      () => null,
+      (error: unknown) => error,
+    );
+    expect(err).toBeInstanceOf(ProviderError);
+    if (err instanceof ProviderError) {
+      expect(err.message).toContain('transport failed with [redacted]');
       expect(err.message).not.toContain(FAKE_KEY);
     }
   });

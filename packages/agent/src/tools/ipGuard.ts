@@ -21,6 +21,7 @@ const IPV4_DENIED_RANGES: ReadonlyArray<readonly [number, number]> = [
 
 const IPV6_V4_MAPPED_MIN = 0xffff00000000n; // ::ffff:0.0.0.0
 const IPV6_V4_MAPPED_MAX = 0xffffffffffffn; // ::ffff:255.255.255.255
+const IPV6_NAT64_WELL_KNOWN_PREFIX_96 = 0x64ff9b0000000000000000n; // 64:ff9b::/96
 
 /** Parses a dotted-quad IPv4 address; null when it is not one. */
 export function parseIpv4(address: string): number | null {
@@ -126,6 +127,9 @@ function isDeniedIpv6(value: bigint): boolean {
   }
   if (top16 >= 0xfe80n && top16 <= 0xfebfn) {
     return true; // fe80::/10 link-local
+  }
+  if ((value >> 32n) === IPV6_NAT64_WELL_KNOWN_PREFIX_96) {
+    return isDeniedIpv4(Number(value & 0xffffffffn));
   }
   if (value >= IPV6_V4_MAPPED_MIN && value <= IPV6_V4_MAPPED_MAX) {
     return isDeniedIpv4(Number(value & 0xffffffffn));

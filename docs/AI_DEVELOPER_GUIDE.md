@@ -17,18 +17,18 @@ Then inspect current `origin/main`, relevant recent commits/PRs, and the assigne
 entry's handoff. Those are shared context; do not assume another agent's private
 conversation or unpushed edits are available.
 
-**Current state: S05 owner-approved memory implemented.** S01–S05 are complete:
-the workspace, contracts, persistence, DPAPI secrets, loopback API/UI, bounded
-executor, research briefs, project updates, approval-bound export, and
-owner-approved memory exist and pass the project checks. S06 weekly planning and
-S07 release hardening remain planned. Check the solo backlog handoffs for exact
-evidence and limitations before building.
+**Current state: S00–S06 are implemented on `main`.** S07 pre-week validation
+was performed on 2026-10-26, and the owner's one-working-week evaluation remains
+open. The S07 follow-up in
+[PR #28](https://github.com/ParasRana1729/openfrost/pull/28) adds provider-key
+redaction and NAT64 hardening; it does not complete S07. Check the solo backlog
+handoffs for evidence, status, and limitations before building.
 
 ## 2. Set up and choose one slice
 
-Start with the current assignment. S06 weekly planning is next, but implement it
-only when explicitly assigned. Check the solo backlog entry and handoffs, then
-confirm its dependencies in the code. The toolchain exists: `pnpm install`,
+Start with the current assignment. S07 release validation is active; S06 weekly
+planning is already implemented. Check the solo backlog entry and handoffs,
+then confirm dependencies in the code. The toolchain exists: `pnpm install`,
 `pnpm lint`, `pnpm test`, `pnpm build`, and `pnpm dev` are the working commands.
 
 Never put a real API key in `.env`, a prompt, or an issue. Provider keys are
@@ -64,8 +64,9 @@ change repository settings, or deploy under this authorization.
 ```
 
 Replace the placeholder with the specific task before sending the assignment;
-the merge authorization applies to that scope, not the whole backlog. Use the
-currently assigned slice (S06 when assigned); the earlier slices are implemented.
+the merge authorization applies to that scope, not the whole backlog. Check the
+backlog for the current assignment; S00–S06 are implemented, and S07's owner-use
+gate remains open.
 
 ## 4. Verify the implementation
 

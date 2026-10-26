@@ -132,16 +132,43 @@ describe('fetch_page retrieval', () => {
 });
 
 describe('fetch_page trust boundary', () => {
-  it('blocks literal private and loopback IP addresses', async () => {
+  it('blocks literal private, loopback, and NAT64-mapped private addresses', async () => {
     const { fetchImpl, calls } = scriptedFetch(() => html('<body>never</body>'));
     const { tool, signal } = makeTool({ fetchImpl });
 
-    for (const url of ['http://127.0.0.1/x', 'http://10.1.2.3/x', 'http://[::1]/x']) {
+    for (const url of [
+      'http://127.0.0.1/x',
+      'http://10.1.2.3/x',
+      'http://[::1]/x',
+      'http://[64:ff9b::a00:1]/x',
+    ]) {
       const result = await tool.execute(JSON.stringify({ url }), { recordRetrieval: () => {} }, signal);
       expect(result.ok).toBe(false);
       expect(result.content).toBe('Blocked: private address');
     }
     expect(calls).toHaveLength(0);
+  });
+
+  it('blocks redirects to NAT64 addresses that map to private IPv4', async () => {
+    const { fetchImpl, calls } = scriptedFetch((url) =>
+      url === 'https://example.com/redirect-nat64'
+        ? new Response(null, {
+            status: 302,
+            headers: { location: 'http://[64:ff9b::a00:1]/secret' },
+          })
+        : html('<body>never</body>'),
+    );
+    const { tool, signal } = makeTool({ fetchImpl });
+
+    const result = await tool.execute(
+      JSON.stringify({ url: 'https://example.com/redirect-nat64' }),
+      { recordRetrieval: () => {} },
+      signal,
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.content).toBe('Blocked: private address');
+    expect(calls).toEqual(['https://example.com/redirect-nat64']);
   });
 
   it('blocks localhost-style and metadata hostnames', async () => {
@@ -202,6 +229,22 @@ describe('fetch_page trust boundary', () => {
     expect(calls).toHaveLength(0);
     expect(retrievals[0]?.status).toBe(0);
     expect(retrievals[0]?.error).toBe('Blocked: DNS resolved to a private address');
+  });
+
+  it('rejects DNS results that map through NAT64 to a private IPv4 address', async () => {
+    const { fetchImpl, calls } = scriptedFetch(() => html('<body>never</body>'));
+    const resolve = async (): Promise<string[]> => ['64:ff9b::a00:1'];
+    const { tool, signal } = makeTool({ fetchImpl, resolve });
+
+    const result = await tool.execute(
+      JSON.stringify({ url: 'https://example.com/nat64-rebind' }),
+      { recordRetrieval: () => {} },
+      signal,
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.content).toBe('Blocked: DNS resolved to a private address');
+    expect(calls).toHaveLength(0);
   });
 
   it('rejects non-HTML content types', async () => {

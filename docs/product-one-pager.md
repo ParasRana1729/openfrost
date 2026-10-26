@@ -5,11 +5,13 @@
 - **Release:** v0.1, Windows-first local runtime and local web app
 - **Source of truth:** [Full specification](./ai-os-project-spec.md)
 
-**Current repository: S05 owner-approved memory implemented.** Research briefs
-(OpenAI, Gemini, and OpenRouter), project updates, approval-bound export, and
-inspectable memory work today; weekly planning (S06) and release hardening (S07)
-remain planned. Real-model quality and the owner's working-week evaluation happen
-in S07.
+**Current repository: S00–S06 are implemented on `main`.** The shipped product
+includes research briefs, project updates, approval-bound export, owner-approved
+memory, and owner-confirmed weekly planning. S07 pre-week validation was
+performed on 2026-10-26; the owner's one-working-week evaluation remains open.
+The S07 follow-up in [PR #28](https://github.com/ParasRana1729/openfrost/pull/28)
+adds provider-key redaction and NAT64 private-address checks; it does not close
+S07.
 
 ## Problem
 
@@ -73,4 +75,4 @@ The complete release gates are in the full specification.
 
 Build sequentially from the [solo backlog](../backlog/solo-rebuild.md): local
 foundation → research brief → projects → reviewable export → memory → weekly
-planning → release hardening. S00–S05 are complete; S06–S07 remain.
+planning → release hardening. S00–S06 are complete; S07 remains in progress.

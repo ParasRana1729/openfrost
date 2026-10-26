@@ -327,7 +327,10 @@ describe('OpenRouterProvider error handling', () => {
 
   it('throws ProviderError on non-2xx without leaking the API key', async () => {
     const { fetchImpl } = scriptedFetch(() =>
-      jsonResponse({ error: { code: 401, message: 'Invalid API key provided' } }, 401),
+      jsonResponse(
+        { error: { code: 401, message: `Invalid API key provided: ${FAKE_KEY}` } },
+        401,
+      ),
     );
     const provider = new OpenRouterProvider({
       model: 'openrouter/auto',
@@ -343,6 +346,26 @@ describe('OpenRouterProvider error handling', () => {
     const message = err instanceof Error ? err.message : '';
     expect(message).toContain('HTTP 401');
     expect(message).toContain('Invalid API key provided');
+    expect(message).toContain('[redacted]');
+    expect(message).not.toContain(FAKE_KEY);
+  });
+
+  it('redacts the API key from a non-JSON error body', async () => {
+    const { fetchImpl } = scriptedFetch(() =>
+      new Response(`upstream echoed ${FAKE_KEY}`, { status: 502 }),
+    );
+    const provider = new OpenRouterProvider({
+      model: 'openrouter/auto',
+      getApiKey: async () => FAKE_KEY,
+      fetchImpl,
+    });
+
+    const err = await provider.step(stepRequest).then(
+      () => null,
+      (e: unknown) => e,
+    );
+    const message = err instanceof Error ? err.message : '';
+    expect(message).toContain('upstream echoed [redacted]');
     expect(message).not.toContain(FAKE_KEY);
   });
 

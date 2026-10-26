@@ -2,7 +2,7 @@
 
 - **Specification:** [v0.1 solo rebuild](../docs/ai-os-project-spec.md)
 - **Owner for every item:** ParasRana1729
-- **Current assignment:** S07 in progress (validation performed 2026-10-26; the working-week log in its entry is open)
+- **Current assignment:** S07 in progress (pre-week validation performed 2026-10-26; the owner-use gate remains open)
 
 These are local backlog identifiers, not GitHub issue numbers. S00–S06 are
 complete (see each handoff); S07 is in progress. Ownership is not permission
@@ -859,3 +859,27 @@ gate; findings marked WEEK carry into this log.
   OpenRouter key used for validation — it transited chat.
 - **Next:** the owner's working week; anything it surfaces lands in the log
   above and, if blocking, as follow-up fixes.
+
+### Follow-up: provider-secret and NAT64 hardening (2026-10-26)
+
+- Implemented on `fix/s07-security-boundaries`: OpenAI, Gemini, and OpenRouter
+  provider errors redact the exact configured key before it can reach a task
+  failure. Tests simulate an upstream echoing the key in its error response;
+  OpenRouter also covers a non-JSON response body.
+- `fetch_page` now decodes the IPv4 suffix under the well-known
+  `64:ff9b::/96` NAT64 prefix and applies the existing IPv4 deny ranges. Tests
+  cover literal URLs, DNS answers, and redirects. Other locally configured
+  NAT64 prefixes are not auto-discovered.
+- Verification: final `pnpm lint && pnpm test && pnpm build` passed (325 tests:
+  83 domain, 54 db, 118 agent, 70 API). `git diff --check` passed.
+- A direct OpenRouter adapter smoke call during the initial review (before
+  these fixes) succeeded with the free model and hosted search disabled
+  (27 input / 246 output tokens). It exercised provider authentication and
+  response mapping only, not the app's Settings/DPAPI path or a full workflow.
+- Not run: a real-provider workflow after these changes; the regression tests
+  use fake keys and transports. The one-working-week owner-use gate remains
+  open, and no owner observations were provided in this follow-up.
+- PR: [#28 — S07 provider and NAT64 hardening](https://github.com/ParasRana1729/openfrost/pull/28).
+  Checks pass for this focused follow-up; it does not close S07 or the open
+  owner-use gate.
+- Next: continue the owner's working-week log and resolve any issues it surfaces.

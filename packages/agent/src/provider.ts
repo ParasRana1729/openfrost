@@ -84,3 +84,8 @@ export class ProviderMissingError extends Error {
     this.name = 'ProviderMissingError';
   }
 }
+
+/** Removes an exact provider credential before errors can be persisted or shown. */
+export function redactSecret(message: string, secret: string): string {
+  return secret.length === 0 ? message : message.split(secret).join('[redacted]');
+}

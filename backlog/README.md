@@ -20,10 +20,13 @@ All items belong to ParasRana1729. IDs are local planning identifiers, **not**
 GitHub issue numbers. Work one assigned slice at a time; each entry contains its
 acceptance criteria. There are no team role assignments or fixed iteration dates.
 
-**Current state:** S00–S05 are complete. `main` has the pnpm workspace, shared
-Zod contracts, SQLite persistence, DPAPI secrets, authenticated loopback API/UI,
-the bounded single-run executor, research briefs (OpenAI, Gemini, and OpenRouter),
-project updates, approval-bound export, and owner-approved Markdown memory.
-S06 weekly planning and S07 release hardening remain planned; real-model quality
-and the working-week evaluation happen in S07. Check the
-[solo backlog](solo-rebuild.md) handoffs for exact evidence and limitations.
+**Current state:** S00–S06 are complete on `main`. This includes the pnpm
+workspace, shared Zod contracts, SQLite persistence, DPAPI secrets, authenticated
+loopback API/UI, bounded executor, research briefs, project updates,
+approval-bound export, owner-approved Markdown memory, and weekly planning.
+S07 pre-week validation was performed on 2026-10-26; the owner's one-working-week
+evaluation remains open. The S07 follow-up in
+[PR #28](https://github.com/ParasRana1729/openfrost/pull/28) adds provider-key
+redaction and NAT64 hardening; it does not complete S07. See the
+[solo backlog](solo-rebuild.md)
+handoffs for evidence, scope, and limitations.
