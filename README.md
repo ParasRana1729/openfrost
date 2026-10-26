@@ -3,14 +3,15 @@
 > One personal AI agent that turns requests and recurring responsibilities into
 > completed work, with useful memory, visible progress, and owner control.
 
-**Status: S05 owner-approved memory implemented — two of the three workflows work.**
+**Status: S00–S06 are implemented on `main`; S07 release validation is in
+progress.**
 
 OpenFrost is a solo project owned by ParasRana1729. What ships today is the S01
 foundation plus the S02 research-brief workflow, the S03 project-update
 workflow, S04 approval-bound export (granted destinations, exact-proposal
-review, create-only writes), and S05 owner-approved memory. With a provider key
-stored in Settings (OpenAI, Gemini, or
-OpenRouter — your choice in Settings), a submitted question (with optional
+review, create-only writes), S05 owner-approved memory, and S06 weekly planning.
+With a provider key stored in Settings (OpenAI, Gemini, or OpenRouter), a
+submitted question (with optional
 constraints and starting URLs) runs as a bounded agent task — provider-backed
 web search plus a hardened public-page fetch — and saves a Markdown report with
 sources, retrieval times, uncertainties, and a runtime-recorded retrieval
@@ -32,6 +33,12 @@ two most recent saved updates on the owner's confirmed schedule; the runtime
 runs them without an open browser, deduplicates occurrences across restarts,
 clock changes, and DST, and surfaces one missed occurrence for review (run
 once now / skip) instead of replaying a backlog.
+
+S07 pre-week validation was performed on 2026-10-26; the owner's
+one-working-week evaluation remains open. Draft
+[PR #28](https://github.com/ParasRana1729/openfrost/pull/28) contains provider-key
+redaction and NAT64 hardening. Its implementation checkpoint passed CI, but the
+changes are not merged.
 
 ## The direction
 
@@ -164,8 +171,8 @@ Requires Windows (DPAPI), Node.js 24+ (`24` line; 26 works), and pnpm 10
 pnpm install          # installs all workspace dependencies
 pnpm build            # builds all packages and the web app (do this first)
 pnpm lint             # eslint across the workspace
-pnpm test             # vitest in every package (321 tests; includes real
-                      #   DPAPI round-trips on Windows)
+pnpm test             # vitest in every workspace package; includes real
+                      #   DPAPI round-trips on Windows
 pnpm dev              # API on 127.0.0.1:8787 and web on 127.0.0.1:3000
 ```
 
@@ -197,7 +204,9 @@ quality; project deletion is not implemented; markdown table cells do not
 support escaped pipes; memory retrieval is file-order up to a 6,000-character
 budget (no relevance ranking); no automated browser tests (manual pass each
 slice); the assistant never deletes or overwrites files (exports are
-create-only and approval-bound).
+create-only and approval-bound). PR #28 adds denial for private IPv4 addresses
+embedded in `64:ff9b::/96`; other locally configured NAT64 prefixes are not
+auto-discovered.
 
 Day-to-day use after `pnpm dev`: open `http://127.0.0.1:3000` (or
 `http://localhost:3000`) — the web app proxies API calls to the local service,
@@ -232,8 +241,9 @@ AGENTS.md / CONTRIBUTING.md  Engineering, security, and landing workflow
 - [Developer guide](docs/AI_DEVELOPER_GUIDE.md): working one slice at a time.
 - [Contributing](CONTRIBUTING.md): branch, verification, and review conventions.
 
-The current slice is **S07: harden and validate the personal-use release**
-(validation performed 2026-10-26; the one-working-week log lives in the
-backlog). Implement only the
-assigned slice, never real credentials in `.env`, prompts, or repository
-files; the credential flow uses DPAPI.
+The current slice is **S07: harden and validate the personal-use release**.
+Pre-week validation was performed on 2026-10-26; the one-working-week log lives
+in the backlog and remains open. Draft PR #28 contains the provider-key and
+NAT64 follow-up and is not merged. Implement only the assigned slice; never put
+real credentials in `.env`, prompts, or repository files. The credential flow
+uses DPAPI.

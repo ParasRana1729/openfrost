@@ -2,7 +2,7 @@
 
 - **Specification:** [v0.1 solo rebuild](../docs/ai-os-project-spec.md)
 - **Owner for every item:** ParasRana1729
-- **Current assignment:** S07 in progress (validation performed 2026-10-26; the working-week log in its entry is open)
+- **Current assignment:** S07 in progress (pre-week validation performed 2026-10-26; the owner-use gate remains open)
 
 These are local backlog identifiers, not GitHub issue numbers. S00–S06 are
 complete (see each handoff); S07 is in progress. Ownership is not permission
@@ -879,5 +879,7 @@ gate; findings marked WEEK carry into this log.
 - Not run: a real-provider workflow after these changes; the regression tests
   use fake keys and transports. The one-working-week owner-use gate remains
   open, and no owner observations were provided in this follow-up.
-- PR: [#28 — S07 provider and NAT64 hardening](https://github.com/ParasRana1729/openfrost/pull/28)
+- PR: [#28 — S07 provider and NAT64 hardening](https://github.com/ParasRana1729/openfrost/pull/28).
+  It remains draft and unmerged; CI passed for the security implementation
+  checkpoint.
 - Next: continue the owner's working-week log and resolve any issues it surfaces.
