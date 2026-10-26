@@ -954,5 +954,6 @@ close S07's working-week release gate or add new runtime capabilities.
 - Capture real product screenshots and a narrated/captioned demo, review the generated Open Graph image, perform device/accessibility/performance audits before deployment, and set `NEXT_PUBLIC_SITE_URL` to the chosen domain so canonical and sitemap URLs are emitted.
 - **Verification:** `pnpm lint`, `pnpm test` (325 existing tests), `pnpm build`, and `git diff --check` pass. Landing site exported successfully to `apps/landing/out`. Agent Browser axe audit reported zero violations on the exported page; mobile and desktop production renders were reviewed. Static local vitals: LCP 52 ms and CLS 0 (not a Lighthouse run).
 - **Not run:** Lighthouse performance/accessibility/SEO audits, cross-browser checks, actual installer download/checksum flow (there is no release asset), and a real app screenshot/demo capture.
-- **PR:** pending branch checkpoint; no merge requested or performed.
+- **Checkpoint:** `803380c` (`feat(landing): add static OpenFrost marketing site`), pushed to `codex/landing-page`.
+- **PR:** [#31 — static OpenFrost marketing site](https://github.com/ParasRana1729/openfrost/pull/31); no merge requested or performed.
 - **Next:** resolve the launch decisions and missing release/media assets, run the planned Lighthouse/device audits on the chosen hosted domain, then add the landing site to the release/redeploy process.
