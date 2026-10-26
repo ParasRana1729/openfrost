@@ -36,3 +36,6 @@ Thumbs.db
 *.swo
 .vscode/
 .idea/
+
+# Local visual inspection screenshots
+.taste-skill/inspect/
