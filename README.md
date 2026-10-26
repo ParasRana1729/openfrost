@@ -1,248 +1,144 @@
-# OpenFrost — Personal AI Operating System
+# OpenFrost
 
-> One personal AI agent that turns requests and recurring responsibilities into
-> completed work, with useful memory, visible progress, and owner control.
+**A Windows-first local AI assistant for research, project updates, and weekly
+planning.**
 
-**Status: S00–S06 are implemented on `main`; S07 release validation is in
-progress.**
+OpenFrost turns requests and confirmed schedules into saved, reviewable work.
+One assistant handles the workflows; projects scope source folders and approved
+context. The local web app shows tasks, progress, results, memory, and approval
+requests.
 
-OpenFrost is a solo project owned by ParasRana1729. What ships today is the S01
-foundation plus the S02 research-brief workflow, the S03 project-update
-workflow, S04 approval-bound export (granted destinations, exact-proposal
-review, create-only writes), S05 owner-approved memory, and S06 weekly planning.
-With a provider key stored in Settings (OpenAI, Gemini, or OpenRouter), a
-submitted question (with optional
-constraints and starting URLs) runs as a bounded agent task — provider-backed
-web search plus a hardened public-page fetch — and saves a Markdown report with
-sources, retrieval times, uncertainties, and a runtime-recorded retrieval
-appendix. Projects organize context: create one, grant it folder roots
-explicitly, and scope tasks to it — a project update reads only that project's
-granted text/Markdown notes (canonical-path checks, credential-store
-exclusions, bounded counts/sizes, skipped sources visible) and saves a dated,
-evidence-backed update citing file paths and excerpts. Saved reports can be
-exported as **new** Markdown files into an owner-granted destination — but only
-after the owner approves the exact proposal (destination, filename, content
-hash) in the web app; the write is revalidated at execution and never
-overwrites. The assistant can propose durable memory during a task, but nothing
-enters future context until the owner approves it on the Memory page: global
-preferences for every task plus only the active project's facts. Canonical
-memory is Markdown, edits and deletions take effect for future retrieval, and
-deleting an entry keeps the source task and report history. Weekly planning
-routines draft next week's priorities from a project's granted notes and its
-two most recent saved updates on the owner's confirmed schedule; the runtime
-runs them without an open browser, deduplicates occurrences across restarts,
-clock changes, and DST, and surfaces one missed occurrence for review (run
-once now / skip) instead of replaying a backlog.
+## What it does
 
-S07 pre-week validation was performed on 2026-10-26; the owner's
-one-working-week evaluation remains open. The S07 follow-up in
-[PR #28](https://github.com/ParasRana1729/openfrost/pull/28) adds provider-key
-redaction and NAT64 hardening; this follow-up does not close S07.
+- **Research briefs:** search the public web and save a Markdown brief with
+  sources, a recommendation, retrieval details, and open questions.
+- **Project updates:** read bounded text and Markdown files inside folders you
+  grant, then save an evidence-backed update with blockers and proposed next
+  steps.
+- **Weekly planning:** run a confirmed routine using a project's granted notes
+  and recent saved updates. Review missed occurrences instead of replaying a
+  backlog.
+- **Approved memory:** review suggested facts before they enter future context.
+  Global preferences and the active project's facts remain separate.
+- **Report export:** approve the exact content and destination before OpenFrost
+  creates a new Markdown file in a granted folder.
+- **Recoverable tasks:** tasks queue durably; one agent run executes at a time,
+  with cancellation, bounded limits, and review after interrupted work.
 
-## The direction
+## Project status
 
-Keep the “AI OS” vision: a foundation for context, tasks, tools, memory,
-permissions, and background execution. Start with **one assistant**,
-**projects for context**, and **one local web interface**, rather than
-separate AI personalities.
+The core workflows are implemented. Release hardening and validation are in
+progress, and the one-working-week real-use evaluation remains open. The current
+implementation redacts provider keys from errors and checks IPv4 addresses
+embedded in the well-known NAT64 prefix `64:ff9b::/96` against private-address
+rules.
 
-The first release targets three useful jobs:
+OpenFrost is an actively developed v0.1 project. Research quality depends on
+the configured model and search provider. Remaining release gates are tracked
+in the [backlog](backlog/solo-rebuild.md).
 
-| Workflow | Result | Status |
-| --- | --- | --- |
-| Research brief | A saved comparison and recommendation, with sources and uncertainties. | **Works** (S02) — real-model quality pending the owner's evaluation |
-| Project update | An evidence-backed summary of granted project notes, blockers, and next steps. | **Works** (S03) — real-model quality pending the owner's evaluation |
-| Report export | An approved copy of a saved report written into a granted folder. | **Works** (S04) — approve/reject exercised live 2026-10-26 |
-| Weekly planning | An owner-scheduled draft of priorities from project notes and recent updates. | **Works** (S06) — real-model run 2026-10-26 (free model) |
+## Security and privacy
 
-The runtime is Windows-first and local, using SQLite + Drizzle, editable
-Markdown memory, and the owner's provider API keys (OpenAI, Gemini, or
-OpenRouter) protected with Windows DPAPI.
-Local-first does not mean offline: selected context is sent to the model/search
-provider. The PC must be awake and the runtime running; work can continue after
-the browser closes, but not while the PC is off.
+- The API and web app bind to loopback. Sign-in, origin checks, and CSRF
+  protection guard local state changes.
+- Provider keys are protected with Windows DPAPI for the current user. Store
+  keys through **Settings**; they are not kept in plaintext configuration files.
+- Folder access requires explicit grants. Reads are bounded and paths are
+  checked against the granted root.
+- Public web fetches validate addresses through DNS resolution and redirects.
+  Source content is treated as untrusted data.
+- Export creates a new file only after approval. OpenFrost does not overwrite or
+  delete user files.
+- Selected prompts, context, and source excerpts are sent to the configured
+  model or search provider. Local storage does not mean offline processing.
 
-Tools will start with public web research, granted-folder reads, approved
-export of new reports, and memory proposals. No arbitrary shell, browser/OS
-computer use, Telegram, agent teams, cloud workers, or plugin marketplace in
-v0.1.
+The v0.1 scope excludes arbitrary shell access, browser or operating-system
+control, remote access, and a plugin marketplace.
 
-See the [product one-pager](docs/product-one-pager.md) and
-[full specification](docs/ai-os-project-spec.md) for the accepted scope and
-release gates. They describe planned behavior; the table above tracks what is
-real today.
+## Quick start
 
-## What is implemented (S01–S06)
+### Requirements
 
-- **Workspace and toolchain:** pnpm workspace with Node 24 LTS
-  (`.nvmrc`; engines allow 24–26) and pnpm pinned in `packageManager`.
-  `pnpm lint && pnpm test && pnpm build` are the required checks and run on
-  `windows-latest` in GitHub Actions.
-- **`packages/domain`:** Zod contracts for tasks, agent runs, conversations,
-  messages, artifacts, append-only events, risk tiers, execution limits,
-  settings, and owner-approved memory (entries, proposals, snapshots, Markdown
-  block format), with enforced task/run state-transition maps.
-- **`packages/db`:** SQLite + Drizzle migrations under
-  `%USERPROFILE%\.openfrost\db\openfrost.db` (owner override:
-  `OPENFROST_HOME`). Data survives restarts; migrations never reset it.
-  Provider keys are sealed with real Windows DPAPI
-  (CryptProtectData/CryptUnprotectData, CurrentUser scope) and fail closed
-  off Windows. Approved memory content lives in canonical Markdown under
-  `memory\owner.md` and `projects\<id>\memory.md`; SQLite keeps pending
-  proposals and rebuildable metadata indexes, not a second content copy.
-- **`packages/agent`** — one global executor; one run at a time, finite
-  step/wall-clock/input/output limits, cancellation, explicit retries with
-  visible attempt history, and restart recovery that marks unfinished runs
-  `interrupted` and pauses dispatch for owner review. S02 adds the research
-  loop: provider adapters — OpenAI (Responses API with hosted web search
-  and `url` citations), Gemini (generateContent with Google Search
-  grounding surfaced as citations), and OpenRouter (chat completions with
-  the hosted `web` plugin surfaced as `url_citation` citations) — an SSRF-hardened `fetch_page` tool (scheme/credential/host
-  deny lists, per-address DNS validation re-checked at every connection, full
-  redirect re-validation, size/time bounds), a policy system prompt that
-  treats retrieved content as untrusted data, and a runtime-recorded
-  retrieval appendix. S03 adds the project-update loop: a `read_project_file`
-  tool bound to the task's project that re-reads the owner's grants at every
-  execution (revocation — including of queued tasks — and junction/symlink
-  escapes fail closed), canonical-path checks, credential-store exclusions,
-  bounded file counts/sizes/types with skipped sources visible, a policy that
-  separates documented progress / stated blockers / unknowns / proposed next
-  steps and treats notes as claims rather than proof of shipping, and a
-  runtime-recorded file appendix. S04 adds the one narrow write: an export
-  task that proposes the exact file write (artifact hash, canonical
-  destination, safe filename), parks in `awaiting_approval` while the owner
-  reviews it in the web app, and on approval revalidates everything before a
-  single create-only write — refusals, rejections, expiries, and restarts are
-  always visible and never replayed. S05 adds owner-approved memory: a
-  `propose_memory` tool is available to every model-backed run (bounded,
-  duplicate- and credential-refusing), and task prompts receive only approved
-  global preferences plus the active project's facts from Markdown, never
-  pending proposals or another project's entries. A deterministic fake provider covers all
-  of this in tests — no paid API calls anywhere in CI. S06 adds the weekly-plan
-  loop: routine occurrences dispatch `weekly_plan` tasks from the owner's
-  reviewed template (project scope, IANA time zone, weekly/daily schedule),
-  grounded in granted notes plus the project's two most recent saved updates
-  with runtime-recorded file and update appendices.
-- **`apps/api`**: Fastify bound to `127.0.0.1` with first-run owner setup,
-  scrypt passwords, HttpOnly SameSite=Strict sessions, session-bound CSRF
-  tokens, origin allowlisting, an authenticated SSE activity stream, and
-  logging that drops headers/cookies/bodies so secrets never reach logs.
-  Provider configuration: `OPENFROST_OPENAI_MODEL` (default `gpt-4.1-mini`),
-  `OPENFROST_GEMINI_MODEL` (default `gemini-3.8-flash`),
-  `OPENFROST_OPENROUTER_MODEL` (default `openrouter/auto`); the active provider
-  is chosen in Settings; `OPENFROST_PROVIDER=fake` is a documented dev/test hook that scripts a
-  research run without any API key. Authenticated memory routes expose
-  proposals, file state, hashes, and owner decisions; every mutation requires
-  the page's current file hash and CSRF token. S06 adds the routine scheduler
-  (`OPENFROST_ROUTINE_TICK_MS`, default 30 s): per active routine it examines
-  only the latest occurrence at or before now — materialized local-date
-  occurrence keys deduplicate across ticks, restarts, clock changes, and DST;
-  occurrences within the 30-minute late grace dispatch through the global
-  executor, later ones surface exactly one missed row with run-once-now/skip.
-  Routines CRUD, enable/pause, and occurrence decisions ride the same
-  owner-session/CSRF surface.
-- **`apps/web`:** local Next.js UI on `127.0.0.1:3000` with a frost visual
-  identity — a dispatch status strip, a dark runtime-console activity log, and
-  mono system data — onboarding with the required data-transmission and
-  availability disclosures, login, the task queue with workflow and project
-  selectors, constraints/starting URLs, cancel/retry/run history, token usage
-  with list-price cost estimates (labeled as estimates; unknown when no price
-  is on file), markdown report/update rendering, dispatch-resume review, the
-  Projects page (create/edit projects, grant/revoke folder roots with
-  canonicalization, per-project transmission disclosure), the Memory page
-  (pending proposals with scope/source/date and editable approval, global and
-  project entries with edit/delete, external-edit warnings, reload, decision
-  history), the Routines page (create-as-draft with next-occurrence preview,
-  enable/pause, edit, remove, missed-occurrence review with run-once-now/skip,
-  occurrence history with task outcomes), and provider
-  settings — active provider (OpenAI, Gemini, or OpenRouter), per-provider
-  DPAPI-protected keys and models — and execution limits.
+- Windows with Node.js 24 (the workspace accepts Node.js 24–26)
+- pnpm 10.34.7
 
-`packages/ui` is intentionally absent: nothing is shared enough to justify it
-yet. It will be created when a slice actually reuses components.
+Install pnpm if needed:
 
-## Setup and running
-
-Requires Windows (DPAPI), Node.js 24+ (`24` line; 26 works), and pnpm 10
-(`npm install -g pnpm@10.34.7` or your usual install).
-
-```bash
-pnpm install          # installs all workspace dependencies
-pnpm build            # builds all packages and the web app (do this first)
-pnpm lint             # eslint across the workspace
-pnpm test             # vitest in every workspace package; includes real
-                      #   DPAPI round-trips on Windows
-pnpm dev              # API on 127.0.0.1:8787 and web on 127.0.0.1:3000
+```sh
+npm install --global pnpm@10.34.7
 ```
 
-**Fresh setup (first run):** start with `pnpm dev`, open
-`http://127.0.0.1:3000`, create the owner account in onboarding (one owner,
-password hashed with scrypt; wrong passwords are refused and unauthenticated
-API access is 401 even on loopback), then store a provider key in Settings —
-it is sealed with Windows DPAPI for the current user and never displayed or
-logged again. Everything the app stores lives under
-`%USERPROFILE%\.openfrost`: `db\openfrost.db` (tasks, runs, events,
-approvals, artifacts, routines, memory metadata), `secrets\` (DPAPI-sealed
-provider key blobs), `memory\owner.md` and `projects\<id>\memory.md`
-(canonical approved memory, plain editable Markdown), and
-`projects\<id>\instructions.md`. Nothing is reset by upgrades: schema changes
-are additive Drizzle migrations applied at startup (an S05-era database
-upgrades in place with all data preserved, verified with the real S05 build).
-The runtime starts and stops cleanly; a hard kill marks unfinished runs
-`interrupted` and pauses dispatch until you review and resume under Tasks.
+### Run locally
 
-**Costs and providers:** with OpenRouter as the active provider, note that
-hosted web search on research briefs bills per executed search even when the
-model itself is a free `:free` tier, and an account without purchased credits
-will fail any brief whose run triggers search (HTTP 402, surfaced honestly).
-File-grounded workflows (project updates, weekly plans) never request hosted
-search. Free models are also rate-limited per day by the provider.
+From the repository root:
 
-**Known limitations:** research briefs depend on the provider's hosted search
-quality; project deletion is not implemented; markdown table cells do not
-support escaped pipes; memory retrieval is file-order up to a 6,000-character
-budget (no relevance ranking); no automated browser tests (manual pass each
-slice); the assistant never deletes or overwrites files (exports are
-create-only and approval-bound). PR #28 adds denial for private IPv4 addresses
-embedded in `64:ff9b::/96`; other locally configured NAT64 prefixes are not
-auto-discovered.
+```sh
+pnpm install
+pnpm build
+pnpm dev
+```
 
-Day-to-day use after `pnpm dev`: open `http://127.0.0.1:3000` (or
-`http://localhost:3000`) — the web app proxies API calls to the local service,
-so the browser only needs port 3000 and the session cookie stays first-party on
-either host. The API also listens directly on `127.0.0.1:8787` for local tools
-and tests. API/proxy ports and origins are configurable through
-`OPENFROST_API_PORT`, `OPENFROST_API_ORIGIN` (loopback only), and
-`OPENFROST_WEB_ORIGIN`. All local data lives under `%USERPROFILE%\.openfrost`.
+Open [http://127.0.0.1:3000](http://127.0.0.1:3000), create the local account,
+then choose a provider and add its key in **Settings**. The API listens on
+`127.0.0.1:8787`; the web app listens on `127.0.0.1:3000`.
 
-CI runs the same `pnpm lint && pnpm test && pnpm build` on `windows-latest`.
+OpenRouter's hosted web search can incur charges separately from model tokens,
+including when a free model is selected. Check provider pricing and account
+limits before running research briefs.
 
-## Repository layout
+## Data and configuration
+
+By default, application data is stored in `%USERPROFILE%\.openfrost`:
+
+- `db\openfrost.db` — tasks, runs, events, artifacts, approvals, routines, and
+  indexes
+- `secrets\` — DPAPI-protected provider keys
+- `memory\` and `projects\` — approved Markdown memory and project
+  instructions
+
+Set `OPENFROST_HOME` to use another data directory. Database upgrades use
+additive migrations and preserve existing data.
+
+## Development checks
+
+Run the same checks used by CI:
+
+```sh
+pnpm lint
+pnpm test
+pnpm build
+```
+
+Tests use Vitest and fake providers, so they do not require paid model calls.
+On Windows, database tests also exercise real DPAPI round-trips. GitHub Actions
+runs the checks on `windows-latest`.
+
+## Current limitations
+
+- The one-working-week real-use evaluation remains open.
+- Other locally configured NAT64 prefixes are not discovered automatically.
+- Project deletion is not implemented.
+- Memory retrieval uses file order within a fixed 6,000-character budget; it
+  does not rank entries by relevance.
+- There are no automated browser-based UI tests yet.
+
+## Repository map
 
 ```text
-apps/web                 Local assistant/task UI (Next.js App Router)
-apps/api                 Fastify API on loopback: auth, SSE, task worker
-packages/domain          Shared Zod contracts (source of truth)
-packages/db              better-sqlite3 + Drizzle, migrations, DPAPI secrets
-packages/agent           Bounded single-run executor + provider seam
-docs/ai-os-project-spec.md   Accepted product specification
-docs/product-one-pager.md    Product summary
-docs/AI_DEVELOPER_GUIDE.md   Working one assigned slice at a time
-backlog/solo-rebuild.md      S00–S07 acceptance criteria and handoffs
-AGENTS.md / CONTRIBUTING.md  Engineering, security, and landing workflow
+apps/web                 Next.js local web app
+apps/api                 Fastify loopback API and task worker
+packages/domain          Shared Zod contracts
+packages/db              SQLite, Drizzle migrations, DPAPI secret storage
+packages/agent           Provider adapters, execution loop, bounded tools
+docs/                    Product specification and developer guide
+backlog/                  S00–S07 plan, acceptance criteria, and handoffs
 ```
 
-## Build plan and contributor guidance
+## Project docs
 
-- [Solo backlog](backlog/solo-rebuild.md): S00–S07, ordered by dependencies.
-- [Delivery order](backlog/README.md): the current plan.
-- [Agent instructions](AGENTS.md): architecture, security, and scope constraints.
-- [Developer guide](docs/AI_DEVELOPER_GUIDE.md): working one slice at a time.
-- [Contributing](CONTRIBUTING.md): branch, verification, and review conventions.
-
-The current slice is **S07: harden and validate the personal-use release**.
-Pre-week validation was performed on 2026-10-26; the one-working-week log lives
-in the backlog and remains open. PR #28 tracks the provider-key and NAT64
-hardening follow-up. Implement only the assigned slice; never put
-real credentials in `.env`, prompts, or repository files. The credential flow
-uses DPAPI.
+- [Product one-pager](docs/product-one-pager.md)
+- [Product specification](docs/ai-os-project-spec.md)
+- [S00–S07 backlog](backlog/solo-rebuild.md)
+- [Developer guide](docs/AI_DEVELOPER_GUIDE.md)
+- [Contributing](CONTRIBUTING.md)
+- [Engineering and security guidance](AGENTS.md)
