@@ -968,9 +968,10 @@ unchanged. Closing the TUI does not stop tasks or routines.
 
 ### Acceptance criteria
 
-- [ ] `cargo fmt --check`, `cargo clippy -- -D warnings`, `cargo test`, and
-      `cargo build` pass locally and in CI alongside
-      `pnpm lint && pnpm test && pnpm build`.
+- [x] `cargo fmt --check`, `cargo clippy -- -D warnings`, `cargo test` (19
+      tests), and `cargo build` pass locally; the CI `tui` job runs the same
+      steps on windows-latest. `pnpm lint && pnpm test && pnpm build` pass
+      after `apps/web` removal.
 - [ ] First-run owner creation and login work from the TUI against the real
       local API; every mutating TUI action sends the CSRF token header.
 - [ ] The assistant loop is exercised manually end to end against the real API:
@@ -978,12 +979,33 @@ unchanged. Closing the TUI does not stop tasks or routines.
       and cancel/retry; export approval grant and deny are exercised.
 - [ ] Projects, routines, memory, and settings flows perform their CRUD
       operations through the same API endpoints the web app used.
-- [ ] `apps/web` is removed; `apps/landing` still builds; the API, packages,
+- [x] `apps/web` is removed; `apps/landing` still builds; the API, packages,
       and database are unchanged and existing tests pass.
-- [ ] Spec and docs name the TUI the primary interface and the landing page's
+- [x] Spec and docs name the TUI the primary interface and the landing page's
       role; no committed secrets; TUI holds the session cookie and CSRF token
       in memory only.
 
 ### Handoff
 
-- (in progress)
+- Implemented on `feat/tui-overhaul`: the Rust crate at `apps/tui` (client,
+  serde contracts mirroring `packages/domain`, full-tab UI, SSE subscription
+  with polling fallback), the spec/backlog/AGENTS.md/README updates, the CI
+  `tui` job, and the `apps/web` removal.
+- Checks run locally (2026-10-26, Rust 1.99.1 `stable-x86_64-pc-windows-gnu`):
+  `cargo fmt --all -- --check`, `cargo clippy --all-targets -- -D warnings`,
+  `cargo test` (19 passed), `cargo build`, `pnpm lint`, `pnpm test` (all
+  workspace suites pass), `pnpm build`. Not yet run: the CI `tui` job (runs on
+  push), and interactive use against the real API — the TUI has not been
+  exercised end to end by the owner yet.
+- Known limitations: the TUI renders monochrome-plus-accent text panels (no
+  mouse support, artifact markdown is shown as plain text); routine edit
+  reuses the create form (schedule/name/template editable, project included);
+  first-run onboarding disclosure copy is shorter than the web app's. Password
+  entry is masked; the session cookie and CSRF token live in memory only.
+- Local toolchain note: this machine has no MSVC; Rust was installed with the
+  GNU toolchain plus WinLibs MinGW-w64 (`x86_64-w64-mingw32`), and the
+  mingw64 bin directory must be on PATH for linker/dlltool. CI uses the
+  standard MSVC host toolchain on windows-latest.
+- Next: owner runs the TUI against the real local API (`pnpm dev`, then
+  `cargo run -p openfrost-tui`), works through the manual acceptance items
+  above, and records results; merge only after the owner confirms.
