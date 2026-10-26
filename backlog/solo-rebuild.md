@@ -879,4 +879,5 @@ gate; findings marked WEEK carry into this log.
 - Not run: a real-provider workflow after these changes; the regression tests
   use fake keys and transports. The one-working-week owner-use gate remains
   open, and no owner observations were provided in this follow-up.
-- Next: review the focused S07 PR and continue the owner's working-week log.
+- PR: [#28 — S07 provider and NAT64 hardening](https://github.com/ParasRana1729/openfrost/pull/28)
+- Next: continue the owner's working-week log and resolve any issues it surfaces.
