@@ -7,8 +7,11 @@ before changing the repository.
 
 **Current state: S00–S06 are implemented on `main`. S07 release hardening is in
 progress; pre-week validation was performed 2026-10-26, and the one-working-week
-owner-use gate remains open. S08 Phase 1 Control Center usability work is being
-implemented on `feat/ui-phase1-quick-wins`; it does not close S07.** The pnpm workspace,
+owner-use gate remains open. S08 Phase 1 quick wins are merged; the unfinished
+Phase 2 web work is checkpointed on `feat/ui-phase2-task-lifecycle` and
+superseded. S09 replaces the web Control Center with a Rust Ratatui + Crossterm
+TUI (`apps/tui`) client of the same loopback API and is being implemented on
+`feat/tui-overhaul`; it does not close S07.** The pnpm workspace,
 shared Zod contracts, SQLite persistence, DPAPI secret storage, authenticated
 loopback API/UI, the bounded single-run executor, the research-brief workflow
 (OpenAI, Gemini, and OpenRouter adapters with hosted web search and an
@@ -33,11 +36,11 @@ actually contains.
 
 OpenFrost is a Windows-first personal **AI OS** being rebuilt by one owner,
 ParasRana1729. One assistant completes research briefs, project updates, and
-weekly planning through a local web app. Projects scope context; they are not
-separate assistant personalities.
+weekly planning through a local terminal UI (TUI) Control Center. Projects
+scope context; they are not separate assistant personalities.
 
 - Product authority: [`docs/ai-os-project-spec.md`](docs/ai-os-project-spec.md).
-- Current work: [`backlog/solo-rebuild.md`](backlog/solo-rebuild.md), S00–S08.
+- Current work: [`backlog/solo-rebuild.md`](backlog/solo-rebuild.md), S00–S09.
 - Planned behavior and checked documentation tasks are not proof that a product
   feature is implemented. Inspect actual files and verify dependencies before
   claiming anything works.
@@ -52,13 +55,18 @@ separate assistant personalities.
 These paths are planned; create only what the assigned slice needs:
 
 ```text
-apps/web          Next.js App Router / React local assistant UI
+apps/tui          Rust / Ratatui + Crossterm local assistant terminal UI (Control Center)
+apps/landing      Next.js static product landing page (no API dependency)
 apps/api          Fastify API, owner auth, SSE, task worker, routine tick
 packages/domain   Shared Zod schemas and inferred TypeScript contracts
 packages/db       SQLite + Drizzle, migrations, DPAPI-backed secret storage
 packages/agent    Provider adapters (OpenAI, Gemini, OpenRouter), bounded tools, execution policy
-packages/ui       Shared components where reuse is justified
 ```
+
+The TUI mirrors the shared Zod contracts as serde types and talks to the same
+loopback Fastify API as any other client; the API validates and enforces
+everything. The Rust crate lives outside the pnpm workspace; CI runs its cargo
+checks separately.
 
 The API owns a SQLite-backed task queue; one agent run is active globally,
 including while waiting for approval. More tasks queue visibly. No separate

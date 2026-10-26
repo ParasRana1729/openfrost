@@ -2,10 +2,10 @@
 
 ## Solo rebuild specification — v0.1
 
-- **Status:** Accepted product direction; S00–S06 implemented, S07 in progress (validation performed 2026-10-26; the one-working-week gate runs on the owner's real use), S08 Phase 1 UI usability in progress on a topic branch
+- **Status:** Accepted product direction; S00–S06 implemented, S07 in progress (validation performed 2026-10-26; the one-working-week gate runs on the owner's real use), S09 TUI Control Center overhaul in progress on a topic branch
 - **Owner and first user:** ParasRana1729
 - **Platform:** Windows-first, local runtime
-- **Primary interface:** Local web app
+- **Primary interface:** Local terminal UI (TUI) Control Center; static local web landing page
 
 **Repository state: S06 weekly planning implemented; S07 validation
 performed.** The workspace,
@@ -29,8 +29,11 @@ are requirements to implement, not existing functionality. The S07 follow-up in
 [PR #28](https://github.com/ParasRana1729/openfrost/pull/28) adds provider-key
 redaction and NAT64 hardening; it does not complete S07. The
 [solo backlog](../backlog/solo-rebuild.md) is the delivery plan and per-slice
-progress record. S08 Phase 1 improves the existing Control Center and does not
-change the product scope or close the S07 owner-use gate.
+progress record. S09 replaces the Next.js Control Center web app with a local
+terminal UI (Rust, Ratatui + Crossterm) as a client of the same loopback API;
+the API, contracts, persistence, and executor are unchanged. The static
+`apps/landing` page stays. The unfinished S08 Phase 2 web work is preserved as
+a checkpoint branch and superseded by S09.
 
 ## 1. Product promise
 
@@ -64,7 +67,7 @@ is no cloud failover or promise of uninterrupted 24/7 execution.
 | --- | --- |
 | Builder and audience | One owner; build for personal usefulness before other users. |
 | Assistant | One persistent assistant; projects organize context, not personalities. |
-| Interface | Local web app for conversation, tasks, results, memory, and approvals. |
+| Interface | Local terminal UI (TUI) for conversation, tasks, results, memory, and approvals, over the same loopback API; a static web landing page describes the product. |
 | Hosting | Native Windows runtime; no Docker, cloud database, or hosted worker. |
 | Models | Owner-chosen provider: OpenAI, Gemini (Google AI), or OpenRouter, one active at a time with its own DPAPI-protected key and configured model; no per-task provider selection. |
 | First workflows | Research briefs, project updates, weekly planning. |
@@ -127,13 +130,13 @@ draft next week's priorities.”
 - Run the same bounded task machinery used for manual work.
 - Draft priorities, unresolved questions, and suggested next steps with links to
   the notes/updates used. The owner decides what to commit to.
-- Put results and failures in the web app; no email/calendar integration or
-  external notification is required.
+- Put results and failures in the Control Center; no email/calendar
+  integration or external notification is required.
 - If the PC/runtime was unavailable, show one missed occurrence per routine for
   review. Offer “run once now” or “skip”; never replay a backlog automatically.
 
-**Done when:** a routine runs without an open browser, survives a runtime restart,
-and handles a missed run without duplicate work.
+**Done when:** a routine runs without the Control Center open, survives a
+runtime restart, and handles a missed run without duplicate work.
 
 ## 4. Product experience and context
 
@@ -214,15 +217,17 @@ Use three risk identifiers; do not collapse them into a single
 | Identifier | Meaning | v0.1 behavior |
 | --- | --- | --- |
 | `auto` | Bounded authorized reads and planning. | Run and log; includes app-managed task/result storage, not arbitrary user-file writes. |
-| `telegram` | Standard, reviewable writes; the identifier does not imply a remote interface. | Approve/reject in the local web app; initially only exporting a new report inside a granted destination. No Telegram service is required. |
+| `telegram` | Standard, reviewable writes; the identifier does not imply a remote interface. | Approve/reject in the local Control Center; initially only exporting a new report inside a granted destination. No Telegram service is required. |
 | `local` | High-risk changes such as overwrite/delete, system or credential changes. | Requires local Control Center authorization if supported in future; these tools remain disabled in v0.1. |
 
 Approval cannot turn an out-of-scope action into a permitted action.
 
-- **Local app:** bind UI and API to loopback. Require owner authentication,
-  authenticated event streams, origin validation, and CSRF protection for
-  state-changing operations. A local website is not a trusted client merely
-  because it runs in the browser.
+- **Local app:** bind the API to loopback. Require owner authentication,
+  authenticated event streams, origin validation for browser clients, and CSRF
+  protection (session-bound token header) for state-changing operations. Any
+  local client — web page or terminal UI — is not trusted merely because it
+  runs on the same machine; the TUI authenticates like any other client and
+  the API remains the enforcement point.
 - **Secrets:** use Windows DPAPI-backed encryption for API keys. Decrypt only for
   the signed-in owner when needed. Never expose plaintext in configuration files,
   committed `.env` files, logs, reports, prompts, or memory. Passwords are hashed,
@@ -246,22 +251,27 @@ Approval cannot turn an out-of-scope action into a permitted action.
 
 ## 7. Minimal local architecture
 
-Build with strict TypeScript and pnpm. The paths below are the layout as of S01,
-except `packages/ui`, which is created only when a slice justifies shared
-components:
+Build the API and packages with strict TypeScript and pnpm; build the Control
+Center TUI with Rust (Ratatui + Crossterm). The paths below are the layout as
+of S09:
 
 ```text
-apps/web           Next.js / React: local assistant and task UI
+apps/tui           Rust / Ratatui + Crossterm: local assistant and task terminal UI (Control Center)
+apps/landing       Next.js: static product landing page (no API dependency)
 apps/api           Fastify: auth, API, SSE, one task worker, routine tick
-packages/domain    Shared Zod contracts (source of truth)
+packages/domain    Shared Zod contracts (source of truth for API payloads)
 packages/db        better-sqlite3 + Drizzle, migrations, DPAPI integration
 packages/agent     AI SDK loop, provider adapters (OpenAI, Gemini, OpenRouter), bounded tools, policy enforcement
-packages/ui        Shared components only where actually reused
 ```
+
+`packages/domain` remains the source of truth for API contracts. The TUI
+mirrors those payloads as serde types and is tested against fixtures derived
+from the Zod schemas; the API validates every request regardless of client.
 
 Use a SQLite-backed queue within the local API runtime. No separate message
 broker, scheduler service, or vector database. The API continues work when the
-browser closes. Do not add standalone Telegram, daemon, or CLI services to v0.1.
+TUI or browser closes. Do not add standalone Telegram, daemon, or cloud
+services to v0.1.
 
 ### Storage ownership
 
@@ -290,7 +300,8 @@ reset user data implicitly during setup, upgrades, or recovery.
 ## 8. Explicit non-goals for v0.1
 
 - Multiple assistants, agent teams, separate workspace personas, or multi-user accounts.
-- Telegram/mobile/native desktop clients and remote access.
+- Telegram/mobile/GUI desktop clients and remote access (the local terminal
+  TUI Control Center is in scope).
 - Cloud computers, hosted workers, Docker/VPS deployment, or cloud databases.
 - Arbitrary terminal execution, coding-agent workflows, or OS/browser computer use.
 - Managed browser profiles, authenticated-site automation, or demonstration recording.
@@ -315,6 +326,7 @@ Build one slice at a time; no delivery dates are implied.
 7. **S06 — Weekly planning:** confirmed routines, missed handling, and deduplication.
 8. **S07 — Release hardening:** Windows setup, recovery tests, and real-use evaluation.
 9. **S08 — Control Center usability:** Phase 1 quick wins for clearer task entry, feedback, and runtime status.
+10. **S09 — TUI Control Center:** replace the web Control Center with a local Ratatui + Crossterm terminal UI over the same loopback API; keep the static landing page.
 
 Release v0.1 only when:
 
@@ -324,9 +336,11 @@ Release v0.1 only when:
 - Export approval, rejection, expiry, cancellation, and boundary checks are tested.
 - Conversations, reports, settings, and approved memory survive restarts; interrupted
   tasks and missed routines are recoverable without duplicate writes.
-- Closing the browser does not stop a running task or a scheduled routine.
+- Closing the Control Center (TUI) or browser does not stop a running task or a
+  scheduled routine.
 - The owner has used the workflows across one working week and recorded what was
   useful, what needed correction, and the resulting scope decisions.
-- `pnpm lint && pnpm test && pnpm build` passes, alongside the Windows workflow
-  and security checks in S07. S01 must first create these scripts; passing tests
-  alone is not release proof.
+- `pnpm lint && pnpm test && pnpm build` and the TUI's `cargo fmt --check`,
+  `cargo clippy -- -D warnings`, `cargo test`, and `cargo build` pass, alongside
+  the Windows workflow and security checks in S07. S01 must first create these
+  scripts; passing tests alone is not release proof.
