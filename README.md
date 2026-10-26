@@ -8,6 +8,10 @@ One assistant handles the workflows; projects scope source folders and approved
 context. The local web app shows tasks, progress, results, memory, and approval
 requests.
 
+The static marketing and download site lives in `apps/landing`. It reads the
+latest GitHub release during its build and falls back to source setup while no
+Windows installer is published.
+
 ## What it does
 
 - **Research briefs:** search the public web and save a Markdown brief with
@@ -126,6 +130,7 @@ runs the checks on `windows-latest`.
 
 ```text
 apps/web                 Next.js local web app
+apps/landing             Static marketing and download site
 apps/api                 Fastify loopback API and task worker
 packages/domain          Shared Zod contracts
 packages/db              SQLite, Drizzle migrations, DPAPI secret storage

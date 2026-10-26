@@ -2,7 +2,7 @@
 
 - **Specification:** [v0.1 solo rebuild](../docs/ai-os-project-spec.md)
 - **Owner for every item:** ParasRana1729
-- **Current assignment:** S08 Phase 1 Control Center usability; S07's one-working-week owner-use gate remains open
+- **Current assignment:** OpenFrost marketing landing page (independent site work); S07's one-working-week owner-use gate remains open
 
 These are local backlog identifiers, not GitHub issue numbers. S00–S06 are
 complete (see each handoff); S07 remains in progress and S08 Phase 1 is being
@@ -934,3 +934,25 @@ close S07's working-week release gate or add new runtime capabilities.
   implemented in this slice.
 - Next: Phase 2 — readable task feed and run detail with failure explanations,
   progress, and queue visibility.
+
+## Marketing landing page — implementation plan
+
+- **Status:** First implementation pass complete on `codex/landing-page`; not a release or deployment
+- **Scope:** A separate static marketing/download app. It does not change the local assistant runtime or close S07/S08.
+
+### Implemented
+
+- Added `apps/landing`, a responsive Next.js static export with a single-page overview, capabilities, privacy/data-flow explanation, actual executor limits, download/source section, FAQ, metadata, SoftwareApplication structured data, robots output, and a favicon.
+- Latest GitHub release metadata is fetched at build time with a timeout and safe fallback. A Windows `.exe`, `.msi`, or `.zip` is linked only when a release actually contains one; version, publish date, size, release notes, and a checksum value/file link are shown when available.
+- Product copy is limited to behavior verified in the spec and implementation. The hero run panel is labeled illustrative; there are no real UI screenshots or video asset in the repository.
+- Build-from-source instructions point to the existing README. The site does not claim a software license or pricing, since neither is currently present in the repository.
+
+### Remaining before launch
+
+- No published installer, release asset/checksum convention, signing decision, or release-triggered redeploy workflow exists. This page reports the missing installer and falls back to source setup.
+- The owner still needs to choose the site domain and software license. Until a domain is set in `NEXT_PUBLIC_SITE_URL`, metadata has no canonical URL.
+- Capture real product screenshots and a narrated/captioned demo, review the generated Open Graph image, perform device/accessibility/performance audits before deployment, and set `NEXT_PUBLIC_SITE_URL` to the chosen domain so canonical and sitemap URLs are emitted.
+- **Verification:** `pnpm lint`, `pnpm test` (325 existing tests), `pnpm build`, and `git diff --check` pass. Landing site exported successfully to `apps/landing/out`. Agent Browser axe audit reported zero violations on the exported page; mobile and desktop production renders were reviewed. Static local vitals: LCP 52 ms and CLS 0 (not a Lighthouse run).
+- **Not run:** Lighthouse performance/accessibility/SEO audits, cross-browser checks, actual installer download/checksum flow (there is no release asset), and a real app screenshot/demo capture.
+- **PR:** pending branch checkpoint; no merge requested or performed.
+- **Next:** resolve the launch decisions and missing release/media assets, run the planned Lighthouse/device audits on the chosen hosted domain, then add the landing site to the release/redeploy process.
