@@ -122,10 +122,20 @@ runs the checks on `windows-latest`.
   does not rank entries by relevance.
 - There are no automated browser-based UI tests yet.
 
+## Product site
+
+The static marketing and source page lives in `apps/landing`. It runs on port
+3001 during development (`pnpm --filter @openfrost/landing dev`) and exports
+static files into `apps/landing/out` on build. The product has no packaged
+Windows installer yet; the site links to the repository until one is published.
+Set the canonical site URL before deployment so Open Graph links point at the
+published domain.
+
 ## Repository map
 
 ```text
 apps/web                 Next.js local web app
+apps/landing             Static product and source landing page
 apps/api                 Fastify loopback API and task worker
 packages/domain          Shared Zod contracts
 packages/db              SQLite, Drizzle migrations, DPAPI secret storage
