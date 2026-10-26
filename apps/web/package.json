@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "next dev -H 127.0.0.1 -p 3000",
     "build": "next build",
-    "start": "next start -H 127.0.0.1 -p 3000"
+    "start": "next start -H 127.0.0.1 -p 3000",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@openfrost/domain": "workspace:*",
@@ -15,7 +17,15 @@
     "react-dom": "^19.2.3"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.8",
     "@types/react": "^19.2.7",
-    "@types/react-dom": "^19.2.3"
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^4.3.4",
+    "axe-core": "^4.10.2",
+    "jsdom": "^26.0.0",
+    "vitest": "^3.2.7",
+    "vitest-axe": "^0.1.0"
   }
 }

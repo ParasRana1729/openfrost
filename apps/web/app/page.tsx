@@ -8,13 +8,12 @@ import type {
   ProjectFolderGrant,
   Routine,
   Task,
-  TaskKind,
 } from '@openfrost/domain';
-import { ApiError, getJson, mutate } from '../lib/api';
+import { ApiError, getJson } from '../lib/api';
 import { formatTimestamp } from '../lib/format';
 import { useSession } from '../lib/useSession';
 import { useBusyGlow } from '../components/useBusyGlow';
-import { useToast } from '../components/ToastProvider';
+import { TaskComposer } from '../components/TaskComposer';
 
 interface ProjectOption extends Project {
   grants: ProjectFolderGrant[];
@@ -40,31 +39,15 @@ interface ApprovalSummary {
   expiresAt: string;
 }
 
-const MAX_STARTING_URLS = 5;
-/** The API requires a title; the composer derives one from the request. */
-function deriveTitle(request: string): string {
-  const firstLine = request.trim().split(/\r?\n/)[0] ?? '';
-  const trimmed = firstLine.trim();
-  return trimmed.length > 80 ? `${trimmed.slice(0, 77)}…` : trimmed;
-}
-
 export default function HomePage() {
-  const { session, loading, error, refresh } = useSession();
+  const { session, loading, error } = useSession();
   const [tasks, setTasks] = useState<TasksResponse | null>(null);
   const [events, setEvents] = useState<Event[]>([]);
   const [pendingApprovals, setPendingApprovals] = useState<ApprovalSummary[]>([]);
   const [missedRoutines, setMissedRoutines] = useState<RoutineSummary[]>([]);
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [actionError, setActionError] = useState<string | null>(null);
-
-  const [request, setRequest] = useState('');
-  const [kind, setKind] = useState<TaskKind>('research_brief');
-  const [projectId, setProjectId] = useState('');
-  const [constraints, setConstraints] = useState('');
-  const [startingUrlsText, setStartingUrlsText] = useState('');
   const inFlight = useRef(false);
-  const advancedOptionsRef = useRef<HTMLDetailsElement>(null);
-  const { showToast } = useToast();
   useBusyGlow(tasks?.executor.busy ?? false);
 
   const refreshAll = useCallback(async () => {
@@ -119,87 +102,6 @@ export default function HomePage() {
     };
   }, [session?.authenticated, refreshAll]);
 
-  const csrf = session?.csrfToken ?? null;
-
-  const parsedUrls = startingUrlsText
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
-  const urlsValid =
-    kind !== 'research_brief' ||
-    (parsedUrls.every((url) => /^https?:\/\//i.test(url)) &&
-      parsedUrls.length <= MAX_STARTING_URLS);
-  const projectUpdateInvalid = kind === 'project_update' && projectId === '';
-  const canSubmit =
-    !!csrf && request.trim().length > 0 && !projectUpdateInvalid && urlsValid;
-  const queueHint =
-    !csrf
-      ? 'Checking your local session…'
-      : request.trim().length === 0
-        ? 'Describe the work you need first.'
-        : projectUpdateInvalid
-          ? projects.length === 0
-            ? 'Create a project before preparing a project update.'
-            : 'Choose a project to prepare its update.'
-          : !urlsValid
-            ? 'Fix the starting URLs before queuing this brief.'
-            : tasks?.executor.busy
-              ? 'The active run finishes first; this task will wait.'
-              : 'Ready to queue. The task runs in the background.';
-
-  const submitTask = async () => {
-    if (!canSubmit) {
-      return;
-    }
-    const body: {
-      title: string;
-      request: string;
-      constraints?: string;
-      startingUrls?: string[];
-      projectId?: string;
-      kind: TaskKind;
-    } = { title: deriveTitle(request), request: request.trim(), kind };
-    if (constraints.trim().length > 0) {
-      body.constraints = constraints.trim();
-    }
-    if (kind === 'research_brief' && parsedUrls.length > 0) {
-      body.startingUrls = parsedUrls;
-    }
-    if (projectId !== '') {
-      body.projectId = projectId;
-    }
-    try {
-      await mutate({ method: 'POST', path: '/api/tasks', body, csrfToken: csrf });
-      setRequest('');
-      setConstraints('');
-      setStartingUrlsText('');
-      if (advancedOptionsRef.current) {
-        advancedOptionsRef.current.open = false;
-      }
-      showToast('success', 'Task added to the queue.');
-      await refreshAll();
-    } catch (err) {
-      const message = err instanceof ApiError ? err.message : 'Could not create task';
-      setActionError(message);
-      showToast('error', message);
-    }
-  };
-
-  const resumeDispatch = async () => {
-    if (!session?.csrfToken) {
-      return;
-    }
-    try {
-      await mutate({ method: 'POST', path: '/api/dispatch/resume', csrfToken: session.csrfToken });
-      showToast('success', 'Task dispatch resumed.');
-      await Promise.all([refreshAll(), refresh()]);
-    } catch (err) {
-      const message = err instanceof ApiError ? err.message : 'Resume failed';
-      setActionError(message);
-      showToast('error', message);
-    }
-  };
-
   if (loading || !session || !session.ownerCreated || !session.authenticated) {
     return (
       <div className="panel">
@@ -230,19 +132,6 @@ export default function HomePage() {
         </div>
       ) : null}
 
-      {tasks?.executor.dispatchPaused ? (
-        <div className="panel">
-          <h1>Dispatch paused after recovery</h1>
-          <p className="muted">
-            Unfinished runs from a previous session were marked interrupted. Review
-            them under Tasks, then resume dispatch when ready.
-          </p>
-          <button className="primary" onClick={() => void resumeDispatch()}>
-            Resume dispatch
-          </button>
-        </div>
-      ) : null}
-
       {missedRoutines.length > 0 ? (
         <div className="panel">
           <h1>Missed routine occurrences</h1>
@@ -269,106 +158,12 @@ export default function HomePage() {
         made — with its sources.
       </p>
 
-      <div className="composer">
-        <label htmlFor="composer-request">Task</label>
-        <textarea
-          id="composer-request"
-          value={request}
-          maxLength={20000}
-          onChange={(e) => setRequest(e.target.value)}
-          placeholder="Describe the task — a question to research, or notes to turn into a project update. It runs in the background."
-        />
-        <div className="composer-bar">
-          <div className="composer-options">
-            <div className="segmented composer-workflows" role="group" aria-label="Task workflow">
-              <button
-                type="button"
-                className="chip-toggle"
-                aria-pressed={kind === 'research_brief'}
-                onClick={() => setKind('research_brief')}
-              >
-                Research brief
-              </button>
-              <button
-                type="button"
-                className="chip-toggle"
-                aria-pressed={kind === 'project_update'}
-                onClick={() => setKind('project_update')}
-              >
-                Project update
-              </button>
-            </div>
-            {kind === 'project_update' ? (
-              <select
-                aria-label="Project for update"
-                value={projectId}
-                onChange={(e) => setProjectId(e.target.value)}
-              >
-                <option value="">Choose project…</option>
-                {projects.map((project) => (
-                  <option key={project.id} value={project.id}>
-                    {project.name}
-                  </option>
-                ))}
-              </select>
-            ) : null}
-          </div>
-          <div className="composer-primary-action">
-            <span className="queue-hint" id="queue-task-hint" aria-live="polite">
-              {queueHint}
-            </span>
-            <button
-              type="button"
-              className="primary"
-              aria-describedby="queue-task-hint"
-              disabled={!canSubmit}
-              onClick={() => void submitTask()}
-            >
-              Queue task
-            </button>
-          </div>
-        </div>
-        <details className="advanced-options" ref={advancedOptionsRef}>
-          <summary>Advanced options</summary>
-          <div className="advanced-fields">
-            <label htmlFor="composer-constraints">Constraints (optional)</label>
-            <textarea
-              id="composer-constraints"
-              value={constraints}
-              maxLength={2000}
-              onChange={(e) => setConstraints(e.target.value)}
-              placeholder="Prefer local-first tools; budget under $20/month"
-              style={{ minHeight: 64 }}
-            />
-            {kind === 'research_brief' ? (
-              <>
-                <label htmlFor="composer-urls">
-                  Starting URLs (optional, one per line, max {MAX_STARTING_URLS})
-                </label>
-                <textarea
-                  id="composer-urls"
-                  value={startingUrlsText}
-                  onChange={(e) => setStartingUrlsText(e.target.value)}
-                  placeholder={'https://example.com/overview\nhttps://example.com/pricing'}
-                  style={{ minHeight: 64 }}
-                />
-              </>
-            ) : null}
-          </div>
-        </details>
-        {kind === 'project_update' && projects.length === 0 ? (
-          <p className="error" style={{ marginTop: 10 }}>
-            A project update needs a project with a granted folder. Create one on
-            the <Link href="/projects">projects page</Link> first.
-          </p>
-        ) : null}
-        {!urlsValid ? (
-          <p className="error" style={{ marginTop: 10 }}>
-            Starting URLs must begin with http:// or https:// (at most{' '}
-            {MAX_STARTING_URLS}).
-          </p>
-        ) : null}
-      </div>
+      <TaskComposer
+        projects={projects}
+        inline={true}
+        executorBusy={tasks?.executor.busy ?? false}
+        onSuccess={() => void refreshAll()}
+      />
 
       <div className="panel">
         <h2>Recent activity</h2>

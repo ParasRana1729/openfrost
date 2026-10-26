@@ -4,6 +4,7 @@ import { Anton, Archivo, JetBrains_Mono } from 'next/font/google';
 import { SidebarNav } from '../components/SidebarNav';
 import { RuntimeStatus } from '../components/RuntimeStatus';
 import { ToastProvider } from '../components/ToastProvider';
+import { StatusBar } from '../components/StatusBar';
 import './globals.css';
 
 /**
@@ -72,7 +73,10 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             <RuntimeStatus />
           </aside>
           <main className="main">
-            <ToastProvider>{children}</ToastProvider>
+            <ToastProvider>
+              <StatusBar />
+              {children}
+            </ToastProvider>
           </main>
         </div>
       </body>
