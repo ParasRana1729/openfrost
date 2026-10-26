@@ -14,10 +14,10 @@ assigned entry in the [solo backlog](backlog/solo-rebuild.md) before starting.
 - Use a topic branch, for example `feat/s02-research-brief`,
   `fix/s03-folder-boundary`, or `docs/s00-product-reset`.
 - S00–S06 are implemented on `main`. S07 pre-week validation is recorded; the
-  owner's one-working-week evaluation remains open. Draft
-  [PR #28](https://github.com/ParasRana1729/openfrost/pull/28) contains provider-key
-  redaction and NAT64 hardening, passed CI at its implementation checkpoint, and
-  is not merged. Build only what the assigned slice needs and verify dependencies
+  owner's one-working-week evaluation remains open. The S07 follow-up in
+  [PR #28](https://github.com/ParasRana1729/openfrost/pull/28) adds provider-key
+  redaction and NAT64 hardening; it does not complete S07. Build only what the
+  assigned slice needs and verify dependencies
   in the actual code; do not infer capabilities from the spec.
 - Keep unrelated cleanup and destructive operations out of an assigned slice
   unless explicitly authorized.

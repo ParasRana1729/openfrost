@@ -25,10 +25,9 @@ CI. S07 release hardening is in progress: its 2026-10-26 validation pass
 (real-model workflows on a free OpenRouter model, the reliability matrix,
 fresh setup, and a real S05→current migration) is recorded in the backlog;
 the one-working-week gate remains open. Capabilities below that depend on it
-are requirements to implement, not existing functionality. Draft
-[PR #28](https://github.com/ParasRana1729/openfrost/pull/28) contains provider-key
-redaction and NAT64 hardening; CI passed on its implementation checkpoint, but
-the changes are not merged. The
+are requirements to implement, not existing functionality. The S07 follow-up in
+[PR #28](https://github.com/ParasRana1729/openfrost/pull/28) adds provider-key
+redaction and NAT64 hardening; it does not complete S07. The
 [solo backlog](../backlog/solo-rebuild.md) is the delivery plan and per-slice
 progress record.
 

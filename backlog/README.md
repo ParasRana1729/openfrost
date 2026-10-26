@@ -25,7 +25,8 @@ workspace, shared Zod contracts, SQLite persistence, DPAPI secrets, authenticate
 loopback API/UI, bounded executor, research briefs, project updates,
 approval-bound export, owner-approved Markdown memory, and weekly planning.
 S07 pre-week validation was performed on 2026-10-26; the owner's one-working-week
-evaluation remains open. Draft [PR #28](https://github.com/ParasRana1729/openfrost/pull/28)
-contains provider-key redaction and NAT64 hardening. Its implementation
-checkpoint passed CI but is not merged. See the [solo backlog](solo-rebuild.md)
+evaluation remains open. The S07 follow-up in
+[PR #28](https://github.com/ParasRana1729/openfrost/pull/28) adds provider-key
+redaction and NAT64 hardening; it does not complete S07. See the
+[solo backlog](solo-rebuild.md)
 handoffs for evidence, scope, and limitations.

@@ -26,7 +26,7 @@ remaining release work are recorded in the active backlog; do not claim S07 is
 complete until its owner-use gate is met. Draft
 [PR #28](https://github.com/ParasRana1729/openfrost/pull/28) contains provider-key
 redaction and NAT64 hardening; its implementation checkpoint passed CI but is
-not merged. Do not invent APIs,
+part of the S07 follow-up, not completion of S07. Do not invent APIs,
 scripts, migrations, tools, or passing checks beyond what the repository
 actually contains.
 

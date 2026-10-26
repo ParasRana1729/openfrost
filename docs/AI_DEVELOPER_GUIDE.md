@@ -19,10 +19,10 @@ conversation or unpushed edits are available.
 
 **Current state: S00–S06 are implemented on `main`.** S07 pre-week validation
 was performed on 2026-10-26, and the owner's one-working-week evaluation remains
-open. Draft [PR #28](https://github.com/ParasRana1729/openfrost/pull/28) contains
-provider-key redaction and NAT64 hardening; its implementation checkpoint passed
-CI but is not merged. Check the solo backlog handoffs for evidence, status, and
-limitations before building.
+open. The S07 follow-up in
+[PR #28](https://github.com/ParasRana1729/openfrost/pull/28) adds provider-key
+redaction and NAT64 hardening; it does not complete S07. Check the solo backlog
+handoffs for evidence, status, and limitations before building.
 
 ## 2. Set up and choose one slice
 

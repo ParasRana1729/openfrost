@@ -35,10 +35,9 @@ clock changes, and DST, and surfaces one missed occurrence for review (run
 once now / skip) instead of replaying a backlog.
 
 S07 pre-week validation was performed on 2026-10-26; the owner's
-one-working-week evaluation remains open. Draft
-[PR #28](https://github.com/ParasRana1729/openfrost/pull/28) contains provider-key
-redaction and NAT64 hardening. Its implementation checkpoint passed CI, but the
-changes are not merged.
+one-working-week evaluation remains open. The S07 follow-up in
+[PR #28](https://github.com/ParasRana1729/openfrost/pull/28) adds provider-key
+redaction and NAT64 hardening; this follow-up does not close S07.
 
 ## The direction
 
@@ -243,7 +242,7 @@ AGENTS.md / CONTRIBUTING.md  Engineering, security, and landing workflow
 
 The current slice is **S07: harden and validate the personal-use release**.
 Pre-week validation was performed on 2026-10-26; the one-working-week log lives
-in the backlog and remains open. Draft PR #28 contains the provider-key and
-NAT64 follow-up and is not merged. Implement only the assigned slice; never put
+in the backlog and remains open. PR #28 tracks the provider-key and NAT64
+hardening follow-up. Implement only the assigned slice; never put
 real credentials in `.env`, prompts, or repository files. The credential flow
 uses DPAPI.

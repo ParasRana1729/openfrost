@@ -9,9 +9,9 @@
 includes research briefs, project updates, approval-bound export, owner-approved
 memory, and owner-confirmed weekly planning. S07 pre-week validation was
 performed on 2026-10-26; the owner's one-working-week evaluation remains open.
-Draft [PR #28](https://github.com/ParasRana1729/openfrost/pull/28) adds provider-key
-redaction and NAT64 private-address checks. Its implementation checkpoint passed
-CI, but the changes are not merged.
+The S07 follow-up in [PR #28](https://github.com/ParasRana1729/openfrost/pull/28)
+adds provider-key redaction and NAT64 private-address checks; it does not close
+S07.
 
 ## Problem
 

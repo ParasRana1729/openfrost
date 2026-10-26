@@ -880,6 +880,6 @@ gate; findings marked WEEK carry into this log.
   use fake keys and transports. The one-working-week owner-use gate remains
   open, and no owner observations were provided in this follow-up.
 - PR: [#28 — S07 provider and NAT64 hardening](https://github.com/ParasRana1729/openfrost/pull/28).
-  It remains draft and unmerged; CI passed for the security implementation
-  checkpoint.
+  Checks pass for this focused follow-up; it does not close S07 or the open
+  owner-use gate.
 - Next: continue the owner's working-week log and resolve any issues it surfaces.
