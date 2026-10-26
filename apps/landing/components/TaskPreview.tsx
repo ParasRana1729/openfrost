@@ -25,10 +25,10 @@ export function TaskPreview() {
     <div className="task-preview" data-ui aria-label="Interactive OpenFrost task preview">
       <div className="preview-heading">
         <div>
-          <h2>Start with a request</h2>
-          <p>Choose a workflow, then make the example yours.</p>
+          <h2>Shape an example request</h2>
+          <p>Choose a workflow, then edit the sample prompt.</p>
         </div>
-        <span className="local-mark"><span aria-hidden="true" />Runs locally</span>
+        <span className="local-mark"><span aria-hidden="true" />Sample only</span>
       </div>
 
       <div className="workflow-choice" role="group" aria-label="Workflow">
@@ -62,7 +62,7 @@ export function TaskPreview() {
           onClick={() => setPreviewed(true)}
           disabled={!request.trim()}
         >
-          Preview a run
+          Show sample result
         </button>
       </div>
 
@@ -78,7 +78,7 @@ export function TaskPreview() {
         ) : (
           <>
             <span className="result-state">Ready for a request</span>
-            <p>Try the preview to see how a saved result is presented.</p>
+            <p>Try the sample to see how a saved result is presented.</p>
           </>
         )}
       </div>

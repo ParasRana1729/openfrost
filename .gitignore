@@ -39,3 +39,9 @@ Thumbs.db
 
 # Local visual inspection screenshots
 .taste-skill/inspect/
+.taste-skill/before/
+.taste-skill/revamp/*-render/
+.taste-skill/revamp/final*/
+.taste-skill/revamp/production*/
+assets/snow-crystal.jpg
+apps/landing/public/images/snow-crystals-2.jpg

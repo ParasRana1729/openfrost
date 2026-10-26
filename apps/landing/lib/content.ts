@@ -25,8 +25,8 @@ export const workflows = [
 ] as const;
 
 export const executionLimits = [
-  ['12 steps', 'per run'],
-  ['10 minutes', 'wall-clock limit'],
-  ['20,000 characters', 'input limit'],
-  ['100,000 characters', 'output limit'],
+  ['12', 'steps per run'],
+  ['10', 'minutes wall-clock'],
+  ['20,000', 'input characters'],
+  ['100,000', 'output characters'],
 ] as const;

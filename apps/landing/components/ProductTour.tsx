@@ -22,7 +22,7 @@ function AssistantScreen() {
           <p>Compare two approaches to backup for a small Windows project.</p>
           <div><span>Research brief</span><span className="tour-queue">Queue task</span></div>
         </div>
-        <p className="tour-foot">The task runs locally. Sources and the saved brief stay in your workspace.</p>
+        <p className="tour-foot">The local API runs the task. Model processing uses your configured provider.</p>
       </div>
     </div>
   );
