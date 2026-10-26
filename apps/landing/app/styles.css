@@ -410,6 +410,8 @@ h1, h2, h3 { text-wrap: balance; }
 .text-link { color: #fff; text-decoration-color: var(--accent); }
 .hero-stage { min-width: 0; align-self: stretch; display: grid; align-items: center; }
 .hero-scene { position: relative; width: min(100%, 750px); height: clamp(450px, 59vw, 670px); margin: 0 auto; isolation: isolate; }
+.hero-scene { --tilt-x: 0deg; --tilt-y: 0deg; transform: perspective(1300px) rotateX(var(--tilt-x)) rotateY(var(--tilt-y)); transform-style: preserve-3d; transition: transform 260ms cubic-bezier(.2,.7,.2,1); }
+.hero-copy h1 .text-scramble { display: block; max-width: 100%; overflow: hidden; white-space: pre; }
 .hero-crystal-photo { position: absolute; top: 6%; right: 13%; width: 57%; aspect-ratio: 1; overflow: hidden; border: 9px solid #c5ff55; border-radius: 50%; background: #082044; animation: crystal-bob 7s ease-in-out infinite; }
 .hero-crystal-photo img { object-fit: cover; animation: crystal-breathe 10s ease-in-out infinite alternate; }
 .hero-window { position: absolute; top: 34%; right: 0; width: 77%; overflow: hidden; background: #090f1c; color: #f2f5fc; box-shadow: 15px 16px 0 #162d9b; animation: window-arrive 850ms cubic-bezier(.2,.7,.2,1) both; } /* taste-skill-ignore: illustrative Control Center interface */

@@ -1,6 +1,7 @@
 import Image from 'next/image';
 import { HeroScene } from '../components/HeroScene';
 import { MotionLayer } from '../components/MotionLayer';
+import { TextScramble } from '../components/TextScramble';
 import { ProductTour } from '../components/ProductTour';
 import { TaskPreview } from '../components/TaskPreview';
 import { executionLimits, providers, releasesUrl, repositoryUrl, workflows } from '../lib/content';
@@ -46,7 +47,7 @@ export default function Home() {
       <main id="top">
         <section className="masthead wrap" aria-label="OpenFrost product overview">
           <div className="hero-copy" data-reveal>
-            <h1>AI gets<br />to work.</h1>
+            <h1><TextScramble label="AI gets to work.">{'AI GETS\nTO WORK.'}</TextScramble></h1>
             <div className="hero-under">
               <p>Research briefs, project updates, and weekly plans—finished, sourced, and ready to keep.</p>
               <div className="hero-actions">

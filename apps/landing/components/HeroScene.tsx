@@ -1,8 +1,9 @@
 import Image from 'next/image';
+import { Tilt } from './Tilt';
 
 export function HeroScene() {
   return (
-    <div className="hero-scene" aria-label="Illustrative OpenFrost workspace with a sample task and saved result">
+    <Tilt className="hero-scene" aria-label="Illustrative OpenFrost workspace with a sample task and saved result">
       <div className="hero-crystal-photo">
         <Image
           src="/images/real-snowflake-flickr-alexey-kljatov-6.jpg"
@@ -26,6 +27,6 @@ export function HeroScene() {
 
       <div className="hero-float-card hero-float-scope" data-ui><span>Project scope</span><strong>Granted folders only</strong></div>
       <div className="hero-float-card hero-float-artifact" data-ui><span>Saved artifact</span><strong>Research brief.md</strong><p>Sources included</p></div>
-    </div>
+    </Tilt>
   );
 }

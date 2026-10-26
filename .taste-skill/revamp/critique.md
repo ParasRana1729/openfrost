@@ -25,3 +25,17 @@ Top three problems (most visible first), each with the screenshot it shows in an
 3. One mobile running-text sample remains at 5:1 contrast, below the skill’s 7:1 preference. The primary reading text is bright; raising every secondary note would erase the visual hierarchy. Recheck that specific note if the copy or background changes; see `mobile-page-01.jpg`.
 
 The production inspector reports 0 FAIL and 3 defended warnings across desktop, tablet, and phone. Four real photographs are used and credited in the footer. CSS motion is reduced for `prefers-reduced-motion`.
+
+ROUND 3
+Seen in one second: an electric-blue poster with the two-line headline and the floating Control Center composition.
+Idea (one sentence): OpenFrost's own snow crystal mark and bounded task record become a blue-and-lime poster with a motion-led product scene.
+Live thing: The first load resolves the headline from a brief scramble; pointer movement adds a shallow 3D tilt to the hero scene. The sample task and product tour remain interactive.
+Layout words by section: hero=full-bleed poster collage / providers=colour strip / workflow=split list / work types=staggered artefacts / photographs=three-up gallery / sample=interactive split / workspace=product tour / boundary=local-to-provider diagram / limits=colour field / build=split / FAQ=accordion / footer=wordmark
+Scores: design 9 · usability 8.5 · creativity 9.2 · content 8.5 → overall 8.9
+Caps applied: none
+Top three problems (most visible first), each with the screenshot it shows in and the fix:
+1. The page still uses 16 measured sizes; the oversized poster and distinct interface fragments make the range deliberate, but it is the next candidate for consolidation if the content changes. See `.taste-skill/revamp/flashy/final/desktop-page-01.jpg`.
+2. There is no short, relevant Control Center footage to add as a moving picture; the existing product panels are explicitly illustrative, so the four credited photographs remain the honest imagery. See `.taste-skill/revamp/flashy/final/desktop-fold.jpg`.
+3. A secondary mobile note remains at 5:1 contrast; it is legible and visually secondary, while primary running copy keeps stronger contrast. Recheck if its text or background changes. See `.taste-skill/revamp/flashy/final/mobile-page-01.jpg`.
+
+The final production inspector reports 0 FAIL and 3 defended WARN across 1440, 768, and 390px. Root lint, landing production build, and design-taste lint pass. Reduced-motion preferences skip the scramble and tilt; touch input does not trigger tilt. A real-browser pointer move changed both tilt variables on the hero.
