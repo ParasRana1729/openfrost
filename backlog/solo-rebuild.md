@@ -887,7 +887,7 @@ gate; findings marked WEEK carry into this log.
 
 ## S08 — Improve Control Center clarity and feedback (Phase 1)
 
-- **Status:** Implementation and local verification complete on `feat/ui-phase1-quick-wins`; PR and landing pending
+- **Status:** Implementation and local verification complete on `feat/ui-phase1-quick-wins`; [PR #30](https://github.com/ParasRana1729/openfrost/pull/30) is open, with CI running
 - **Depends on:** S01–S06 (existing local UI and workflows)
 
 Implement the first, visible usability slice from the owner-provided UI/UX plan.
