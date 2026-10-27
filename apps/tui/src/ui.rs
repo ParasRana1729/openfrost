@@ -57,6 +57,9 @@ pub fn render(app: &mut App, frame: &mut Frame) {
     if let Some(dialog) = &app.dialog {
         render_dialog(app, frame, dialog);
     }
+    if let Some(selected) = app.tab_picker {
+        render_tab_picker(frame, selected);
+    }
 }
 
 fn render_connecting(app: &App, frame: &mut Frame) {
@@ -224,7 +227,7 @@ fn render_status_bar(app: &App, frame: &mut Frame, area: Rect) {
             Style::default().fg(Color::Magenta),
         ));
     }
-    spans.push(Span::styled("  Alt+1..6 tabs | Ctrl+C quit", muted()));
+    spans.push(Span::styled("  Ctrl+P tabs | Ctrl+C quit", muted()));
     frame.render_widget(Line::from(spans), area);
 }
 
@@ -1221,6 +1224,41 @@ fn row_line(active: bool, label: &str, value: &str) -> Line<'static> {
         ),
         Span::raw(value.to_string()),
     ])
+}
+
+// ---------------------------------------------------------------------------
+// Tab picker (Ctrl+P)
+// ---------------------------------------------------------------------------
+
+fn render_tab_picker(frame: &mut Frame, selected: usize) {
+    let area = frame.area();
+    let height = ALL_TABS.len() as u16 + 4;
+    let popup = centered_rect(area, 40, height);
+    frame.render_widget(ratatui::widgets::Clear, popup);
+
+    let mut lines: Vec<Line> = Vec::new();
+    for (index, tab) in ALL_TABS.iter().enumerate() {
+        let marker = if index == selected { ">" } else { " " };
+        let style = if index == selected {
+            accent().add_modifier(Modifier::BOLD)
+        } else {
+            Style::default()
+        };
+        lines.push(Line::from(Span::styled(
+            format!(" {marker} {}. {}", index + 1, tab.title()),
+            style,
+        )));
+    }
+    lines.push(Line::from(""));
+    lines.push(Line::styled(
+        " \u{2191}\u{2193}/j/k move | Enter open | Esc cancel".to_string(),
+        muted(),
+    ));
+    frame.render_widget(
+        Paragraph::new(lines)
+            .block(block("Go to tab")),
+        popup,
+    );
 }
 
 // ---------------------------------------------------------------------------

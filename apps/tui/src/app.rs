@@ -1,5 +1,5 @@
 //! Application state and key handling. The TUI is keyboard-first: global
-//! shortcuts (Alt+1..6 tabs, Ctrl+C quit), per-tab navigation, and modal
+//! shortcuts (Ctrl+P tab picker, Ctrl+C quit), per-tab navigation, and modal
 //! dialogs for forms. Every mutation goes through the loopback API client.
 
 use std::sync::Arc;
@@ -353,6 +353,8 @@ pub struct App {
     pub routines: RoutinesState,
     pub settings: SettingsState,
     pub dialog: Option<Dialog>,
+    /// When set, the Ctrl+P tab picker is open; value is the highlighted index.
+    pub tab_picker: Option<usize>,
     pub notice: Option<Notice>,
     pub ticks: u64,
 }
@@ -376,6 +378,7 @@ impl App {
             routines: RoutinesState::default(),
             settings: SettingsState::default(),
             dialog: None,
+            tab_picker: None,
             notice: None,
             ticks: 0,
         }
@@ -523,37 +526,43 @@ impl App {
             self.quit = true;
             return;
         }
-        // Global tab switching with Alt+digit on the main screen.
-        if self.screen == Screen::Main && key.modifiers.contains(KeyModifiers::ALT) {
-            let digit = match key.code {
-                KeyCode::Char('1') => Some(0),
-                KeyCode::Char('2') => Some(1),
-                KeyCode::Char('3') => Some(2),
-                KeyCode::Char('4') => Some(3),
-                KeyCode::Char('5') => Some(4),
-                KeyCode::Char('6') => Some(5),
-                _ => None,
-            };
-            if let Some(index) = digit {
-                self.switch_tab(ALL_TABS[index]);
-                return;
+        if self.screen == Screen::Main
+            && key.modifiers.contains(KeyModifiers::CONTROL)
+            && matches!(key.code, KeyCode::Char('p') | KeyCode::Char('P'))
+        {
+            if self.tab_picker.is_some() {
+                self.tab_picker = None;
+            } else {
+                let index = ALL_TABS
+                    .iter()
+                    .position(|tab| *tab == self.tab)
+                    .unwrap_or(0);
+                self.tab_picker = Some(index);
             }
-            // Alt+X signs out; the session stays server-side until TTL.
-            if key.code == KeyCode::Char('x') {
-                let api = self.api.clone();
-                let tx = self.tx.clone();
-                tokio::spawn(async move {
-                    let result = {
-                        let mut api = api.lock().await;
-                        api.logout().await.map_err(|e| e.message())
-                    };
-                    let _ = tx.send(AppEvent::Api(Box::new(Payload::LoggedOut(result))));
-                });
-                return;
-            }
+            return;
+        }
+        // Alt+X signs out; the session stays server-side until TTL.
+        if self.screen == Screen::Main
+            && key.modifiers.contains(KeyModifiers::ALT)
+            && key.code == KeyCode::Char('x')
+        {
+            let api = self.api.clone();
+            let tx = self.tx.clone();
+            tokio::spawn(async move {
+                let result = {
+                    let mut api = api.lock().await;
+                    api.logout().await.map_err(|e| e.message())
+                };
+                let _ = tx.send(AppEvent::Api(Box::new(Payload::LoggedOut(result))));
+            });
+            return;
         }
         if self.screen != Screen::Main {
             self.handle_auth_key(key);
+            return;
+        }
+        if let Some(selected) = self.tab_picker {
+            self.handle_tab_picker_key(selected, key);
             return;
         }
         if let Some(dialog) = self.dialog.take() {
@@ -567,6 +576,26 @@ impl App {
             Tab::Memory => self.handle_memory_key(key),
             Tab::Routines => self.handle_routines_key(key),
             Tab::Settings => self.handle_settings_key(key),
+        }
+    }
+
+    fn handle_tab_picker_key(&mut self, selected: usize, key: KeyEvent) {
+        let last = ALL_TABS.len().saturating_sub(1);
+        match key.code {
+            KeyCode::Esc => {
+                self.tab_picker = None;
+            }
+            KeyCode::Up | KeyCode::Char('k') => {
+                self.tab_picker = Some(selected.saturating_sub(1));
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                self.tab_picker = Some((selected + 1).min(last));
+            }
+            KeyCode::Enter => {
+                self.tab_picker = None;
+                self.switch_tab(ALL_TABS[selected]);
+            }
+            _ => {}
         }
     }
 
