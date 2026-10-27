@@ -2285,7 +2285,7 @@ mod tests {
     fn dummy_app() -> App {
         let (tx, _rx) = mpsc::unbounded_channel();
         let api = Arc::new(Mutex::new(
-            crate::api::ApiClient::new("http://127.0.0.1:0".into()).unwrap(),
+            crate::api::ApiClient::new("http://127.0.0.1:0").unwrap(),
         ));
         App::new(tx, api)
     }
