@@ -17,7 +17,7 @@ export function HeroScene() {
 
       <div className="hero-window" data-ui>
         <div className="hero-window-top"><span>OpenFrost · Control Center</span><span className="hero-window-live"><i /> Local</span></div>
-        <div className="hero-window-title"><span>Welcome back</span><strong>Good morning,<br />Paras.</strong></div>
+        <div className="hero-window-title"><span>Local session</span><strong>Ready when<br />you are.</strong></div>
         <div className="hero-window-queue">
           <div className="hero-window-row"><span className="hero-row-icon">R</span><span><strong>Compare backup approaches</strong><small>Research brief · Sample</small></span><b>Ready</b></div>
           <div className="hero-window-row"><span className="hero-row-icon">P</span><span><strong>Northstar project update</strong><small>Markdown · Sample</small></span><b className="hero-saved">Saved</b></div>
