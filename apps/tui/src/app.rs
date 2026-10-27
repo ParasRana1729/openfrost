@@ -838,13 +838,23 @@ impl App {
                 .and_then(|index| self.assistant.projects.get(index))
                 .map(|project| project.id.clone())
         };
-        let title = self
+        let title_input = self
             .assistant
             .title
             .lines()
             .first()
             .cloned()
             .unwrap_or_default();
+        let title = if title_input.trim().is_empty() {
+            let first_line = request.lines().next().unwrap_or("Untitled task").trim();
+            if first_line.is_empty() {
+                "Untitled task".to_string()
+            } else {
+                truncate(first_line, 80)
+            }
+        } else {
+            title_input.trim().to_string()
+        };
         let constraints = self
             .assistant
             .constraints
@@ -860,7 +870,7 @@ impl App {
             .map(str::to_string)
             .collect();
         let input = CreateTaskRequest {
-            title: if title.is_empty() { None } else { Some(title) },
+            title: Some(title),
             request,
             constraints: if constraints.is_empty() {
                 None
