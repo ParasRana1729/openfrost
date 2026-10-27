@@ -1445,18 +1445,14 @@ impl App {
             KeyCode::PageUp => {
                 self.scroll_task_detail(-15);
             }
-            KeyCode::Home => {
-                match self.tasks.detail_focus {
-                    TaskDetailFocus::Report => self.tasks.artifact_scroll = 0,
-                    TaskDetailFocus::Log => self.tasks.log_scroll = 0,
-                }
-            }
-            KeyCode::End => {
-                match self.tasks.detail_focus {
-                    TaskDetailFocus::Report => self.tasks.artifact_scroll = u16::MAX,
-                    TaskDetailFocus::Log => self.tasks.log_scroll = u16::MAX,
-                }
-            }
+            KeyCode::Home => match self.tasks.detail_focus {
+                TaskDetailFocus::Report => self.tasks.artifact_scroll = 0,
+                TaskDetailFocus::Log => self.tasks.log_scroll = 0,
+            },
+            KeyCode::End => match self.tasks.detail_focus {
+                TaskDetailFocus::Report => self.tasks.artifact_scroll = u16::MAX,
+                TaskDetailFocus::Log => self.tasks.log_scroll = u16::MAX,
+            },
             KeyCode::Char('c') => {
                 if let Some(detail) = &self.tasks.detail {
                     if matches!(
@@ -2460,11 +2456,7 @@ mod tests {
             .unwrap();
 
         let buffer = terminal.backend().buffer();
-        let content: String = buffer
-            .content()
-            .iter()
-            .map(|c| c.symbol())
-            .collect();
+        let content: String = buffer.content().iter().map(|c| c.symbol()).collect();
         assert!(content.contains("Task detail"));
         assert!(content.contains("Saved Report"));
 

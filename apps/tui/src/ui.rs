@@ -1221,8 +1221,9 @@ fn render_task_detail(app: &mut App, frame: &mut Frame, area: Rect) {
         TaskDetailView::Auto => {
             if content_area.width >= 90 {
                 let left_width = 46.min(content_area.width / 2);
-                let chunks = Layout::horizontal([Constraint::Length(left_width), Constraint::Min(40)])
-                    .split(content_area);
+                let chunks =
+                    Layout::horizontal([Constraint::Length(left_width), Constraint::Min(40)])
+                        .split(content_area);
                 let log_focused = app.tasks.detail_focus == TaskDetailFocus::Log;
                 let report_focused = app.tasks.detail_focus == TaskDetailFocus::Report;
                 render_task_detail_log(app, frame, chunks[0], log_focused);
