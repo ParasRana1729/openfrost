@@ -8,6 +8,7 @@ mod apply;
 mod contracts;
 mod dialog_forms;
 mod event;
+mod markdown;
 mod ui;
 
 #[cfg(test)]
@@ -162,7 +163,7 @@ async fn event_loop(
 fn handle_event(app: &mut App, event: AppEvent) {
     match event {
         AppEvent::Key(key) => app.on_key(key),
-        AppEvent::Mouse => {}
+        AppEvent::Mouse(mouse) => app.on_mouse(mouse),
         AppEvent::Resize => {}
         AppEvent::Api(payload) => apply::apply_payload(app, *payload),
         AppEvent::Activity => {

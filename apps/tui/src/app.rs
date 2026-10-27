@@ -99,6 +99,11 @@ pub struct AssistantState {
     pub events: Vec<Event>,
     pub approvals: Vec<ApprovalView>,
     pub routines: Vec<RoutineView>,
+    pub stream_scroll: u16,
+    pub history: Vec<String>,
+    pub history_idx: Option<usize>,
+    pub active_task_detail: Option<TaskDetail>,
+    pub slash_help_open: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -416,13 +421,24 @@ impl App {
                         let approvals = api.pending_approvals().await.map_err(|e| e.message());
                         let routines = api.routines().await.map_err(|e| e.message());
                         let projects = api.projects().await.map_err(|e| e.message());
-                        (events, approvals, routines, projects)
+                        let tasks = api.tasks().await.map_err(|e| e.message());
+                        let latest_task = match &tasks {
+                            Ok(res) if !res.tasks.is_empty() => {
+                                api.task_detail(&res.tasks[0].id).await.ok()
+                            }
+                            _ => None,
+                        };
+                        (events, approvals, routines, projects, tasks, latest_task)
                     },
-                    |(events, approvals, routines, projects)| Payload::AssistantData {
-                        events,
-                        approvals,
-                        routines,
-                        projects,
+                    |(events, approvals, routines, projects, tasks, latest_task)| {
+                        Payload::AssistantData {
+                            events,
+                            approvals,
+                            routines,
+                            projects,
+                            tasks,
+                            latest_task,
+                        }
                     },
                 );
             }
@@ -576,6 +592,87 @@ impl App {
             Tab::Memory => self.handle_memory_key(key),
             Tab::Routines => self.handle_routines_key(key),
             Tab::Settings => self.handle_settings_key(key),
+        }
+    }
+
+    pub fn on_mouse(&mut self, mouse: crossterm::event::MouseEvent) {
+        use crossterm::event::MouseEventKind;
+        match mouse.kind {
+            MouseEventKind::ScrollDown => {
+                self.scroll_down(3);
+            }
+            MouseEventKind::ScrollUp => {
+                self.scroll_up(3);
+            }
+            _ => {}
+        }
+    }
+
+    pub fn scroll_down(&mut self, lines: u16) {
+        if self.screen != Screen::Main {
+            return;
+        }
+        match self.tab {
+            Tab::Assistant => {
+                self.assistant.stream_scroll = self.assistant.stream_scroll.saturating_add(lines);
+            }
+            Tab::Tasks => {
+                if self.tasks.detail_open {
+                    self.tasks.artifact_scroll = self.tasks.artifact_scroll.saturating_add(lines);
+                } else if !self.tasks.tasks.is_empty() {
+                    let max = self.tasks.tasks.len().saturating_sub(1);
+                    self.tasks.selected = (self.tasks.selected + lines as usize).min(max);
+                }
+            }
+            Tab::Projects => {
+                if !self.projects.projects.is_empty() {
+                    let max = self.projects.projects.len().saturating_sub(1);
+                    self.projects.selected = (self.projects.selected + lines as usize).min(max);
+                }
+            }
+            Tab::Memory => {
+                self.memory.selected = self.memory.selected.saturating_add(lines as usize);
+            }
+            Tab::Routines => {
+                if !self.routines.routines.is_empty() {
+                    let max = self.routines.routines.len().saturating_sub(1);
+                    self.routines.selected = (self.routines.selected + lines as usize).min(max);
+                }
+            }
+            Tab::Settings => {
+                let max = 1 + self.settings.destinations.len();
+                self.settings.selected = (self.settings.selected + lines as usize).min(max);
+            }
+        }
+    }
+
+    pub fn scroll_up(&mut self, lines: u16) {
+        if self.screen != Screen::Main {
+            return;
+        }
+        match self.tab {
+            Tab::Assistant => {
+                self.assistant.stream_scroll = self.assistant.stream_scroll.saturating_sub(lines);
+            }
+            Tab::Tasks => {
+                if self.tasks.detail_open {
+                    self.tasks.artifact_scroll = self.tasks.artifact_scroll.saturating_sub(lines);
+                } else {
+                    self.tasks.selected = self.tasks.selected.saturating_sub(lines as usize);
+                }
+            }
+            Tab::Projects => {
+                self.projects.selected = self.projects.selected.saturating_sub(lines as usize);
+            }
+            Tab::Memory => {
+                self.memory.selected = self.memory.selected.saturating_sub(lines as usize);
+            }
+            Tab::Routines => {
+                self.routines.selected = self.routines.selected.saturating_sub(lines as usize);
+            }
+            Tab::Settings => {
+                self.settings.selected = self.settings.selected.saturating_sub(lines as usize);
+            }
         }
     }
 
@@ -744,7 +841,7 @@ impl App {
 
     fn handle_assistant_key(&mut self, key: KeyEvent) {
         if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('s') {
-            self.submit_task();
+            self.submit_or_command();
             return;
         }
         if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('a') {
@@ -752,17 +849,67 @@ impl App {
             return;
         }
         match key.code {
+            KeyCode::PageUp => {
+                self.scroll_up(10);
+            }
+            KeyCode::PageDown => {
+                self.scroll_down(10);
+            }
             KeyCode::Tab => {
-                self.assistant.focus =
-                    next_composer_field(self.assistant.focus, self.assistant.advanced_open, false);
+                if !self.assistant.advanced_open && self.assistant.focus == ComposerField::Request {
+                    self.cycle_select(1);
+                    let name = self
+                        .assistant
+                        .project_idx
+                        .and_then(|i| self.assistant.projects.get(i))
+                        .map(|p| p.name.as_str())
+                        .unwrap_or("no project scope");
+                    self.set_notice(format!("Scope: {name}"), false);
+                } else {
+                    self.assistant.focus = next_composer_field(
+                        self.assistant.focus,
+                        self.assistant.advanced_open,
+                        false,
+                    );
+                }
             }
             KeyCode::BackTab => {
-                self.assistant.focus =
-                    next_composer_field(self.assistant.focus, self.assistant.advanced_open, true);
+                if !self.assistant.advanced_open && self.assistant.focus == ComposerField::Request {
+                    self.assistant.kind_project_update = !self.assistant.kind_project_update;
+                    let k = if self.assistant.kind_project_update {
+                        "project update"
+                    } else {
+                        "research brief"
+                    };
+                    self.set_notice(format!("Task kind: {k}"), false);
+                } else {
+                    self.assistant.focus = next_composer_field(
+                        self.assistant.focus,
+                        self.assistant.advanced_open,
+                        true,
+                    );
+                }
             }
             _ => match self.assistant.focus {
                 ComposerField::Request => {
-                    let _ = self.assistant.request.input(key);
+                    if key.code == KeyCode::Enter {
+                        if key.modifiers.contains(KeyModifiers::SHIFT)
+                            || key.modifiers.contains(KeyModifiers::ALT)
+                        {
+                            self.assistant.request.insert_newline();
+                        } else {
+                            self.submit_or_command();
+                        }
+                    } else if key.code == KeyCode::Up && self.assistant.request.cursor().0 == 0 {
+                        self.history_prev();
+                    } else if key.code == KeyCode::Down
+                        && self.assistant.request.cursor().0 + 1
+                            >= self.assistant.request.lines().len()
+                    {
+                        self.history_next();
+                    } else {
+                        let _ = self.assistant.request.input(key);
+                    }
                 }
                 ComposerField::Constraints => {
                     let _ = self.assistant.constraints.input(key);
@@ -779,6 +926,132 @@ impl App {
                     _ => {}
                 },
             },
+        }
+    }
+
+    fn submit_or_command(&mut self) {
+        let text = self.assistant.request.lines().join("\n").trim().to_string();
+        if text.is_empty() {
+            self.set_notice("Type a request or /command", true);
+            return;
+        }
+        if text.starts_with('/') {
+            self.execute_slash_command(&text);
+            return;
+        }
+        if self.assistant.history.last().map(|s| s.as_str()) != Some(&text) {
+            self.assistant.history.push(text.clone());
+        }
+        self.assistant.history_idx = None;
+        self.assistant.stream_scroll = 0;
+        self.submit_task();
+    }
+
+    fn execute_slash_command(&mut self, text: &str) {
+        let parts: Vec<&str> = text.split_whitespace().collect();
+        let cmd = parts.first().copied().unwrap_or("");
+        let arg = if parts.len() > 1 {
+            parts[1..].join(" ")
+        } else {
+            String::new()
+        };
+
+        self.assistant.request = TextArea::default();
+
+        match cmd {
+            "/help" | "/?" => {
+                self.assistant.slash_help_open = !self.assistant.slash_help_open;
+            }
+            "/project" | "/p" => {
+                if arg.is_empty() {
+                    self.cycle_select(1);
+                    let name = self
+                        .assistant
+                        .project_idx
+                        .and_then(|i| self.assistant.projects.get(i))
+                        .map(|p| p.name.as_str())
+                        .unwrap_or("no project scope");
+                    self.set_notice(format!("Scope: {name}"), false);
+                } else {
+                    let needle = arg.to_lowercase();
+                    if let Some(pos) = self
+                        .assistant
+                        .projects
+                        .iter()
+                        .position(|p| p.name.to_lowercase().contains(&needle))
+                    {
+                        self.assistant.project_idx = Some(pos);
+                        let name = &self.assistant.projects[pos].name;
+                        self.set_notice(format!("Scope switched to: {name}"), false);
+                    } else if arg == "none" || arg == "clear" {
+                        self.assistant.project_idx = None;
+                        self.set_notice("Scope cleared (no project)", false);
+                    } else {
+                        self.set_notice(format!("Project matching '{arg}' not found"), true);
+                    }
+                }
+            }
+            "/tasks" | "/t" => {
+                self.switch_tab(Tab::Tasks);
+            }
+            "/settings" | "/s" => {
+                self.switch_tab(Tab::Settings);
+            }
+            "/memory" | "/m" => {
+                self.switch_tab(Tab::Memory);
+            }
+            "/routines" | "/r" => {
+                self.switch_tab(Tab::Routines);
+            }
+            "/clear" => {
+                self.assistant.stream_scroll = 0;
+                self.assistant.active_task_detail = None;
+                self.set_notice("Session stream cleared", false);
+            }
+            "/cancel" => {
+                if let Some(detail) = &self.assistant.active_task_detail {
+                    let task_id = detail.task.id.clone();
+                    let api = self.api.clone();
+                    self.spawn_mutation("Task cancellation requested", async move {
+                        api.lock().await.cancel_task(&task_id).await.map(|_| ())
+                    });
+                } else {
+                    self.set_notice("No active task to cancel", true);
+                }
+            }
+            _ => {
+                self.set_notice(
+                    format!("Unknown command: {cmd}. Type /help for available commands."),
+                    true,
+                );
+            }
+        }
+    }
+
+    fn history_prev(&mut self) {
+        if self.assistant.history.is_empty() {
+            return;
+        }
+        let next_idx = match self.assistant.history_idx {
+            None => self.assistant.history.len().saturating_sub(1),
+            Some(idx) => idx.saturating_sub(1),
+        };
+        self.assistant.history_idx = Some(next_idx);
+        let entry = self.assistant.history[next_idx].clone();
+        self.assistant.request = TextArea::new(entry.lines().map(str::to_string).collect());
+    }
+
+    fn history_next(&mut self) {
+        if let Some(idx) = self.assistant.history_idx {
+            if idx + 1 < self.assistant.history.len() {
+                let next_idx = idx + 1;
+                self.assistant.history_idx = Some(next_idx);
+                let entry = self.assistant.history[next_idx].clone();
+                self.assistant.request = TextArea::new(entry.lines().map(str::to_string).collect());
+            } else {
+                self.assistant.history_idx = None;
+                self.assistant.request = TextArea::default();
+            }
         }
     }
 
@@ -938,6 +1211,12 @@ impl App {
             KeyCode::Char('k') | KeyCode::Up if count > 0 => {
                 self.tasks.selected = self.tasks.selected.saturating_sub(1);
             }
+            KeyCode::PageDown => {
+                self.scroll_down(10);
+            }
+            KeyCode::PageUp => {
+                self.scroll_up(10);
+            }
             KeyCode::Enter if count > 0 => {
                 if let Some(task) = self.tasks.visible().get(self.tasks.selected) {
                     let task_id = task.id.clone();
@@ -994,6 +1273,18 @@ impl App {
             }
             KeyCode::Char('k') | KeyCode::Up => {
                 self.tasks.artifact_scroll = self.tasks.artifact_scroll.saturating_sub(1);
+            }
+            KeyCode::PageDown => {
+                self.tasks.artifact_scroll = self.tasks.artifact_scroll.saturating_add(15);
+            }
+            KeyCode::PageUp => {
+                self.tasks.artifact_scroll = self.tasks.artifact_scroll.saturating_sub(15);
+            }
+            KeyCode::Home => {
+                self.tasks.artifact_scroll = 0;
+            }
+            KeyCode::End => {
+                self.tasks.artifact_scroll = u16::MAX;
             }
             KeyCode::Char('c') => {
                 if let Some(detail) = &self.tasks.detail {

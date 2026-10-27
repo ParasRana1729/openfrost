@@ -236,10 +236,404 @@ fn render_status_bar(app: &App, frame: &mut Frame, area: Rect) {
 // ---------------------------------------------------------------------------
 
 fn render_assistant(app: &mut App, frame: &mut Frame, area: Rect) {
-    let chunks =
-        Layout::horizontal([Constraint::Percentage(55), Constraint::Percentage(45)]).split(area);
-    render_composer(app, frame, chunks[0]);
-    render_activity(app, frame, chunks[1]);
+    if app.assistant.advanced_open {
+        let chunks = Layout::horizontal([Constraint::Percentage(55), Constraint::Percentage(45)])
+            .split(area);
+        render_composer(app, frame, chunks[0]);
+        render_activity(app, frame, chunks[1]);
+    } else {
+        let vertical = Layout::vertical([Constraint::Min(8), Constraint::Length(5)]).split(area);
+        render_assistant_stream(app, frame, vertical[0]);
+        render_assistant_composer(app, frame, vertical[1]);
+    }
+}
+
+fn render_assistant_stream(app: &mut App, frame: &mut Frame, area: Rect) {
+    let mut lines: Vec<Line<'static>> = Vec::new();
+
+    // Pending export approvals banner
+    for approval in &app.assistant.approvals {
+        lines.push(Line::from(vec![
+            Span::styled(
+                " ⚠ APPROVAL PENDING ",
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::Magenta)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(" "),
+            Span::styled(
+                format!(
+                    "Export to {} ({})",
+                    approval.approval.filename, approval.approval.destinationPath
+                ),
+                Style::default().add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(" — switch to Tasks (Tab 2 or /tasks) to review", muted()),
+        ]));
+        lines.push(Line::from(""));
+    }
+
+    // Missed routines banner
+    for routine in app
+        .assistant
+        .routines
+        .iter()
+        .filter(|r| r.missedCount > 0)
+        .take(2)
+    {
+        lines.push(Line::from(vec![
+            Span::styled(
+                " MISSED ROUTINE ",
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(" "),
+            Span::styled(
+                routine.routine.name.clone(),
+                Style::default().add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                format!(
+                    " ({} missed — switch to Routines /r to run/skip)",
+                    routine.missedCount
+                ),
+                muted(),
+            ),
+        ]));
+        lines.push(Line::from(""));
+    }
+
+    // Slash help reference when toggled
+    if app.assistant.slash_help_open {
+        lines.push(Line::styled(
+            "── [Commands & Shortcuts] ─────────────────────────────────────────────",
+            accent().add_modifier(Modifier::BOLD),
+        ));
+        lines.push(Line::from(vec![
+            Span::styled(
+                "  /project [name] ",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                "Switch active project scope (or cycle without args)",
+                muted(),
+            ),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled(
+                "  /tasks          ",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("Open tasks list & run history (Tab 2)", muted()),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled(
+                "  /settings       ",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("Configure providers & API keys (Tab 6)", muted()),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled(
+                "  /memory         ",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("View memory proposals & entries (Tab 4)", muted()),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled(
+                "  /routines       ",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("Manage weekly planning routines (Tab 5)", muted()),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled(
+                "  /clear          ",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("Clear session view & scroll offset", muted()),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled(
+                "  /cancel         ",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("Cancel the current running task", muted()),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled(
+                "  Enter           ",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("Submit prompt or execute slash command", muted()),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled(
+                "  Shift+Enter     ",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("Insert newline in prompt", muted()),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled(
+                "  Up / Down       ",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("Navigate previous prompt history", muted()),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled(
+                "  Tab             ",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("Quick-cycle project scope", muted()),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled(
+                "  Ctrl+A          ",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("Toggle advanced options (constraints, URLs)", muted()),
+        ]));
+        lines.push(Line::from(""));
+    }
+
+    // Active task detail OR Welcome / Idle guide
+    if let Some(detail) = &app.assistant.active_task_detail {
+        let task = &detail.task;
+        let (state_icon, state_label, state_style) = match task.state {
+            TaskState::Queued => ("⏳", "queued", Style::default().fg(Color::Yellow)),
+            TaskState::Running => (
+                "⠋",
+                "running",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            TaskState::AwaitingApproval => (
+                "⚠",
+                "approval pending",
+                Style::default()
+                    .fg(Color::Magenta)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            TaskState::Completed => (
+                "✔",
+                "completed",
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            TaskState::Failed => (
+                "✖",
+                "failed",
+                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            ),
+            TaskState::Canceled => ("⊘", "canceled", Style::default().fg(Color::DarkGray)),
+            TaskState::Interrupted => ("⏸", "interrupted", Style::default().fg(Color::Yellow)),
+        };
+
+        let project_name = task.projectId.as_deref().unwrap_or("no project scope");
+        let kind_str = match task.kind {
+            TaskKind::ResearchBrief => "research brief",
+            TaskKind::ProjectUpdate => "project update",
+            TaskKind::ExportReport => "export report",
+            TaskKind::WeeklyPlan => "weekly plan",
+        };
+
+        // Task header banner
+        lines.push(Line::from(vec![
+            Span::styled(format!(" {state_icon} [{state_label}] "), state_style),
+            Span::raw(" "),
+            Span::styled(
+                task.title.clone(),
+                Style::default().add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(format!("  ({kind_str} • {project_name})"), muted()),
+        ]));
+
+        if !task.request.is_empty() {
+            lines.push(Line::from(vec![
+                Span::styled("  Request: ", muted()),
+                Span::styled(task.request.clone(), Style::default().fg(Color::White)),
+            ]));
+        }
+
+        // Live execution events / tool steps (e.g. web search, file read)
+        if !detail.events.is_empty() {
+            lines.push(Line::from(""));
+            for event in detail.events.iter().rev().take(6) {
+                let time = if event.createdAt.len() >= 19 {
+                    &event.createdAt[11..19]
+                } else {
+                    ""
+                };
+                let badge = if event.kind.contains("completed") {
+                    Span::styled(" ✔ ", Style::default().fg(Color::Green))
+                } else if event.kind.contains("failed") || event.kind.contains("error") {
+                    Span::styled(" ✖ ", Style::default().fg(Color::Red))
+                } else {
+                    Span::styled(" ⠋ ", Style::default().fg(Color::Cyan))
+                };
+                lines.push(Line::from(vec![
+                    badge,
+                    Span::styled(format!("{time} "), muted()),
+                    Span::styled(event.kind.clone(), Style::default().fg(Color::LightYellow)),
+                ]));
+            }
+        }
+
+        // Rendered Artifact report in Rich Markdown!
+        if let Some(artifact) = &detail.artifact {
+            lines.push(Line::from(""));
+            lines.push(Line::styled(
+                "── [Generated Report] ──────────────────────────────────────────────────",
+                accent().add_modifier(Modifier::BOLD),
+            ));
+            lines.extend(crate::markdown::render_markdown(&artifact.markdown));
+        } else if task.state == TaskState::Running {
+            lines.push(Line::from(""));
+            lines.push(Line::styled(
+                "  ⠋ Working on your request... (streaming updates from local runtime)",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::ITALIC),
+            ));
+        } else if let Some(err) = &task.error {
+            lines.push(Line::from(""));
+            lines.push(Line::styled(
+                format!("  ✖ Error: {err}"),
+                Style::default().fg(Color::Red),
+            ));
+        }
+    } else {
+        // Welcome and Idle state
+        lines.push(Line::from(""));
+        lines.push(Line::from(vec![
+            Span::styled(
+                "  OpenFrost",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                " — Personal AI OS Control Center",
+                Style::default().add_modifier(Modifier::BOLD),
+            ),
+        ]));
+        lines.push(Line::styled(
+            "  Terminal-native assistant for research briefs, project updates, and weekly routines.",
+            muted(),
+        ));
+        lines.push(Line::from(""));
+
+        let provider_name = app
+            .settings
+            .settings
+            .as_ref()
+            .map(|s| s.provider.clone())
+            .unwrap_or_else(|| "openrouter".to_string());
+        let model_name = app
+            .settings
+            .settings
+            .as_ref()
+            .and_then(|s| s.model.clone())
+            .unwrap_or_else(|| "openrouter/auto".to_string());
+        lines.push(Line::from(vec![
+            Span::styled("  Provider: ", muted()),
+            Span::styled(provider_name, Style::default().fg(Color::Yellow)),
+            Span::styled(" | Model: ", muted()),
+            Span::styled(model_name, Style::default().fg(Color::LightCyan)),
+        ]));
+        lines.push(Line::from(""));
+
+        lines.push(Line::styled(
+            "  Quick Start:",
+            Style::default().add_modifier(Modifier::BOLD),
+        ));
+        lines.push(Line::styled(
+            "  • Type any research brief or project update prompt below and press Enter.",
+            muted(),
+        ));
+        lines.push(Line::styled(
+            "  • Use Shift+Enter (or Alt+Enter) to write multi-line prompts.",
+            muted(),
+        ));
+        lines.push(Line::styled(
+            "  • Press Tab to quick-cycle project scope; type /help for slash commands.",
+            muted(),
+        ));
+        lines.push(Line::styled(
+            "  • Use mouse wheel or PageUp/PageDown to scroll reports smoothly.",
+            muted(),
+        ));
+    }
+
+    let scroll_y = app.assistant.stream_scroll;
+    frame.render_widget(
+        Paragraph::new(lines)
+            .wrap(Wrap { trim: false })
+            .scroll((scroll_y, 0))
+            .block(block(
+                "Session Stream (scroll with mouse wheel, PageUp/Down, j/k)",
+            )),
+        area,
+    );
+}
+
+fn render_assistant_composer(app: &mut App, frame: &mut Frame, area: Rect) {
+    let project_name = app
+        .assistant
+        .project_idx
+        .and_then(|idx| app.assistant.projects.get(idx))
+        .map(|p| p.name.clone())
+        .unwrap_or_else(|| "no project".to_string());
+
+    let kind_name = if app.assistant.kind_project_update {
+        "project update"
+    } else {
+        "research brief"
+    };
+
+    let title = format!(
+        "Prompt (Enter send | Shift+Enter newline | Tab scope: {} | {})",
+        project_name, kind_name
+    );
+    app.assistant.request.set_block(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_style(accent().add_modifier(Modifier::BOLD))
+            .title(Span::styled(title, accent().add_modifier(Modifier::BOLD))),
+    );
+    frame.render_widget(&app.assistant.request, area);
 }
 
 fn composer_row(frame: &mut Frame, area: Rect, label: &str, focused: bool) {
@@ -710,18 +1104,13 @@ fn render_task_detail(app: &mut App, frame: &mut Frame, area: Rect) {
 
     if let Some(artifact) = &detail.artifact {
         lines.push(Line::styled(
-            "Saved report (scroll with j/k)",
+            "── [Saved Report] ────────────────────────────────────────────────────────",
             accent().add_modifier(Modifier::BOLD),
         ));
-        let mut scrolled = artifact.markdown.lines().collect::<Vec<_>>();
+        let rendered = crate::markdown::render_markdown(&artifact.markdown);
         let skip = app.tasks.artifact_scroll as usize;
-        if skip < scrolled.len() {
-            scrolled.drain(..skip);
-        } else {
-            scrolled.clear();
-        }
-        for line in scrolled.into_iter().take(400) {
-            lines.push(Line::from(line.to_string()));
+        for line in rendered.into_iter().skip(skip) {
+            lines.push(line);
         }
     } else if task.resultArtifactId.is_none() && task.state == TaskState::Completed {
         lines.push(Line::styled("(no saved artifact)", muted()));
@@ -729,7 +1118,8 @@ fn render_task_detail(app: &mut App, frame: &mut Frame, area: Rect) {
 
     lines.push(Line::from(""));
     lines.push(Line::styled(
-        " b/Esc back | c cancel | r retry | e export | j/k scroll".to_string(),
+        " b/Esc back | c cancel | r retry | e export | j/k, PageUp/Down or mouse scroll"
+            .to_string(),
         muted(),
     ));
 
