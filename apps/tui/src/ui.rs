@@ -1254,11 +1254,7 @@ fn render_tab_picker(frame: &mut Frame, selected: usize) {
         " \u{2191}\u{2193}/j/k move | Enter open | Esc cancel".to_string(),
         muted(),
     ));
-    frame.render_widget(
-        Paragraph::new(lines)
-            .block(block("Go to tab")),
-        popup,
-    );
+    frame.render_widget(Paragraph::new(lines).block(block("Go to tab")), popup);
 }
 
 // ---------------------------------------------------------------------------
