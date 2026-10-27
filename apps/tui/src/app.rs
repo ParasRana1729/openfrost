@@ -393,7 +393,7 @@ impl App {
         self.notice = Some(Notice {
             message: message.into(),
             is_error,
-            ticks_left: 24,
+            ticks_left: 60,
         });
     }
 

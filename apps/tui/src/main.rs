@@ -36,7 +36,7 @@ use contracts::TaskState;
 use event::{forward_input, forward_ticks, AppEvent, AppRx, AppTx, Payload};
 
 const DEFAULT_API_ORIGIN: &str = "http://127.0.0.1:8787";
-const POLL_TICKS: u64 = 25; // 5s at a 200ms tick
+const POLL_TICKS: u64 = 60; // ~4.8s at an 80ms tick rate
 
 type SharedApi = Arc<Mutex<ApiClient>>;
 
@@ -90,7 +90,7 @@ async fn run() -> Result<()> {
 
     // Terminal input, periodic ticks, and the SSE activity stream.
     tokio::spawn(forward_input(tx.clone()));
-    tokio::spawn(forward_ticks(tx.clone(), 200));
+    tokio::spawn(forward_ticks(tx.clone(), 80));
     tokio::spawn(subscribe_events(base_url.clone(), http, tx.clone()));
 
     let mut terminal = setup_terminal()?;
@@ -172,7 +172,7 @@ async fn event_loop(
                 .as_ref()
                 .map(|e| e.busy)
                 .unwrap_or(false);
-        let poll_interval = if is_busy { 2 } else { POLL_TICKS };
+        let poll_interval = if is_busy { 5 } else { POLL_TICKS };
 
         if app.screen == app::Screen::Main
             && app.ticks.saturating_sub(last_poll_tick) >= poll_interval

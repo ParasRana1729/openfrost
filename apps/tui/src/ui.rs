@@ -420,6 +420,12 @@ fn format_stream_event(event: &Event) -> Line<'static> {
     }
 }
 
+const SPINNER_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+
+fn current_spinner(ticks: u64) -> &'static str {
+    SPINNER_FRAMES[(ticks as usize) % SPINNER_FRAMES.len()]
+}
+
 fn render_assistant_stream(app: &mut App, frame: &mut Frame, area: Rect) {
     let mut lines: Vec<Line<'static>> = Vec::new();
 
@@ -601,10 +607,11 @@ fn render_assistant_stream(app: &mut App, frame: &mut Frame, area: Rect) {
     // Active task detail OR Welcome / Idle guide
     if let Some(detail) = &app.assistant.active_task_detail {
         let task = &detail.task;
+        let spinner = current_spinner(app.ticks);
         let (state_icon, state_label, state_style) = match task.state {
             TaskState::Queued => ("⏳", "queued", Style::default().fg(Color::Yellow)),
             TaskState::Running => (
-                "⠋",
+                spinner,
                 "running",
                 Style::default()
                     .fg(Color::Cyan)
@@ -680,9 +687,6 @@ fn render_assistant_stream(app: &mut App, frame: &mut Frame, area: Rect) {
             ));
             lines.extend(crate::markdown::render_markdown(&artifact.markdown));
         } else if task.state == TaskState::Running {
-            const SPINNER_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-            let spinner = SPINNER_FRAMES[(app.ticks as usize / 2) % SPINNER_FRAMES.len()];
-
             let provider_name = app
                 .settings
                 .settings
