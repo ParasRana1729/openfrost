@@ -11,7 +11,8 @@ use crate::app::{
     truncate, App, ComposerField, ConfirmAction, Dialog, Screen, Tab, TaskFilter, ALL_TABS,
 };
 use crate::contracts::{
-    ApprovalState, MemoryScope, RoutineOccurrenceState, RoutineState, RunState, TaskKind, TaskState,
+    ApprovalState, Event, MemoryScope, RoutineOccurrenceState, RoutineState, RunState, TaskKind,
+    TaskState,
 };
 
 fn accent() -> Style {
@@ -245,6 +246,177 @@ fn render_assistant(app: &mut App, frame: &mut Frame, area: Rect) {
         let vertical = Layout::vertical([Constraint::Min(8), Constraint::Length(5)]).split(area);
         render_assistant_stream(app, frame, vertical[0]);
         render_assistant_composer(app, frame, vertical[1]);
+    }
+}
+
+fn format_stream_event(event: &Event) -> Line<'static> {
+    let time = if event.createdAt.len() >= 19 {
+        event.createdAt[11..19].to_string()
+    } else {
+        String::new()
+    };
+
+    match event.kind.as_str() {
+        "task.queued" => Line::from(vec![
+            Span::styled(" ⏳ ", Style::default().fg(Color::Yellow)),
+            Span::styled(format!("{time} "), muted()),
+            Span::styled("Task queued", Style::default().fg(Color::White)),
+            Span::styled(" (queued in runtime)", muted()),
+        ]),
+        "run.started" => Line::from(vec![
+            Span::styled(" 🚀 ", Style::default().fg(Color::Cyan)),
+            Span::styled(format!("{time} "), muted()),
+            Span::styled(
+                "Agent loop started",
+                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(" — initializing tools & context", muted()),
+        ]),
+        "tool.executed" => {
+            let tool = event
+                .payload
+                .get("tool")
+                .and_then(|v| v.as_str())
+                .unwrap_or("tool");
+            let ok = event
+                .payload
+                .get("ok")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(true);
+            let duration = event.payload.get("durationMs").and_then(|v| v.as_i64());
+
+            let (icon, label, detail_str) = match tool {
+                "web_search" => {
+                    let count = event
+                        .payload
+                        .get("count")
+                        .and_then(|v| v.as_i64())
+                        .unwrap_or(1);
+                    (
+                        "🔍",
+                        "web_search",
+                        format!("searched online sources ({count} queries)"),
+                    )
+                }
+                "fetch_page" => {
+                    let dur = duration
+                        .map(|d| format!("{d}ms"))
+                        .unwrap_or_else(|| "done".to_string());
+                    (
+                        "🌐",
+                        "fetch_page",
+                        format!("retrieved source web page ({dur})"),
+                    )
+                }
+                "read_project_file" => {
+                    let dur = duration
+                        .map(|d| format!("{d}ms"))
+                        .unwrap_or_else(|| "done".to_string());
+                    (
+                        "📁",
+                        "read_project_file",
+                        format!("inspected granted project note ({dur})"),
+                    )
+                }
+                "propose_memory" => (
+                    "💾",
+                    "propose_memory",
+                    "suggested durable project preference".to_string(),
+                ),
+                other => (
+                    "⚙ ",
+                    other,
+                    duration.map(|d| format!("{d}ms")).unwrap_or_default(),
+                ),
+            };
+
+            let badge_style = if ok {
+                Style::default().fg(Color::Green)
+            } else {
+                Style::default().fg(Color::Red)
+            };
+
+            Line::from(vec![
+                Span::styled(format!(" {icon} "), badge_style),
+                Span::styled(format!("{time} "), muted()),
+                Span::styled(
+                    format!("{label} "),
+                    Style::default()
+                        .fg(Color::LightYellow)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(format!("— {detail_str}"), muted()),
+            ])
+        }
+        "run.completed" => Line::from(vec![
+            Span::styled(" ✔ ", Style::default().fg(Color::Green)),
+            Span::styled(format!("{time} "), muted()),
+            Span::styled("Model execution finished", Style::default().fg(Color::Green)),
+        ]),
+        "task.completed" => Line::from(vec![
+            Span::styled(" ✔ ", Style::default().fg(Color::Green)),
+            Span::styled(format!("{time} "), muted()),
+            Span::styled(
+                "Task completed",
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(" — artifact generated and saved", muted()),
+        ]),
+        "task.failed" | "run.failed" => Line::from(vec![
+            Span::styled(" ✖ ", Style::default().fg(Color::Red)),
+            Span::styled(format!("{time} "), muted()),
+            Span::styled(
+                "Task failed",
+                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            ),
+        ]),
+        "approval.requested" => {
+            let filename = event
+                .payload
+                .get("filename")
+                .and_then(|v| v.as_str())
+                .unwrap_or("file");
+            Line::from(vec![
+                Span::styled(" 🛡 ", Style::default().fg(Color::Yellow)),
+                Span::styled(format!("{time} "), muted()),
+                Span::styled(
+                    format!("Approval requested: export {filename}"),
+                    Style::default().fg(Color::Yellow),
+                ),
+            ])
+        }
+        "approval.granted" => Line::from(vec![
+            Span::styled(" ✔ ", Style::default().fg(Color::Green)),
+            Span::styled(format!("{time} "), muted()),
+            Span::styled("Export approval granted", Style::default().fg(Color::Green)),
+        ]),
+        "approval.rejected" => Line::from(vec![
+            Span::styled(" ✖ ", Style::default().fg(Color::Red)),
+            Span::styled(format!("{time} "), muted()),
+            Span::styled("Export approval rejected", Style::default().fg(Color::Red)),
+        ]),
+        "export.written" => {
+            let file = event
+                .payload
+                .get("file")
+                .and_then(|v| v.as_str())
+                .unwrap_or("file");
+            Line::from(vec![
+                Span::styled(" 💾 ", Style::default().fg(Color::Green)),
+                Span::styled(format!("{time} "), muted()),
+                Span::styled(
+                    format!("Export saved to {file}"),
+                    Style::default().fg(Color::Green),
+                ),
+            ])
+        }
+        _ => Line::from(vec![
+            Span::styled(" • ", Style::default().fg(Color::DarkGray)),
+            Span::styled(format!("{time} "), muted()),
+            Span::styled(event.kind.clone(), muted()),
+        ]),
     }
 }
 
@@ -490,24 +662,12 @@ fn render_assistant_stream(app: &mut App, frame: &mut Frame, area: Rect) {
         // Live execution events / tool steps (e.g. web search, file read)
         if !detail.events.is_empty() {
             lines.push(Line::from(""));
-            for event in detail.events.iter().rev().take(6) {
-                let time = if event.createdAt.len() >= 19 {
-                    &event.createdAt[11..19]
-                } else {
-                    ""
-                };
-                let badge = if event.kind.contains("completed") {
-                    Span::styled(" ✔ ", Style::default().fg(Color::Green))
-                } else if event.kind.contains("failed") || event.kind.contains("error") {
-                    Span::styled(" ✖ ", Style::default().fg(Color::Red))
-                } else {
-                    Span::styled(" ⠋ ", Style::default().fg(Color::Cyan))
-                };
-                lines.push(Line::from(vec![
-                    badge,
-                    Span::styled(format!("{time} "), muted()),
-                    Span::styled(event.kind.clone(), Style::default().fg(Color::LightYellow)),
-                ]));
+            lines.push(Line::styled(
+                "── [Execution Progress] ────────────────────────────────────────────────",
+                muted(),
+            ));
+            for event in &detail.events {
+                lines.push(format_stream_event(event));
             }
         }
 
@@ -520,12 +680,47 @@ fn render_assistant_stream(app: &mut App, frame: &mut Frame, area: Rect) {
             ));
             lines.extend(crate::markdown::render_markdown(&artifact.markdown));
         } else if task.state == TaskState::Running {
+            const SPINNER_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+            let spinner = SPINNER_FRAMES[(app.ticks as usize / 2) % SPINNER_FRAMES.len()];
+
+            let provider_name = app
+                .settings
+                .settings
+                .as_ref()
+                .map(|s| s.provider.clone())
+                .unwrap_or_else(|| "openrouter".to_string());
+
+            let status_msg = if let Some(last_event) = detail.events.last() {
+                if last_event.kind == "tool.executed" {
+                    let tool = last_event
+                        .payload
+                        .get("tool")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("tool");
+                    format!("Synthesizing brief with {provider_name} from {tool} evidence...")
+                } else if last_event.kind == "run.started" {
+                    format!("Evaluating tools & instructions with {provider_name}...")
+                } else {
+                    format!("Agent loop running with {provider_name}...")
+                }
+            } else {
+                format!("Agent loop running with {provider_name}...")
+            };
+
             lines.push(Line::from(""));
+            lines.push(Line::from(vec![
+                Span::styled(
+                    format!("  {spinner} "),
+                    Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    status_msg,
+                    Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                ),
+            ]));
             lines.push(Line::styled(
-                "  ⠋ Working on your request... (streaming updates from local runtime)",
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::ITALIC),
+                "    (Evidence-based agent loop: tools execute first, then model synthesizes the report)",
+                muted(),
             ));
         } else if let Some(err) = &task.error {
             lines.push(Line::from(""));
@@ -1091,14 +1286,8 @@ fn render_task_detail(app: &mut App, frame: &mut Frame, area: Rect) {
         "Events",
         accent().add_modifier(Modifier::BOLD),
     ));
-    for event in detail.events.iter().rev().take(20) {
-        lines.push(Line::from(vec![
-            Span::styled(
-                format!(" {} ", &event.createdAt[11..19.min(event.createdAt.len())]),
-                muted(),
-            ),
-            Span::styled(event.kind.clone(), Style::default()),
-        ]));
+    for event in &detail.events {
+        lines.push(format_stream_event(event));
     }
     lines.push(Line::from(""));
 
