@@ -10,8 +10,8 @@ progress; pre-week validation was performed 2026-10-26, and the one-working-week
 owner-use gate remains open. S08 Phase 1 quick wins are merged; the unfinished
 Phase 2 web work is checkpointed on `feat/ui-phase2-task-lifecycle` and
 superseded. S09 replaces the web Control Center with a Rust Ratatui + Crossterm
-TUI (`apps/tui`) client of the same loopback API and is being implemented on
-`feat/tui-overhaul`; it does not close S07.** The pnpm workspace,
+TUI (`apps/tui`) client of the same loopback API and is merged on `main`;
+it does not close S07.** The pnpm workspace,
 shared Zod contracts, SQLite persistence, DPAPI secret storage, authenticated
 loopback API/UI, the bounded single-run executor, the research-brief workflow
 (OpenAI, Gemini, and OpenRouter adapters with hosted web search and an
