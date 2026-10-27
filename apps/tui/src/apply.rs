@@ -59,6 +59,8 @@ pub fn apply_payload(app: &mut App, payload: Payload) {
             approvals,
             routines,
             projects,
+            tasks,
+            latest_task,
         } => {
             if let Ok(events) = events {
                 app.assistant.events = events;
@@ -77,6 +79,13 @@ pub fn apply_payload(app: &mut App, payload: Payload) {
                         app.assistant.project_idx = None;
                     }
                 }
+            }
+            if let Ok(tasks_res) = tasks {
+                app.tasks.executor = Some(tasks_res.executor);
+                app.tasks.tasks = tasks_res.tasks;
+            }
+            if let Some(task_detail) = latest_task {
+                app.assistant.active_task_detail = Some(task_detail);
             }
         }
         Payload::Projects(result) => match result {

@@ -143,15 +143,15 @@ impl Form {
         )
     }
 
-    pub fn set_provider_key(provider: &str) -> Self {
+    pub fn set_provider_key(provider: &str, has_existing_key: bool) -> Self {
+        let hint = if has_existing_key {
+            "replaces existing key; min 10 chars, stored with Windows DPAPI"
+        } else {
+            "min 10 chars, stored with Windows DPAPI; never displayed again"
+        };
         Self::new(
             format!("Set provider key \u{2014} {provider}"),
-            vec![Self::text(
-                "API key",
-                "",
-                true,
-                Some("stored with Windows DPAPI; never displayed again"),
-            )],
+            vec![Self::text("API key", "", true, Some(hint))],
             FormKind::SetProviderKey {
                 provider: provider.to_string(),
             },
@@ -347,6 +347,74 @@ impl Form {
         {
             *slot = options;
             *selected = 0;
+        }
+    }
+}
+
+/// Formats a masked input value for display in form dialogs.
+///
+/// An empty input returns `""` so the focused cursor `_` indicates an empty field.
+/// Short inputs (up to 4 chars) show the typed characters (e.g. `sk-o`) so the user
+/// has immediate feedback that keystrokes or paste are registering.
+/// Longer inputs keep the first 4 characters visible, mask subsequent characters
+/// with bullets, and display the character count (e.g. `sk-o•••••••••••••••• (36 chars)`).
+pub fn format_masked_input(value: &str) -> String {
+    let first_line = value.lines().next().unwrap_or("");
+    let chars: Vec<char> = first_line.chars().collect();
+    let count = chars.len();
+    if count == 0 {
+        String::new()
+    } else if count <= 4 {
+        chars.into_iter().collect()
+    } else {
+        let prefix: String = chars[..4].iter().collect();
+        let bullets = "\u{2022}".repeat((count - 4).min(16));
+        format!("{prefix}{bullets} ({count} chars)")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn masked_input_empty_returns_empty() {
+        assert_eq!(format_masked_input(""), "");
+    }
+
+    #[test]
+    fn masked_input_short_shows_chars() {
+        assert_eq!(format_masked_input("s"), "s");
+        assert_eq!(format_masked_input("sk"), "sk");
+        assert_eq!(format_masked_input("sk-"), "sk-");
+        assert_eq!(format_masked_input("sk-o"), "sk-o");
+    }
+
+    #[test]
+    fn masked_input_long_masks_and_shows_count() {
+        assert_eq!(format_masked_input("sk-or"), "sk-o\u{2022} (5 chars)");
+        assert_eq!(
+            format_masked_input("sk-or-v1-abcdef1234567890"),
+            format!("sk-o{} (25 chars)", "\u{2022}".repeat(16))
+        );
+    }
+
+    #[test]
+    fn set_provider_key_hint_reflects_existing_state() {
+        let form_fresh = Form::set_provider_key("openrouter", false);
+        match &form_fresh.fields[0] {
+            Field::Text { hint, .. } => {
+                assert!(hint.as_deref().unwrap().contains("never displayed again"));
+            }
+            _ => panic!("expected Field::Text"),
+        }
+
+        let form_existing = Form::set_provider_key("openrouter", true);
+        match &form_existing.fields[0] {
+            Field::Text { hint, .. } => {
+                assert!(hint.as_deref().unwrap().contains("replaces existing key"));
+            }
+            _ => panic!("expected Field::Text"),
         }
     }
 }

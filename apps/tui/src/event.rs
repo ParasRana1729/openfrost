@@ -1,7 +1,7 @@
 //! Event plumbing: terminal input and background results arrive on one
 //! channel; the main loop consumes it and drives app state.
 
-use crossterm::event::{Event as CEvent, EventStream, KeyEvent, KeyEventKind};
+use crossterm::event::{Event as CEvent, EventStream, KeyEvent, KeyEventKind, MouseEvent};
 use futures::StreamExt;
 use tokio::sync::mpsc;
 
@@ -9,9 +9,8 @@ use tokio::sync::mpsc;
 #[derive(Debug)]
 pub enum AppEvent {
     Key(KeyEvent),
-    /// Mouse events are received but intentionally ignored; the UI is
-    /// keyboard-first.
-    Mouse,
+    /// Mouse events (wheel scrolling, clicks).
+    Mouse(MouseEvent),
     /// Terminal resize; ratatui picks up the new size on the next draw.
     Resize,
     Api(Box<Payload>),
@@ -41,6 +40,8 @@ pub enum Payload {
         approvals: Result<Vec<crate::contracts::ApprovalView>, String>,
         routines: Result<Vec<crate::contracts::RoutineView>, String>,
         projects: Result<Vec<crate::contracts::Project>, String>,
+        tasks: Result<crate::contracts::TasksResponse, String>,
+        latest_task: Option<crate::contracts::TaskDetail>,
     },
     /// Settings plus export destinations in one round of requests.
     SettingsBundle {
@@ -71,7 +72,7 @@ pub async fn forward_input(tx: AppTx) {
                     true
                 }
             }
-            Ok(CEvent::Mouse(_)) => tx.send(AppEvent::Mouse).is_ok(),
+            Ok(CEvent::Mouse(mouse)) => tx.send(AppEvent::Mouse(mouse)).is_ok(),
             Ok(CEvent::Resize(..)) => tx.send(AppEvent::Resize).is_ok(),
             Ok(CEvent::FocusGained | CEvent::FocusLost | CEvent::Paste(_)) => true,
             Err(_) => false,

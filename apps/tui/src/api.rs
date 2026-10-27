@@ -4,11 +4,13 @@
 //! mutating request. The API validates and enforces everything.
 
 use anyhow::{Context, Result};
+use reqwest::cookie::Jar;
 use reqwest::header::{HeaderMap, HeaderValue};
 use reqwest::{Client, Method, StatusCode};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::sync::Arc;
 
 use crate::contracts::*;
 
@@ -31,6 +33,8 @@ impl ApiError {
 
 pub struct ApiClient {
     http: Client,
+    #[allow(dead_code)]
+    cookie_jar: Arc<Jar>,
     base_url: String,
     csrf_token: Option<String>,
 }
@@ -68,15 +72,28 @@ impl ApiClient {
             matches!(parsed.scheme(), "http" | "https"),
             "API base URL must be http(s)"
         );
+        let cookie_jar = Arc::new(Jar::default());
         let http = Client::builder()
-            .cookie_store(true)
+            .cookie_provider(cookie_jar.clone())
             .timeout(std::time::Duration::from_secs(30))
             .build()?;
         Ok(Self {
             http,
+            cookie_jar,
             base_url: base_url.trim_end_matches('/').to_string(),
             csrf_token: None,
         })
+    }
+
+    /// Read access to the shared reqwest Client (with shared cookie jar).
+    pub fn http(&self) -> Client {
+        self.http.clone()
+    }
+
+    /// Read access to the shared cookie jar.
+    #[allow(dead_code)]
+    pub fn cookie_jar(&self) -> Arc<Jar> {
+        self.cookie_jar.clone()
     }
 
     /// Read access for tests and diagnostics; the login/setup flows set the

@@ -8,6 +8,7 @@ mod apply;
 mod contracts;
 mod dialog_forms;
 mod event;
+mod markdown;
 mod ui;
 
 #[cfg(test)]
@@ -31,10 +32,11 @@ use tokio::sync::{mpsc, Mutex};
 
 use api::ApiClient;
 use app::App;
+use contracts::TaskState;
 use event::{forward_input, forward_ticks, AppEvent, AppRx, AppTx, Payload};
 
 const DEFAULT_API_ORIGIN: &str = "http://127.0.0.1:8787";
-const POLL_TICKS: u64 = 25; // 5s at a 200ms tick
+const POLL_TICKS: u64 = 60; // ~4.8s at an 80ms tick rate
 
 type SharedApi = Arc<Mutex<ApiClient>>;
 
@@ -68,6 +70,7 @@ async fn run() -> Result<()> {
     let base_url =
         std::env::var("OPENFROST_API_ORIGIN").unwrap_or_else(|_| DEFAULT_API_ORIGIN.to_string());
     let client = ApiClient::new(&base_url).context("Invalid API origin")?;
+    let http = client.http();
     let api: SharedApi = Arc::new(Mutex::new(client));
 
     let (tx, mut rx): (AppTx, AppRx) = mpsc::unbounded_channel();
@@ -87,8 +90,8 @@ async fn run() -> Result<()> {
 
     // Terminal input, periodic ticks, and the SSE activity stream.
     tokio::spawn(forward_input(tx.clone()));
-    tokio::spawn(forward_ticks(tx.clone(), 200));
-    tokio::spawn(subscribe_events(base_url.clone(), tx.clone()));
+    tokio::spawn(forward_ticks(tx.clone(), 80));
+    tokio::spawn(subscribe_events(base_url.clone(), http, tx.clone()));
 
     let mut terminal = setup_terminal()?;
     let mut app = App::new(tx, api);
@@ -100,11 +103,18 @@ async fn run() -> Result<()> {
 
 /// SSE subscription to the API activity stream with a polling fallback via
 /// ticks; reconnects are handled by the eventsource crate.
-async fn subscribe_events(base_url: String, tx: AppTx) {
+async fn subscribe_events(base_url: String, http: reqwest::Client, tx: AppTx) {
     let url = format!("{base_url}/api/events/stream");
     let mut backoff_ms = 1000u64;
     loop {
-        let mut es = EventSource::get(&url);
+        let request = http.get(&url);
+        let mut es = match EventSource::new(request) {
+            Ok(es) => es,
+            Err(_) => {
+                tokio::time::sleep(std::time::Duration::from_millis(backoff_ms)).await;
+                continue;
+            }
+        };
         while let Some(event) = es.next().await {
             match event {
                 Ok(EsEvent::Open) => {
@@ -116,8 +126,7 @@ async fn subscribe_events(base_url: String, tx: AppTx) {
                     }
                 }
                 Err(_error) => {
-                    // The stream requires a session; retry later — the tick
-                    // poller keeps data fresh even without SSE.
+                    // The stream requires an active session; retry on next loop iteration.
                     if tx.send(AppEvent::Activity).is_err() {
                         return;
                     }
@@ -148,8 +157,20 @@ async fn event_loop(
         while let Ok(event) = rx.try_recv() {
             handle_event(app, event);
         }
-        // Polling fallback: refresh the visible tab on a steady cadence.
-        if app.screen == app::Screen::Main && app.ticks.saturating_sub(last_poll_tick) >= POLL_TICKS
+        // Adaptive polling: when an agent run is active or running, poll rapidly
+        // (every 400ms = 2 ticks) to ensure real-time feedback; when idle, poll
+        // every 5 seconds (25 ticks).
+        let is_busy = app
+            .assistant
+            .active_task_detail
+            .as_ref()
+            .map(|d| d.task.state == TaskState::Running)
+            .unwrap_or(false)
+            || app.tasks.executor.as_ref().map(|e| e.busy).unwrap_or(false);
+        let poll_interval = if is_busy { 5 } else { POLL_TICKS };
+
+        if app.screen == app::Screen::Main
+            && app.ticks.saturating_sub(last_poll_tick) >= poll_interval
         {
             last_poll_tick = app.ticks;
             app.refresh(app.tab);
@@ -162,7 +183,7 @@ async fn event_loop(
 fn handle_event(app: &mut App, event: AppEvent) {
     match event {
         AppEvent::Key(key) => app.on_key(key),
-        AppEvent::Mouse => {}
+        AppEvent::Mouse(mouse) => app.on_mouse(mouse),
         AppEvent::Resize => {}
         AppEvent::Api(payload) => apply::apply_payload(app, *payload),
         AppEvent::Activity => {
