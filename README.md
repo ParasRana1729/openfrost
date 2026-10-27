@@ -5,8 +5,8 @@ planning.**
 
 OpenFrost turns requests and confirmed schedules into saved, reviewable work.
 One assistant handles the workflows; projects scope source folders and approved
-context. The local web app shows tasks, progress, results, memory, and approval
-requests.
+context. The local terminal UI (TUI) shows tasks, progress, results, memory,
+and approval requests.
 
 ## What it does
 
@@ -39,8 +39,9 @@ in the [backlog](backlog/solo-rebuild.md).
 
 ## Security and privacy
 
-- The API and web app bind to loopback. Sign-in, origin checks, and CSRF
-  protection guard local state changes.
+- The API binds to loopback. Sign-in, CSRF protection, and (for browser
+  clients) origin checks guard local state changes; the TUI authenticates like
+  any other client.
 - Provider keys are protected with Windows DPAPI for the current user. Store
   keys through **Settings**; they are not kept in plaintext configuration files.
 - Folder access requires explicit grants. Reads are bounded and paths are
@@ -61,6 +62,7 @@ control, remote access, and a plugin marketplace.
 
 - Windows with Node.js 24 (the workspace accepts Node.js 24–26)
 - pnpm 10.34.7
+- Rust (stable) for the TUI Control Center
 
 Install pnpm if needed:
 
@@ -78,9 +80,16 @@ pnpm build
 pnpm dev
 ```
 
-Open [http://127.0.0.1:3000](http://127.0.0.1:3000), create the local account,
-then choose a provider and add its key in **Settings**. The API listens on
-`127.0.0.1:8787`; the web app listens on `127.0.0.1:3000`.
+Then start the TUI Control Center:
+
+```sh
+cargo run -p openfrost-tui
+```
+
+Create the local account in the TUI on first run, then choose a provider and
+add its key in **Settings**. The API listens on `127.0.0.1:8787`; the TUI talks
+to that API directly. The static landing page (`apps/landing`) runs on port
+3001 during development.
 
 OpenRouter's hosted web search can incur charges separately from model tokens,
 including when a free model is selected. Check provider pricing and account
@@ -110,8 +119,10 @@ pnpm build
 ```
 
 Tests use Vitest and fake providers, so they do not require paid model calls.
-On Windows, database tests also exercise real DPAPI round-trips. GitHub Actions
-runs the checks on `windows-latest`.
+On Windows, database tests also exercise real DPAPI round-trips. The TUI has
+its own Rust test suite (`cargo test` in `apps/tui` or workspace-wide), also
+free of paid calls. GitHub Actions runs the TypeScript and Rust checks on
+`windows-latest`.
 
 ## Current limitations
 
@@ -134,21 +145,21 @@ published domain.
 ## Repository map
 
 ```text
-apps/web                 Next.js local web app
+apps/tui                 Rust / Ratatui + Crossterm terminal Control Center
 apps/landing             Static product and source landing page
 apps/api                 Fastify loopback API and task worker
 packages/domain          Shared Zod contracts
 packages/db              SQLite, Drizzle migrations, DPAPI secret storage
 packages/agent           Provider adapters, execution loop, bounded tools
 docs/                    Product specification and developer guide
-backlog/                  S00–S08 plan, acceptance criteria, and handoffs
+backlog/                  S00–S09 plan, acceptance criteria, and handoffs
 ```
 
 ## Project docs
 
 - [Product one-pager](docs/product-one-pager.md)
 - [Product specification](docs/ai-os-project-spec.md)
-- [S00–S08 backlog](backlog/solo-rebuild.md)
+- [S00–S09 backlog](backlog/solo-rebuild.md)
 - [Developer guide](docs/AI_DEVELOPER_GUIDE.md)
 - [Contributing](CONTRIBUTING.md)
 - [Engineering and security guidance](AGENTS.md)

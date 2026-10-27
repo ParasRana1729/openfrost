@@ -2,11 +2,13 @@
 
 - **Specification:** [v0.1 solo rebuild](../docs/ai-os-project-spec.md)
 - **Owner for every item:** ParasRana1729
-- **Current assignment:** S08 Phase 1 Control Center usability; S07's one-working-week owner-use gate remains open
+- **Current assignment:** S09 TUI Control Center overhaul; S07's one-working-week owner-use gate remains open
 
 These are local backlog identifiers, not GitHub issue numbers. S00–S06 are
-complete (see each handoff); S07 remains in progress and S08 Phase 1 is being
-implemented on a topic branch. Ownership is not permission
+complete (see each handoff); S07 remains in progress, the unfinished S08
+Phase 2 web work is preserved on the `feat/ui-phase2-task-lifecycle`
+checkpoint branch and superseded by S09, which is being implemented on a
+topic branch. Ownership is not permission
 for an agent to start all remaining items or publish anything. Implement the next
 explicitly assigned item in dependency order.
 
@@ -933,4 +935,77 @@ close S07's working-week release gate or add new runtime capabilities.
   redesign, Settings Save and test flow, and remaining Phase 2–4 items were not
   implemented in this slice.
 - Next: Phase 2 — readable task feed and run detail with failure explanations,
-  progress, and queue visibility.
+  progress, and queue visibility. (Superseded before implementation by S09;
+  the partial Phase 2 web work is checkpointed on `feat/ui-phase2-task-lifecycle`.)
+
+## S09 — TUI Control Center (Ratatui + Crossterm)
+
+- **Status:** In progress on `feat/tui-overhaul`
+- **Depends on:** S01–S06 (existing loopback API, workflows, persistence)
+
+Replace the Next.js Control Center web app (`apps/web`) with a local terminal
+UI built with Rust, Ratatui, and Crossterm, per the owner's 2026-10-26
+decision. The TUI is a thin client of the existing Fastify loopback API: it
+authenticates with owner credentials, sends the session-bound CSRF token on
+mutations, consumes the SSE activity stream with a polling fallback, and adds
+no new server-side capabilities. The static `apps/landing` page is kept. The
+API, `packages/*`, SQLite persistence, DPAPI secrets, and executor are
+unchanged. Closing the TUI does not stop tasks or routines.
+
+### Scope
+
+- Full functional parity with the removed web app: onboarding/login, assistant
+  composer with workflow modes and advanced options, task feed with filters and
+  detail (runs, events, artifact, cancel/retry), export approvals, global
+  executor/queue status with dispatch resume, projects with folder grants,
+  memory proposal review and entry management, routines with missed-occurrence
+  run-once/skip, and provider-key/destination settings.
+- Rust crate at `apps/tui`, excluded from the pnpm workspace; serde contracts
+  mirroring `packages/domain` payloads, tested against fixtures; API client
+  tested against a local mock HTTP server (no paid calls, no real credentials).
+- Spec, backlog, AGENTS.md, and README updated to name the TUI the primary
+  interface; CI gains cargo fmt/clippy/test/build steps on windows-latest.
+
+### Acceptance criteria
+
+- [x] `cargo fmt --check`, `cargo clippy -- -D warnings`, `cargo test` (19
+      tests), and `cargo build` pass locally; the CI `tui` job runs the same
+      steps on windows-latest. `pnpm lint && pnpm test && pnpm build` pass
+      after `apps/web` removal.
+- [ ] First-run owner creation and login work from the TUI against the real
+      local API; every mutating TUI action sends the CSRF token header.
+- [ ] The assistant loop is exercised manually end to end against the real API:
+      queue a task with a fake provider, watch it run via SSE, open its detail,
+      and cancel/retry; export approval grant and deny are exercised.
+- [ ] Projects, routines, memory, and settings flows perform their CRUD
+      operations through the same API endpoints the web app used.
+- [x] `apps/web` is removed; `apps/landing` still builds; the API, packages,
+      and database are unchanged and existing tests pass.
+- [x] Spec and docs name the TUI the primary interface and the landing page's
+      role; no committed secrets; TUI holds the session cookie and CSRF token
+      in memory only.
+
+### Handoff
+
+- Implemented on `feat/tui-overhaul`: the Rust crate at `apps/tui` (client,
+  serde contracts mirroring `packages/domain`, full-tab UI, SSE subscription
+  with polling fallback), the spec/backlog/AGENTS.md/README updates, the CI
+  `tui` job, and the `apps/web` removal.
+- Checks run locally (2026-10-26, Rust 1.99.1 `stable-x86_64-pc-windows-gnu`):
+  `cargo fmt --all -- --check`, `cargo clippy --all-targets -- -D warnings`,
+  `cargo test` (19 passed), `cargo build`, `pnpm lint`, `pnpm test` (all
+  workspace suites pass), `pnpm build`. Not yet run: the CI `tui` job (runs on
+  push), and interactive use against the real API — the TUI has not been
+  exercised end to end by the owner yet.
+- Known limitations: the TUI renders monochrome-plus-accent text panels (no
+  mouse support, artifact markdown is shown as plain text); routine edit
+  reuses the create form (schedule/name/template editable, project included);
+  first-run onboarding disclosure copy is shorter than the web app's. Password
+  entry is masked; the session cookie and CSRF token live in memory only.
+- Local toolchain note: this machine has no MSVC; Rust was installed with the
+  GNU toolchain plus WinLibs MinGW-w64 (`x86_64-w64-mingw32`), and the
+  mingw64 bin directory must be on PATH for linker/dlltool. CI uses the
+  standard MSVC host toolchain on windows-latest.
+- Next: owner runs the TUI against the real local API (`pnpm dev`, then
+  `cargo run -p openfrost-tui`), works through the manual acceptance items
+  above, and records results; merge only after the owner confirms.
