@@ -1312,8 +1312,7 @@ fn render_dialog(_app: &App, frame: &mut Frame, dialog: &Dialog) {
                         ..
                     } => {
                         let shown = if *masked {
-                            "\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}"
-                                .to_string()
+                            crate::dialog_forms::format_masked_input(&form.fields[index].value())
                         } else {
                             form.fields[index]
                                 .value()

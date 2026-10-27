@@ -1513,7 +1513,10 @@ impl App {
                     self.set_notice("The fake provider hook does not take a key", true);
                     return;
                 }
-                self.dialog = Some(Dialog::Form(Form::set_provider_key(&settings.provider)));
+                self.dialog = Some(Dialog::Form(Form::set_provider_key(
+                    &settings.provider,
+                    settings.hasProviderKey,
+                )));
             }
             _ => {}
         }
@@ -1599,7 +1602,7 @@ impl App {
             FormKind::SetProviderKey { provider } => {
                 let key = values.first().cloned().unwrap_or_default();
                 if key.trim().len() < 10 {
-                    return Err("That key looks too short".into());
+                    return Err("That key looks too short (min 10 characters)".into());
                 }
                 let provider = provider.clone();
                 let input = SetProviderKeyRequest {
