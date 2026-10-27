@@ -3,7 +3,6 @@
 //! an in-memory store, and sends the session-bound CSRF token on every
 //! mutating request. The API validates and enforces everything.
 
-use std::sync::Arc;
 use anyhow::{Context, Result};
 use reqwest::cookie::Jar;
 use reqwest::header::{HeaderMap, HeaderValue};
@@ -11,6 +10,7 @@ use reqwest::{Client, Method, StatusCode};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::sync::Arc;
 
 use crate::contracts::*;
 

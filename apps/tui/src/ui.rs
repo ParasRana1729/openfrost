@@ -268,7 +268,9 @@ fn format_stream_event(event: &Event) -> Line<'static> {
             Span::styled(format!("{time} "), muted()),
             Span::styled(
                 "Agent loop started",
-                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
             ),
             Span::styled(" — initializing tools & context", muted()),
         ]),
@@ -351,7 +353,10 @@ fn format_stream_event(event: &Event) -> Line<'static> {
         "run.completed" => Line::from(vec![
             Span::styled(" ✔ ", Style::default().fg(Color::Green)),
             Span::styled(format!("{time} "), muted()),
-            Span::styled("Model execution finished", Style::default().fg(Color::Green)),
+            Span::styled(
+                "Model execution finished",
+                Style::default().fg(Color::Green),
+            ),
         ]),
         "task.completed" => Line::from(vec![
             Span::styled(" ✔ ", Style::default().fg(Color::Green)),
@@ -715,11 +720,15 @@ fn render_assistant_stream(app: &mut App, frame: &mut Frame, area: Rect) {
             lines.push(Line::from(vec![
                 Span::styled(
                     format!("  {spinner} "),
-                    Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD),
                 ),
                 Span::styled(
                     status_msg,
-                    Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD),
                 ),
             ]));
             lines.push(Line::styled(

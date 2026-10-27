@@ -166,12 +166,7 @@ async fn event_loop(
             .as_ref()
             .map(|d| d.task.state == TaskState::Running)
             .unwrap_or(false)
-            || app
-                .tasks
-                .executor
-                .as_ref()
-                .map(|e| e.busy)
-                .unwrap_or(false);
+            || app.tasks.executor.as_ref().map(|e| e.busy).unwrap_or(false);
         let poll_interval = if is_busy { 5 } else { POLL_TICKS };
 
         if app.screen == app::Screen::Main
