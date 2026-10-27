@@ -157,6 +157,40 @@ impl TaskFilter {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TaskDetailFocus {
+    #[default]
+    Report,
+    Log,
+}
+
+impl TaskDetailFocus {
+    pub fn toggle(self) -> Self {
+        match self {
+            Self::Report => Self::Log,
+            Self::Log => Self::Report,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TaskDetailView {
+    #[default]
+    Auto,
+    ReportOnly,
+    LogOnly,
+}
+
+impl TaskDetailView {
+    pub fn next(self) -> Self {
+        match self {
+            Self::Auto => Self::ReportOnly,
+            Self::ReportOnly => Self::LogOnly,
+            Self::LogOnly => Self::Auto,
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct TasksState {
     pub tasks: Vec<Task>,
@@ -167,6 +201,9 @@ pub struct TasksState {
     pub selected: usize,
     pub detail: Option<TaskDetail>,
     pub artifact_scroll: u16,
+    pub log_scroll: u16,
+    pub detail_focus: TaskDetailFocus,
+    pub detail_view: TaskDetailView,
     pub detail_open: bool,
 }
 
@@ -448,6 +485,21 @@ impl App {
                     async move { api.lock().await.tasks().await.map_err(|e| e.message()) },
                     Payload::Tasks,
                 );
+                if let Some(detail) = &self.tasks.detail {
+                    let task_id = detail.task.id.clone();
+                    let api = self.api.clone();
+                    spawn_payload(
+                        &tx,
+                        async move {
+                            api.lock()
+                                .await
+                                .task_detail(&task_id)
+                                .await
+                                .map_err(|e| e.message())
+                        },
+                        Payload::TaskDetail,
+                    );
+                }
             }
             Tab::Projects => {
                 spawn_payload(
@@ -595,8 +647,80 @@ impl App {
         }
     }
 
+    pub fn scroll_task_detail(&mut self, delta: i32) {
+        let has_artifact = self
+            .tasks
+            .detail
+            .as_ref()
+            .and_then(|d| d.artifact.as_ref())
+            .is_some();
+        let target = match self.tasks.detail_view {
+            TaskDetailView::ReportOnly => TaskDetailFocus::Report,
+            TaskDetailView::LogOnly => TaskDetailFocus::Log,
+            TaskDetailView::Auto => {
+                if has_artifact {
+                    self.tasks.detail_focus
+                } else {
+                    TaskDetailFocus::Log
+                }
+            }
+        };
+        match target {
+            TaskDetailFocus::Report => {
+                if delta > 0 {
+                    self.tasks.artifact_scroll =
+                        self.tasks.artifact_scroll.saturating_add(delta as u16);
+                } else {
+                    self.tasks.artifact_scroll =
+                        self.tasks.artifact_scroll.saturating_sub((-delta) as u16);
+                }
+            }
+            TaskDetailFocus::Log => {
+                if delta > 0 {
+                    self.tasks.log_scroll = self.tasks.log_scroll.saturating_add(delta as u16);
+                } else {
+                    self.tasks.log_scroll = self.tasks.log_scroll.saturating_sub((-delta) as u16);
+                }
+            }
+        }
+    }
+
     pub fn on_mouse(&mut self, mouse: crossterm::event::MouseEvent) {
-        use crossterm::event::MouseEventKind;
+        use crossterm::event::{MouseButton, MouseEventKind};
+        if self.screen == Screen::Main && self.tab == Tab::Tasks && self.tasks.detail_open {
+            if let Some(detail) = &self.tasks.detail {
+                if detail.artifact.is_some() && self.tasks.detail_view == TaskDetailView::Auto {
+                    let is_left = mouse.column < 46;
+                    let target_focus = if is_left {
+                        TaskDetailFocus::Log
+                    } else {
+                        TaskDetailFocus::Report
+                    };
+                    match mouse.kind {
+                        MouseEventKind::Down(MouseButton::Left) => {
+                            self.tasks.detail_focus = target_focus;
+                            return;
+                        }
+                        MouseEventKind::ScrollDown => {
+                            let prev = self.tasks.detail_focus;
+                            self.tasks.detail_focus = target_focus;
+                            self.scroll_task_detail(3);
+                            self.tasks.detail_focus = prev;
+                            return;
+                        }
+                        MouseEventKind::ScrollUp => {
+                            let prev = self.tasks.detail_focus;
+                            self.tasks.detail_focus = target_focus;
+                            self.scroll_task_detail(-3);
+                            self.tasks.detail_focus = prev;
+                            return;
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+
         match mouse.kind {
             MouseEventKind::ScrollDown => {
                 self.scroll_down(3);
@@ -618,7 +742,7 @@ impl App {
             }
             Tab::Tasks => {
                 if self.tasks.detail_open {
-                    self.tasks.artifact_scroll = self.tasks.artifact_scroll.saturating_add(lines);
+                    self.scroll_task_detail(lines as i32);
                 } else if !self.tasks.tasks.is_empty() {
                     let max = self.tasks.tasks.len().saturating_sub(1);
                     self.tasks.selected = (self.tasks.selected + lines as usize).min(max);
@@ -656,7 +780,7 @@ impl App {
             }
             Tab::Tasks => {
                 if self.tasks.detail_open {
-                    self.tasks.artifact_scroll = self.tasks.artifact_scroll.saturating_sub(lines);
+                    self.scroll_task_detail(-(lines as i32));
                 } else {
                     self.tasks.selected = self.tasks.selected.saturating_sub(lines as usize);
                 }
@@ -1262,30 +1386,73 @@ impl App {
     }
 
     fn handle_task_detail_key(&mut self, key: KeyEvent) {
+        let has_artifact = self
+            .tasks
+            .detail
+            .as_ref()
+            .and_then(|d| d.artifact.as_ref())
+            .is_some();
         match key.code {
             KeyCode::Esc | KeyCode::Char('b') => {
                 self.tasks.detail_open = false;
                 self.tasks.detail = None;
                 self.tasks.artifact_scroll = 0;
+                self.tasks.log_scroll = 0;
+                self.tasks.detail_focus = TaskDetailFocus::Report;
+                self.tasks.detail_view = TaskDetailView::Auto;
+            }
+            KeyCode::Tab => {
+                if has_artifact {
+                    match self.tasks.detail_view {
+                        TaskDetailView::Auto => {
+                            self.tasks.detail_focus = self.tasks.detail_focus.toggle();
+                        }
+                        TaskDetailView::ReportOnly => {
+                            self.tasks.detail_view = TaskDetailView::LogOnly;
+                            self.tasks.detail_focus = TaskDetailFocus::Log;
+                        }
+                        TaskDetailView::LogOnly => {
+                            self.tasks.detail_view = TaskDetailView::ReportOnly;
+                            self.tasks.detail_focus = TaskDetailFocus::Report;
+                        }
+                    }
+                }
+            }
+            KeyCode::Char('v') | KeyCode::Char('m') => {
+                if has_artifact {
+                    self.tasks.detail_view = self.tasks.detail_view.next();
+                }
+            }
+            KeyCode::Left | KeyCode::Char('h')
+                if has_artifact && self.tasks.detail_view == TaskDetailView::Auto =>
+            {
+                self.tasks.detail_focus = TaskDetailFocus::Log;
+            }
+            KeyCode::Right | KeyCode::Char('l')
+                if has_artifact && self.tasks.detail_view == TaskDetailView::Auto =>
+            {
+                self.tasks.detail_focus = TaskDetailFocus::Report;
             }
             KeyCode::Char('j') | KeyCode::Down => {
-                self.tasks.artifact_scroll = self.tasks.artifact_scroll.saturating_add(1);
+                self.scroll_task_detail(1);
             }
             KeyCode::Char('k') | KeyCode::Up => {
-                self.tasks.artifact_scroll = self.tasks.artifact_scroll.saturating_sub(1);
+                self.scroll_task_detail(-1);
             }
             KeyCode::PageDown => {
-                self.tasks.artifact_scroll = self.tasks.artifact_scroll.saturating_add(15);
+                self.scroll_task_detail(15);
             }
             KeyCode::PageUp => {
-                self.tasks.artifact_scroll = self.tasks.artifact_scroll.saturating_sub(15);
+                self.scroll_task_detail(-15);
             }
-            KeyCode::Home => {
-                self.tasks.artifact_scroll = 0;
-            }
-            KeyCode::End => {
-                self.tasks.artifact_scroll = u16::MAX;
-            }
+            KeyCode::Home => match self.tasks.detail_focus {
+                TaskDetailFocus::Report => self.tasks.artifact_scroll = 0,
+                TaskDetailFocus::Log => self.tasks.log_scroll = 0,
+            },
+            KeyCode::End => match self.tasks.detail_focus {
+                TaskDetailFocus::Report => self.tasks.artifact_scroll = u16::MAX,
+                TaskDetailFocus::Log => self.tasks.log_scroll = u16::MAX,
+            },
             KeyCode::Char('c') => {
                 if let Some(detail) = &self.tasks.detail {
                     if matches!(
@@ -2104,5 +2271,227 @@ pub fn truncate(text: &str, max_chars: usize) -> String {
     } else {
         let cut: String = text.chars().take(max_chars).collect();
         format!("{cut}\u{2026}")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::contracts::{Task, TaskDetail, TaskDetailArtifact, TaskKind, TaskState};
+    use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+    use std::sync::Arc;
+    use tokio::sync::{mpsc, Mutex};
+
+    fn dummy_app() -> App {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let api = Arc::new(Mutex::new(
+            crate::api::ApiClient::new("http://127.0.0.1:0").unwrap(),
+        ));
+        App::new(tx, api)
+    }
+
+    fn sample_task(has_artifact: bool) -> TaskDetail {
+        TaskDetail {
+            task: Task {
+                id: "task-1".into(),
+                state: TaskState::Completed,
+                kind: TaskKind::ResearchBrief,
+                title: "Test Task".into(),
+                request: "Draw a bird".into(),
+                constraints: None,
+                startingUrls: None,
+                projectId: None,
+                attemptCount: 1,
+                error: None,
+                exportArgs: None,
+                routineId: None,
+                lastRunId: None,
+                resultArtifactId: if has_artifact {
+                    Some("art-1".into())
+                } else {
+                    None
+                },
+                createdAt: "2026-10-27T10:00:00Z".into(),
+                updatedAt: "2026-10-27T10:01:00Z".into(),
+            },
+            runs: vec![],
+            events: vec![],
+            artifact: if has_artifact {
+                Some(TaskDetailArtifact {
+                    id: "art-1".into(),
+                    markdown: "# Bird ASCII\n/'-'\\\n|( o )|\n".into(),
+                })
+            } else {
+                None
+            },
+            approval: None,
+        }
+    }
+
+    fn key(code: KeyCode) -> KeyEvent {
+        KeyEvent {
+            code,
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        }
+    }
+
+    #[test]
+    fn test_task_detail_focus_and_view_transitions() {
+        assert_eq!(TaskDetailFocus::Report.toggle(), TaskDetailFocus::Log);
+        assert_eq!(TaskDetailFocus::Log.toggle(), TaskDetailFocus::Report);
+
+        assert_eq!(TaskDetailView::Auto.next(), TaskDetailView::ReportOnly);
+        assert_eq!(TaskDetailView::ReportOnly.next(), TaskDetailView::LogOnly);
+        assert_eq!(TaskDetailView::LogOnly.next(), TaskDetailView::Auto);
+    }
+
+    #[test]
+    fn test_scroll_task_detail_with_artifact() {
+        let mut app = dummy_app();
+        app.tasks.detail = Some(sample_task(true));
+        app.tasks.detail_focus = TaskDetailFocus::Report;
+        app.tasks.detail_view = TaskDetailView::Auto;
+
+        app.scroll_task_detail(5);
+        assert_eq!(app.tasks.artifact_scroll, 5);
+        assert_eq!(app.tasks.log_scroll, 0);
+
+        app.scroll_task_detail(-2);
+        assert_eq!(app.tasks.artifact_scroll, 3);
+
+        app.scroll_task_detail(-10);
+        assert_eq!(app.tasks.artifact_scroll, 0);
+
+        // Switch to Log
+        app.tasks.detail_focus = TaskDetailFocus::Log;
+        app.scroll_task_detail(4);
+        assert_eq!(app.tasks.log_scroll, 4);
+        assert_eq!(app.tasks.artifact_scroll, 0);
+
+        // View mode override: ReportOnly scrolls artifact even if focus was Log
+        app.tasks.detail_view = TaskDetailView::ReportOnly;
+        app.scroll_task_detail(7);
+        assert_eq!(app.tasks.artifact_scroll, 7);
+        assert_eq!(app.tasks.log_scroll, 4);
+    }
+
+    #[test]
+    fn test_scroll_task_detail_without_artifact() {
+        let mut app = dummy_app();
+        app.tasks.detail = Some(sample_task(false));
+        app.tasks.detail_focus = TaskDetailFocus::Report; // default before check
+        app.tasks.detail_view = TaskDetailView::Auto;
+
+        // When no artifact exists, scrolling must always route to log_scroll
+        app.scroll_task_detail(6);
+        assert_eq!(app.tasks.log_scroll, 6);
+        assert_eq!(app.tasks.artifact_scroll, 0);
+    }
+
+    #[test]
+    fn test_task_detail_key_navigation() {
+        let mut app = dummy_app();
+        app.tab = Tab::Tasks;
+        app.tasks.detail_open = true;
+        app.tasks.detail = Some(sample_task(true));
+        app.tasks.detail_focus = TaskDetailFocus::Report;
+        app.tasks.detail_view = TaskDetailView::Auto;
+
+        // Tab toggles focus between Report and Log
+        app.handle_task_detail_key(key(KeyCode::Tab));
+        assert_eq!(app.tasks.detail_focus, TaskDetailFocus::Log);
+        app.handle_task_detail_key(key(KeyCode::Tab));
+        assert_eq!(app.tasks.detail_focus, TaskDetailFocus::Report);
+
+        // 'h' focuses Log, 'l' focuses Report
+        app.handle_task_detail_key(key(KeyCode::Char('h')));
+        assert_eq!(app.tasks.detail_focus, TaskDetailFocus::Log);
+        app.handle_task_detail_key(key(KeyCode::Char('l')));
+        assert_eq!(app.tasks.detail_focus, TaskDetailFocus::Report);
+
+        // 'v' cycles view
+        app.handle_task_detail_key(key(KeyCode::Char('v')));
+        assert_eq!(app.tasks.detail_view, TaskDetailView::ReportOnly);
+        app.handle_task_detail_key(key(KeyCode::Char('v')));
+        assert_eq!(app.tasks.detail_view, TaskDetailView::LogOnly);
+        app.handle_task_detail_key(key(KeyCode::Char('v')));
+        assert_eq!(app.tasks.detail_view, TaskDetailView::Auto);
+
+        // 'j' and 'k' scroll
+        app.handle_task_detail_key(key(KeyCode::Char('j')));
+        assert_eq!(app.tasks.artifact_scroll, 1);
+        app.handle_task_detail_key(key(KeyCode::Char('k')));
+        assert_eq!(app.tasks.artifact_scroll, 0);
+
+        // Esc closes detail and resets state
+        app.tasks.artifact_scroll = 10;
+        app.tasks.log_scroll = 8;
+        app.handle_task_detail_key(key(KeyCode::Esc));
+        assert!(!app.tasks.detail_open);
+        assert!(app.tasks.detail.is_none());
+        assert_eq!(app.tasks.artifact_scroll, 0);
+        assert_eq!(app.tasks.log_scroll, 0);
+    }
+
+    #[test]
+    fn test_render_task_detail_wide_and_narrow() {
+        use ratatui::backend::TestBackend;
+        use ratatui::Terminal;
+
+        let mut app = dummy_app();
+        app.screen = Screen::Main;
+        app.tab = Tab::Tasks;
+        app.tasks.detail_open = true;
+        app.tasks.detail = Some(sample_task(true));
+
+        // Wide terminal (120x30)
+        let backend = TestBackend::new(120, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| {
+                crate::ui::render(&mut app, frame);
+            })
+            .unwrap();
+
+        let buffer = terminal.backend().buffer();
+        let content: String = buffer.content().iter().map(|c| c.symbol()).collect();
+        assert!(content.contains("Task detail"));
+        assert!(content.contains("Saved Report"));
+
+        // Narrow terminal (80x25)
+        let backend = TestBackend::new(80, 25);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| {
+                crate::ui::render(&mut app, frame);
+            })
+            .unwrap();
+
+        // Maximized report view
+        app.tasks.detail_view = TaskDetailView::ReportOnly;
+        terminal
+            .draw(|frame| {
+                crate::ui::render(&mut app, frame);
+            })
+            .unwrap();
+
+        // Maximized log view
+        app.tasks.detail_view = TaskDetailView::LogOnly;
+        terminal
+            .draw(|frame| {
+                crate::ui::render(&mut app, frame);
+            })
+            .unwrap();
+
+        // Task with no artifact
+        app.tasks.detail = Some(sample_task(false));
+        app.tasks.detail_view = TaskDetailView::Auto;
+        terminal
+            .draw(|frame| {
+                crate::ui::render(&mut app, frame);
+            })
+            .unwrap();
     }
 }

@@ -8,11 +8,12 @@ use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Tab
 use ratatui::Frame;
 
 use crate::app::{
-    truncate, App, ComposerField, ConfirmAction, Dialog, Screen, Tab, TaskFilter, ALL_TABS,
+    truncate, App, ComposerField, ConfirmAction, Dialog, Screen, Tab, TaskDetailFocus,
+    TaskDetailView, TaskFilter, ALL_TABS,
 };
 use crate::contracts::{
-    ApprovalState, Event, MemoryScope, RoutineOccurrenceState, RoutineState, RunState, TaskKind,
-    TaskState,
+    ApprovalState, Event, MemoryScope, RoutineOccurrenceState, RoutineState, RunState, TaskDetail,
+    TaskKind, TaskState,
 };
 
 fn accent() -> Style {
@@ -1193,6 +1194,121 @@ fn render_task_detail(app: &mut App, frame: &mut Frame, area: Rect) {
         );
         return;
     };
+
+    let has_artifact = detail.artifact.is_some();
+    let vertical = Layout::vertical([Constraint::Min(3), Constraint::Length(1)]).split(area);
+    let (content_area, footer_area) = (vertical[0], vertical[1]);
+
+    let footer_text = if has_artifact {
+        " b/Esc back | Tab switch focus | v toggle view (split/report/log) | c cancel | r retry | e export | j/k, PgUp/Dn scroll"
+    } else {
+        " b/Esc back | c cancel | r retry | e export | j/k, PgUp/Dn scroll"
+    };
+    frame.render_widget(Line::styled(footer_text, muted()), footer_area);
+
+    if !has_artifact {
+        render_task_detail_log(app, frame, content_area, true);
+        return;
+    }
+
+    match app.tasks.detail_view {
+        TaskDetailView::ReportOnly => {
+            render_task_saved_report(app, frame, content_area, true, true);
+        }
+        TaskDetailView::LogOnly => {
+            render_task_detail_log(app, frame, content_area, true);
+        }
+        TaskDetailView::Auto => {
+            if content_area.width >= 90 {
+                let left_width = 46.min(content_area.width / 2);
+                let chunks =
+                    Layout::horizontal([Constraint::Length(left_width), Constraint::Min(40)])
+                        .split(content_area);
+                let log_focused = app.tasks.detail_focus == TaskDetailFocus::Log;
+                let report_focused = app.tasks.detail_focus == TaskDetailFocus::Report;
+                render_task_detail_log(app, frame, chunks[0], log_focused);
+                render_task_saved_report(app, frame, chunks[1], report_focused, false);
+            } else {
+                let top_height = 7.min(content_area.height / 3);
+                let chunks = Layout::vertical([Constraint::Length(top_height), Constraint::Min(6)])
+                    .split(content_area);
+                if let Some(detail) = &app.tasks.detail {
+                    render_task_compact_summary(frame, chunks[0], detail);
+                }
+                let report_focused = true;
+                render_task_saved_report(app, frame, chunks[1], report_focused, false);
+            }
+        }
+    }
+}
+
+fn render_task_saved_report(
+    app: &mut App,
+    frame: &mut Frame,
+    area: Rect,
+    is_focused: bool,
+    maximized: bool,
+) {
+    let Some(detail) = &app.tasks.detail else {
+        return;
+    };
+    let Some(artifact) = &detail.artifact else {
+        return;
+    };
+
+    let report_lines = crate::markdown::render_markdown(&artifact.markdown);
+    let total_lines = report_lines.len();
+    let inner_height = area.height.saturating_sub(2) as usize;
+    let max_scroll = total_lines.saturating_sub(inner_height);
+    let scroll_y = (app.tasks.artifact_scroll as usize).min(max_scroll) as u16;
+    app.tasks.artifact_scroll = scroll_y;
+
+    let scroll_info = if total_lines > inner_height {
+        format!(" [{}/{}]", scroll_y + 1, total_lines)
+    } else {
+        String::new()
+    };
+
+    let view_hint = if maximized {
+        " (v/Tab split)"
+    } else if is_focused {
+        " [Focused]"
+    } else {
+        " (Tab to focus)"
+    };
+
+    let title = format!("Saved Report{scroll_info}{view_hint}");
+    let block_style = if is_focused { accent() } else { muted() };
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(block_style)
+        .title(Span::styled(
+            title,
+            if is_focused {
+                accent().add_modifier(Modifier::BOLD)
+            } else {
+                muted()
+            },
+        ));
+
+    frame.render_widget(
+        Paragraph::new(report_lines)
+            .wrap(Wrap { trim: false })
+            .scroll((scroll_y, 0))
+            .block(block),
+        area,
+    );
+}
+
+fn render_task_detail_log(app: &mut App, frame: &mut Frame, area: Rect, is_focused: bool) {
+    let Some(detail) = &app.tasks.detail else {
+        frame.render_widget(
+            Paragraph::new("Loading\u{2026}").block(block("Task detail")),
+            area,
+        );
+        return;
+    };
     let task = &detail.task;
     let mut lines: Vec<Line> = Vec::new();
 
@@ -1273,7 +1389,7 @@ fn render_task_detail(app: &mut App, frame: &mut Frame, area: Rect) {
         ]));
         if approval.state == ApprovalState::Pending {
             lines.push(Line::styled(
-                " g grant (approves the exact content and destination) | d reject".to_string(),
+                " g grant (approves exact content/dest) | d reject".to_string(),
                 muted(),
             ));
         }
@@ -1296,40 +1412,119 @@ fn render_task_detail(app: &mut App, frame: &mut Frame, area: Rect) {
     }
 
     lines.push(Line::styled(
-        "Events",
+        format!("Events ({})", detail.events.len()),
         accent().add_modifier(Modifier::BOLD),
     ));
     for event in &detail.events {
         lines.push(format_stream_event(event));
     }
-    lines.push(Line::from(""));
 
-    if let Some(artifact) = &detail.artifact {
-        lines.push(Line::styled(
-            "── [Saved Report] ────────────────────────────────────────────────────────",
-            accent().add_modifier(Modifier::BOLD),
-        ));
-        let rendered = crate::markdown::render_markdown(&artifact.markdown);
-        let skip = app.tasks.artifact_scroll as usize;
-        for line in rendered.into_iter().skip(skip) {
-            lines.push(line);
-        }
-    } else if task.resultArtifactId.is_none() && task.state == TaskState::Completed {
+    if detail.artifact.is_none()
+        && task.resultArtifactId.is_none()
+        && task.state == TaskState::Completed
+    {
+        lines.push(Line::from(""));
         lines.push(Line::styled("(no saved artifact)", muted()));
     }
 
-    lines.push(Line::from(""));
-    lines.push(Line::styled(
-        " b/Esc back | c cancel | r retry | e export | j/k, PageUp/Down or mouse scroll"
-            .to_string(),
-        muted(),
-    ));
+    let total_lines = lines.len();
+    let inner_height = area.height.saturating_sub(2) as usize;
+    let max_scroll = total_lines.saturating_sub(inner_height);
+    let scroll_y = (app.tasks.log_scroll as usize).min(max_scroll) as u16;
+    app.tasks.log_scroll = scroll_y;
+
+    let scroll_info = if total_lines > inner_height {
+        format!(" [{}/{}]", scroll_y + 1, total_lines)
+    } else {
+        String::new()
+    };
+
+    let title = if detail.artifact.is_some() {
+        if is_focused {
+            format!("Task detail{scroll_info} [Focused]")
+        } else {
+            format!("Task detail{scroll_info} (Tab to focus)")
+        }
+    } else {
+        format!("Task detail{scroll_info}")
+    };
+
+    let block_style = if is_focused { accent() } else { muted() };
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(block_style)
+        .title(Span::styled(
+            title,
+            if is_focused {
+                accent().add_modifier(Modifier::BOLD)
+            } else {
+                muted()
+            },
+        ));
 
     frame.render_widget(
         Paragraph::new(lines)
             .wrap(Wrap { trim: false })
-            .scroll((0, 0))
-            .block(block("Task detail")),
+            .scroll((scroll_y, 0))
+            .block(block),
+        area,
+    );
+}
+
+fn render_task_compact_summary(frame: &mut Frame, area: Rect, detail: &TaskDetail) {
+    let task = &detail.task;
+    let mut lines = Vec::new();
+    lines.push(Line::from(vec![
+        Span::styled(
+            format!(" {} ", task_state_short(&task.state)),
+            task_state_style(&task.state),
+        ),
+        Span::raw(" "),
+        Span::styled(
+            task.title.clone(),
+            Style::default().add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            format!(
+                "  {}  attempts: {}  events: {}",
+                kind_label(&task.kind),
+                task.attemptCount,
+                detail.events.len()
+            ),
+            muted(),
+        ),
+    ]));
+    if !task.request.is_empty() {
+        lines.push(Line::styled(
+            format!("Request: {}", truncate(&task.request, 120)),
+            Style::default(),
+        ));
+    }
+    if let Some(error) = &task.error {
+        lines.push(Line::styled(
+            format!("Error: {error}"),
+            Style::default().fg(Color::Red),
+        ));
+    }
+    if let Some(approval) = &detail.approval {
+        lines.push(Line::from(vec![
+            Span::styled("Approval: ", muted()),
+            Span::styled(
+                approval_state_label(&approval.state),
+                approval_state_style(&approval.state),
+            ),
+            Span::raw(format!(" write \"{}\"", approval.filename)),
+        ]));
+    }
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(muted())
+        .title(Span::styled("Task info (Tab/v: view log)", muted()));
+    frame.render_widget(
+        Paragraph::new(lines)
+            .wrap(Wrap { trim: false })
+            .block(block),
         area,
     );
 }

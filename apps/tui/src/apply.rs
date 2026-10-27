@@ -1,6 +1,6 @@
 //! Applying background API results to app state.
 
-use crate::app::{App, Dialog, Screen};
+use crate::app::{App, Dialog, Screen, TaskDetailFocus, TaskDetailView};
 use crate::event::Payload;
 
 pub fn apply_payload(app: &mut App, payload: Payload) {
@@ -48,9 +48,25 @@ pub fn apply_payload(app: &mut App, payload: Payload) {
         },
         Payload::TaskDetail(result) => match result {
             Ok(detail) => {
+                let is_new_task = app
+                    .tasks
+                    .detail
+                    .as_ref()
+                    .map(|d| d.task.id != detail.task.id)
+                    .unwrap_or(true);
+                let has_artifact = detail.artifact.is_some();
+                if is_new_task {
+                    app.tasks.artifact_scroll = 0;
+                    app.tasks.log_scroll = 0;
+                    app.tasks.detail_focus = if has_artifact {
+                        TaskDetailFocus::Report
+                    } else {
+                        TaskDetailFocus::Log
+                    };
+                    app.tasks.detail_view = TaskDetailView::Auto;
+                }
                 app.tasks.detail = Some(detail);
                 app.tasks.detail_open = true;
-                app.tasks.artifact_scroll = 0;
             }
             Err(message) => app.set_notice(message, true),
         },
