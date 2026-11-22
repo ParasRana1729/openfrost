@@ -1002,3 +1002,77 @@ unchanged. Closing the TUI does not stop tasks or routines.
   workspace tests pass), `pnpm build`. Configured CI passed on windows-latest.
 - PR #31 was closed as superseded by PR #32 and #34.
 - Next: continue S07 release hardening and one-working-week owner-use gate.
+
+### Follow-up: TUI API lock contention and SSE/polling refresh storms (2026-11-22)
+
+Branch `perf/tui-concurrency-and-sse` (S09/S07 hardening follow-up; not merged,
+awaiting review). It changes only `apps/tui`: no API routes, Zod schemas, or
+server behavior, and no keybinding, mouse, slash-command, or layout changes. It
+does not close S07's one-working-week owner-use gate.
+
+- Implemented (lock contention): `ApiClient` is now `Clone`; its CSRF token
+  lives in `Arc<RwLock<Option<String>>>` (std lock, held only to read or swap
+  the value, never across `.await`) shared by every clone. The global
+  `Arc<Mutex<ApiClient>>` and every `api.lock().await` in `app.rs`/`main.rs`
+  are gone, so a slow request (a 30 s timeout, a long task-detail fetch) no
+  longer blocks every other request. `setup`/`login` swap the token
+  atomically; each request reads it once when building headers; `logout`
+  clears it only if it is still the token the logout started with, so a slow
+  logout cannot wipe a newer login's token.
+- Implemented (parallel reads): `App::refresh` for Assistant runs
+  `events`/`pending_approvals`/`routines`/`projects`/`tasks` with
+  `tokio::join!`, then fetches `task_detail` for the newest task only if the
+  list returned one; Settings runs `settings`/`destinations` with
+  `tokio::join!`. Loaders live in the new `apps/tui/src/refresh.rs`.
+- Implemented (SSE and refresh storms): `subscribe_events` moved to
+  `event.rs` and takes an `Arc<Notify>`; a successful login/onboarding
+  (`apply.rs`) notifies it so the stream reconnects at once instead of
+  waiting out up to 30 s of backoff (it also replaces a stream opened under a
+  previous session). Connection state is reported as `AppEvent::SseConnection`
+  and tracked in `App`. While connected there is no polling at all (the old
+  400 ms busy / 4.8 s idle polling is gone); only while disconnected does a
+  fallback poll run (about 1 s when a run is active, 4.8 s idle). `Activity`
+  bursts coalesce into one refresh per 320 ms window, a tab never has two
+  refreshes in flight, and a request that arrives mid-refresh is replayed once
+  when the running one finishes. An SSE (re)connect or disconnect queues one
+  catch-up refresh. The old code sent an `Activity` (so a refresh) on every
+  failed reconnect.
+- Found en route: the shared `reqwest` client has a 30 s total-request
+  timeout, which also covers streaming the response body, so the SSE stream was
+  being cut every ~30 s. The SSE stream now uses a second client (same cookie
+  jar, 10 s connect timeout, no total timeout) from `ApiClient::stream_http()`.
+  Not observed against the real API in this slice (see not run below).
+- Verification (inside `apps/tui`, Windows, 2026-11-22):
+  `cargo fmt --all -- --check` passed; `cargo clippy --all-targets -- -D
+  warnings` passed; `cargo test` passed (63 tests, up from 32; six
+  consecutive runs all green, about 0.7 s each); `cargo build` passed. The
+  new tests use `httpmock` and `tokio` paused time (dev-dependency feature
+  `test-util`, no new crates in the lockfile): a slow request does not block
+  another clone; independent reads overlap in time; the Assistant/Settings/Tasks
+  loaders hit each endpoint once, skip `task_detail` when there are no tasks or
+  the list fails, and keep the other results when one read fails; CSRF
+  propagation across clones for login, setup, re-login, logout, and eight
+  concurrent mutations; the slow-logout race; SSE open/activity/disconnect
+  reporting, backoff doubling to the 30 s cap, a wake that cuts a backoff short
+  (including a wake sent just before the wait), and a login wake that connects
+  well inside the 1 s backoff; the debounce and fallback-polling state machine,
+  and in-flight/replay behavior through `App`. `pnpm` checks were not run
+  because nothing outside `apps/tui` changed.
+- Not run/verified: the TUI against the real API (no manual login/SSE/task run,
+  so the 30 s stream-cut finding and the end-to-end disappearance of the
+  400 ms polling are reasoned from the code and mock-server tests, not
+  observed); no CI run yet (branch is not pushed or opened as a PR); the
+  timing assertions (for example "five 300 ms reads finish in under 1 s") use
+  generous margins but are wall-clock based.
+- Known limitations: while SSE is connected the only refresh triggers are
+  `activity` pings, tab switches, and mutations, so a half-open connection
+  that stays silent is not detected until it errors (the fallback poll resumes
+  only once the state is reported disconnected). In-flight tracking is per tab
+  and cleared by an explicit done event, with a 40 s staleness escape in case a
+  refresh task is lost. The debounce adds up to 320 ms before an activity
+  refresh (previously immediate, but a burst could trigger a refresh per ping).
+  The window and poll intervals are constants in `refresh.rs`.
+- Next: owner review of the branch; then, with the owner's explicit merge
+  authorization for this change, push, open a PR, confirm CI on `windows-latest`,
+  and merge. A short manual pass (log in, queue a fake-provider task, watch the
+  live stream, drop and restart the API) would close the not-run items above.
