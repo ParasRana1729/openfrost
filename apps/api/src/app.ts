@@ -15,6 +15,7 @@ import {
 import {
   DpapiUnavailableError,
   ApprovalNotFoundError,
+  ArtifactNotFoundError,
   ExportDestinationNotFoundError,
   MemoryDuplicateError,
   MemoryEntryNotFoundError,
@@ -176,7 +177,11 @@ export async function buildApp(options: BuildAppOptions, logger?: Logger | false
     if (err instanceof RoutineOccurrenceExistsError) {
       return reply.code(409).send({ error: err.message });
     }
-    if (err instanceof ApprovalNotFoundError || err instanceof ExportDestinationNotFoundError) {
+    if (
+      err instanceof ApprovalNotFoundError ||
+      err instanceof ArtifactNotFoundError ||
+      err instanceof ExportDestinationNotFoundError
+    ) {
       return reply.code(404).send({ error: err.message });
     }
     if (

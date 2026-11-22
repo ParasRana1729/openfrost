@@ -84,24 +84,34 @@ export class OpenAIProvider implements LlmProvider {
       });
     }
 
-    // Abort and network errors from fetch propagate unchanged; the executor
-    // classifies AbortError against cancellation and the wall-clock limit.
-    const response = await this.#fetchImpl(OPENAI_RESPONSES_URL, {
-      method: 'POST',
-      headers: {
-        authorization: `Bearer ${apiKey}`,
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: this.#model,
-        instructions,
-        input,
-        tools,
-        max_output_tokens: this.#maxOutputTokens,
-        store: false,
-      }),
-      signal: request.signal,
-    });
+    // Abort errors propagate unchanged so the executor classifies them against
+    // cancellation and the wall-clock limit; other transport errors are
+    // wrapped and redacted so key material never reaches persisted failures.
+    let response: Response;
+    try {
+      response = await this.#fetchImpl(OPENAI_RESPONSES_URL, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${apiKey}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: this.#model,
+          instructions,
+          input,
+          tools,
+          max_output_tokens: this.#maxOutputTokens,
+          store: false,
+        }),
+        signal: request.signal,
+      });
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        throw err;
+      }
+      const message = err instanceof Error ? err.message : String(err);
+      throw new ProviderError(`OpenAI request failed: ${redactSecret(message, apiKey)}`);
+    }
 
     if (!response.ok) {
       throw new ProviderError(

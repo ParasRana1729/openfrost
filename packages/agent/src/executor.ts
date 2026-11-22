@@ -20,7 +20,13 @@ import {
   type Task,
   type TaskState,
 } from '@openfrost/domain';
-import { TaskNotFoundError, type Store } from '@openfrost/db';
+import {
+  ApprovalNotFoundError,
+  ArtifactNotFoundError,
+  ExportDestinationNotFoundError,
+  TaskNotFoundError,
+  type Store,
+} from '@openfrost/db';
 import {
   ProviderMissingError,
   type AgentMessage,
@@ -277,10 +283,10 @@ export class TaskExecutor {
     filename: string;
   }): Promise<Task> {
     if (this.store.artifacts.get(input.artifactId) === null) {
-      throw new TaskNotFoundError(input.artifactId);
+      throw new ArtifactNotFoundError(input.artifactId);
     }
     if (this.store.exportDestinations.get(input.destinationId) === null) {
-      throw new Error(`Export destination ${input.destinationId} not found`);
+      throw new ExportDestinationNotFoundError(input.destinationId);
     }
     const task = this.store.tasks.create(
       {
@@ -352,7 +358,7 @@ export class TaskExecutor {
   decideApproval(approvalId: string, decision: 'granted' | 'rejected'): Approval {
     const pending = this.store.approvals.get(approvalId);
     if (!pending) {
-      throw new Error(`Approval ${approvalId} not found`);
+      throw new ApprovalNotFoundError(approvalId);
     }
     if (pending.state !== 'pending') {
       throw new InvalidApprovalTransitionError(pending.state, decision);

@@ -84,6 +84,13 @@ export class TaskNotFoundError extends Error {
   }
 }
 
+export class ArtifactNotFoundError extends Error {
+  constructor(artifactId: string) {
+    super(`Artifact ${artifactId} not found`);
+    this.name = 'ArtifactNotFoundError';
+  }
+}
+
 export class ProjectNotFoundError extends Error {
   constructor(projectId: string) {
     super(`Project ${projectId} not found`);
