@@ -28,6 +28,10 @@ pub fn apply_payload(app: &mut App, payload: Payload) {
                 Ok(()) => {
                     app.screen = Screen::Main;
                     app.auth = masking_area();
+                    // Login/onboarding just created the session the SSE
+                    // stream needs: reconnect now rather than after the
+                    // remainder of an exponential backoff.
+                    app.sse_wake.notify_one();
                     app.refresh_all();
                 }
                 Err(message) => {

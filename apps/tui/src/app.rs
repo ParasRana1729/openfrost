@@ -5,15 +5,14 @@
 use std::sync::Arc;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use tokio::sync::Mutex;
+use tokio::sync::Notify;
 use tui_textarea::TextArea;
 
 use crate::api::ApiClient;
 use crate::contracts::*;
 use crate::dialog_forms::Form;
-use crate::event::{spawn_payload, AppEvent, AppTx, Payload};
-
-pub type SharedApi = Arc<Mutex<ApiClient>>;
+use crate::event::{spawn_payload, spawn_refresh, AppEvent, AppTx, Payload};
+use crate::refresh::{load_assistant_data, load_settings_bundle, load_tasks, SyncState};
 
 // ---------------------------------------------------------------------------
 // Screens, tabs, notices
@@ -382,7 +381,12 @@ pub enum ConfirmAction {
 
 pub struct App {
     pub tx: AppTx,
-    pub api: SharedApi,
+    /// Cheap-to-clone, lock-free API handle; every task gets its own clone.
+    pub api: ApiClient,
+    /// Refresh scheduling: SSE state, activity debounce, in-flight tabs.
+    pub sync: SyncState,
+    /// Wakes the SSE loop out of its reconnect backoff (login, onboarding).
+    pub sse_wake: Arc<Notify>,
     pub screen: Screen,
     pub tab: Tab,
     pub quit: bool,
@@ -402,12 +406,14 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(tx: AppTx, api: SharedApi) -> Self {
+    pub fn new(tx: AppTx, api: ApiClient) -> Self {
         let mut auth = TextArea::default();
         auth.set_mask_char('\u{2022}');
         Self {
             tx,
             api,
+            sync: SyncState::default(),
+            sse_wake: Arc::new(Notify::new()),
             screen: Screen::Connecting,
             tab: Tab::Assistant,
             quit: false,
@@ -445,98 +451,97 @@ impl App {
         self.refresh(Tab::Settings);
     }
 
+    /// Refresh one tab's data in the background. A tab never has two
+    /// refreshes in flight: a request that arrives mid-refresh is replayed
+    /// once when the running one finishes (see `SyncState`).
     pub fn refresh(&mut self, tab: Tab) {
+        if !self.sync.begin_refresh(tab, self.ticks) {
+            return;
+        }
         let api = self.api.clone();
         let tx = self.tx.clone();
         match tab {
             Tab::Assistant => {
-                spawn_payload(
+                spawn_refresh(
                     &tx,
-                    async move {
-                        let api = api.lock().await;
-                        let events = api.events(15).await.map_err(|e| e.message());
-                        let approvals = api.pending_approvals().await.map_err(|e| e.message());
-                        let routines = api.routines().await.map_err(|e| e.message());
-                        let projects = api.projects().await.map_err(|e| e.message());
-                        let tasks = api.tasks().await.map_err(|e| e.message());
-                        let latest_task = match &tasks {
-                            Ok(res) if !res.tasks.is_empty() => {
-                                api.task_detail(&res.tasks[0].id).await.ok()
-                            }
-                            _ => None,
-                        };
-                        (events, approvals, routines, projects, tasks, latest_task)
-                    },
-                    |(events, approvals, routines, projects, tasks, latest_task)| {
-                        Payload::AssistantData {
-                            events,
-                            approvals,
-                            routines,
-                            projects,
-                            tasks,
-                            latest_task,
-                        }
-                    },
+                    tab,
+                    async move { vec![load_assistant_data(&api).await] },
                 );
             }
             Tab::Tasks => {
-                spawn_payload(
+                let open_task_id = self.tasks.detail.as_ref().map(|d| d.task.id.clone());
+                spawn_refresh(
                     &tx,
-                    async move { api.lock().await.tasks().await.map_err(|e| e.message()) },
-                    Payload::Tasks,
+                    tab,
+                    async move { load_tasks(&api, open_task_id).await },
                 );
-                if let Some(detail) = &self.tasks.detail {
-                    let task_id = detail.task.id.clone();
-                    let api = self.api.clone();
-                    spawn_payload(
-                        &tx,
-                        async move {
-                            api.lock()
-                                .await
-                                .task_detail(&task_id)
-                                .await
-                                .map_err(|e| e.message())
-                        },
-                        Payload::TaskDetail,
-                    );
-                }
             }
             Tab::Projects => {
-                spawn_payload(
-                    &tx,
-                    async move { api.lock().await.projects().await.map_err(|e| e.message()) },
-                    Payload::Projects,
-                );
+                spawn_refresh(&tx, tab, async move {
+                    vec![Payload::Projects(
+                        api.projects().await.map_err(|e| e.message()),
+                    )]
+                });
             }
             Tab::Memory => {
-                spawn_payload(
-                    &tx,
-                    async move { api.lock().await.memory().await.map_err(|e| e.message()) },
-                    Payload::Memory,
-                );
+                spawn_refresh(&tx, tab, async move {
+                    vec![Payload::Memory(api.memory().await.map_err(|e| e.message()))]
+                });
             }
             Tab::Routines => {
-                spawn_payload(
-                    &tx,
-                    async move { api.lock().await.routines().await.map_err(|e| e.message()) },
-                    Payload::Routines,
-                );
+                spawn_refresh(&tx, tab, async move {
+                    vec![Payload::Routines(
+                        api.routines().await.map_err(|e| e.message()),
+                    )]
+                });
             }
             Tab::Settings => {
-                spawn_payload(
+                spawn_refresh(
                     &tx,
-                    async move {
-                        let api = api.lock().await;
-                        let settings = api.settings().await.map_err(|e| e.message());
-                        let destinations = api.destinations().await.map_err(|e| e.message());
-                        (settings, destinations)
-                    },
-                    |(settings, destinations)| Payload::SettingsBundle {
-                        settings,
-                        destinations,
-                    },
+                    tab,
+                    async move { vec![load_settings_bundle(&api).await] },
                 );
             }
+        }
+    }
+
+    /// True while an agent run is active or the executor reports busy.
+    pub fn is_busy(&self) -> bool {
+        self.assistant
+            .active_task_detail
+            .as_ref()
+            .is_some_and(|d| d.task.state == TaskState::Running)
+            || self.tasks.executor.as_ref().is_some_and(|e| e.busy)
+    }
+
+    /// An SSE `activity` ping: coalesced, not an immediate refresh.
+    pub fn on_activity(&mut self) {
+        if self.screen == Screen::Main {
+            self.sync.note_activity(self.ticks);
+        }
+    }
+
+    pub fn on_sse_connection(&mut self, connected: bool) {
+        self.sync.set_sse_connected(connected, self.ticks);
+    }
+
+    pub fn on_refresh_done(&mut self, tab: Tab) {
+        if self.sync.finish_refresh(tab) && self.screen == Screen::Main {
+            self.refresh(tab);
+        }
+    }
+
+    /// Run whatever refresh is due: one for an elapsed activity window, or
+    /// the polling fallback (only ever due while SSE is disconnected).
+    pub fn pump_sync(&mut self) {
+        if self.screen != Screen::Main {
+            return;
+        }
+        let busy = self.is_busy();
+        let activity_due = self.sync.take_due_activity(self.ticks);
+        let poll_due = self.sync.poll_due(self.ticks, busy);
+        if activity_due || poll_due {
+            self.refresh(self.tab);
         }
     }
 
@@ -545,13 +550,7 @@ impl App {
         let tx = self.tx.clone();
         spawn_payload(
             &tx,
-            async move {
-                api.lock()
-                    .await
-                    .task_detail(&task_id)
-                    .await
-                    .map_err(|e| e.message())
-            },
+            async move { api.task_detail(&task_id).await.map_err(|e| e.message()) },
             Payload::TaskDetail,
         );
     }
@@ -562,9 +561,7 @@ impl App {
         spawn_payload(
             &tx,
             async move {
-                api.lock()
-                    .await
-                    .routine_detail(&routine_id)
+                api.routine_detail(&routine_id)
                     .await
                     .map_err(|e| e.message())
             },
@@ -617,10 +614,7 @@ impl App {
             let api = self.api.clone();
             let tx = self.tx.clone();
             tokio::spawn(async move {
-                let result = {
-                    let mut api = api.lock().await;
-                    api.logout().await.map_err(|e| e.message())
-                };
+                let result = api.logout().await.map_err(|e| e.message());
                 let _ = tx.send(AppEvent::Api(Box::new(Payload::LoggedOut(result))));
             });
             return;
@@ -839,7 +833,6 @@ impl App {
                 let tx = self.tx.clone();
                 let onboarding = self.screen == Screen::Onboarding;
                 tokio::spawn(async move {
-                    let mut api = api.lock().await;
                     let result = if onboarding {
                         api.setup(&password)
                             .await
@@ -906,13 +899,13 @@ impl App {
                 let api = self.api.clone();
                 let shown = provider.clone();
                 self.spawn_mutation(format!("Key removed ({shown})"), async move {
-                    api.lock().await.remove_provider_key(&provider).await
+                    api.remove_provider_key(&provider).await
                 });
             }
             ConfirmAction::RemoveDestination { destination_id } => {
                 let api = self.api.clone();
                 self.spawn_mutation("Destination removed", async move {
-                    api.lock().await.remove_destination(&destination_id).await
+                    api.remove_destination(&destination_id).await
                 });
             }
             ConfirmAction::RevokeGrant {
@@ -921,7 +914,7 @@ impl App {
             } => {
                 let api = self.api.clone();
                 self.spawn_mutation("Folder grant revoked", async move {
-                    api.lock().await.revoke_folder(&project_id, &grant_id).await
+                    api.revoke_folder(&project_id, &grant_id).await
                 });
             }
             ConfirmAction::DeleteMemoryEntry { entry_id, file_sha } => {
@@ -930,24 +923,19 @@ impl App {
                     let input = DeleteMemoryEntryRequest {
                         fileSha256: file_sha,
                     };
-                    api.lock()
-                        .await
-                        .delete_memory_entry(&entry_id, &input)
-                        .await
+                    api.delete_memory_entry(&entry_id, &input).await
                 });
             }
             ConfirmAction::DeleteRoutine { routine_id } => {
                 let api = self.api.clone();
                 self.spawn_mutation("Routine removed", async move {
-                    api.lock().await.delete_routine(&routine_id).await
+                    api.delete_routine(&routine_id).await
                 });
             }
             ConfirmAction::RejectApproval { approval_id } => {
                 let api = self.api.clone();
                 self.spawn_mutation("Export rejected", async move {
-                    api.lock()
-                        .await
-                        .decide_approval(&approval_id, "rejected")
+                    api.decide_approval(&approval_id, "rejected")
                         .await
                         .map(|_| ())
                 });
@@ -955,7 +943,7 @@ impl App {
             ConfirmAction::CancelTask { task_id } => {
                 let api = self.api.clone();
                 self.spawn_mutation("Cancel requested", async move {
-                    api.lock().await.cancel_task(&task_id).await.map(|_| ())
+                    api.cancel_task(&task_id).await.map(|_| ())
                 });
             }
         }
@@ -1137,7 +1125,7 @@ impl App {
                     let task_id = detail.task.id.clone();
                     let api = self.api.clone();
                     self.spawn_mutation("Task cancellation requested", async move {
-                        api.lock().await.cancel_task(&task_id).await.map(|_| ())
+                        api.cancel_task(&task_id).await.map(|_| ())
                     });
                 } else {
                     self.set_notice("No active task to cancel", true);
@@ -1284,7 +1272,7 @@ impl App {
         };
         let api = self.api.clone();
         self.spawn_mutation("Task queued", async move {
-            api.lock().await.create_task(&input).await.map(|_| ())
+            api.create_task(&input).await.map(|_| ())
         });
         self.assistant.request = TextArea::default();
         self.assistant.title = TextArea::default();
@@ -1325,9 +1313,10 @@ impl App {
             }
             KeyCode::Char('R') => {
                 let api = self.api.clone();
-                self.spawn_mutation("Dispatch resumed", async move {
-                    api.lock().await.resume_dispatch().await
-                });
+                self.spawn_mutation(
+                    "Dispatch resumed",
+                    async move { api.resume_dispatch().await },
+                );
             }
             KeyCode::Char('j') | KeyCode::Down if count > 0 => {
                 self.tasks.selected = (self.tasks.selected + 1).min(count - 1);
@@ -1376,7 +1365,7 @@ impl App {
                         let task_id = task.id.clone();
                         let api = self.api.clone();
                         self.spawn_mutation("Task requeued", async move {
-                            api.lock().await.retry_task(&task_id).await.map(|_| ())
+                            api.retry_task(&task_id).await.map(|_| ())
                         });
                     }
                 }
@@ -1481,7 +1470,7 @@ impl App {
                         let task_id = detail.task.id.clone();
                         let api = self.api.clone();
                         self.spawn_mutation("Task requeued", async move {
-                            api.lock().await.retry_task(&task_id).await.map(|_| ())
+                            api.retry_task(&task_id).await.map(|_| ())
                         });
                     }
                 }
@@ -1500,9 +1489,7 @@ impl App {
                     let approval_id = approval.id.clone();
                     let api = self.api.clone();
                     self.spawn_mutation("Export approved", async move {
-                        api.lock()
-                            .await
-                            .decide_approval(&approval_id, "granted")
+                        api.decide_approval(&approval_id, "granted")
                             .await
                             .map(|_| ())
                     });
@@ -1528,13 +1515,7 @@ impl App {
                     let tx = self.tx.clone();
                     spawn_payload(
                         &tx,
-                        async move {
-                            api.lock()
-                                .await
-                                .destinations()
-                                .await
-                                .map_err(|e| e.message())
-                        },
+                        async move { api.destinations().await.map_err(|e| e.message()) },
                         Payload::Destinations,
                     );
                     self.dialog = Some(Dialog::Form(Form::export(artifact_id)));
@@ -1627,7 +1608,7 @@ impl App {
             KeyCode::Char('R') => {
                 let api = self.api.clone();
                 self.spawn_mutation("Memory reloaded from disk", async move {
-                    api.lock().await.reload_memory().await
+                    api.reload_memory().await
                 });
             }
             KeyCode::Char('a') => {
@@ -1654,10 +1635,7 @@ impl App {
                     let proposal_id = proposal.id.clone();
                     let api = self.api.clone();
                     self.spawn_mutation("Memory approved", async move {
-                        api.lock()
-                            .await
-                            .approve_memory_proposal(&proposal_id, &input)
-                            .await
+                        api.approve_memory_proposal(&proposal_id, &input).await
                     });
                 }
             }
@@ -1670,7 +1648,7 @@ impl App {
                         let proposal_id = proposal.id.clone();
                         let api = self.api.clone();
                         self.spawn_mutation("Memory proposal rejected", async move {
-                            api.lock().await.reject_memory_proposal(&proposal_id).await
+                            api.reject_memory_proposal(&proposal_id).await
                         });
                     }
                 }
@@ -1796,15 +1774,11 @@ impl App {
                             };
                             self.spawn_mutation(label, async move {
                                 if run_now {
-                                    api.lock()
-                                        .await
-                                        .run_occurrence_now(&routine_id, &occurrence_key)
+                                    api.run_occurrence_now(&routine_id, &occurrence_key)
                                         .await
                                         .map(|_| ())
                                 } else {
-                                    api.lock()
-                                        .await
-                                        .skip_occurrence(&routine_id, &occurrence_key)
+                                    api.skip_occurrence(&routine_id, &occurrence_key)
                                         .await
                                         .map(|_| ())
                                 }
@@ -1823,7 +1797,7 @@ impl App {
                 let tx = self.tx.clone();
                 spawn_payload(
                     &tx,
-                    async move { api.lock().await.projects().await.map_err(|e| e.message()) },
+                    async move { api.projects().await.map_err(|e| e.message()) },
                     Payload::Projects,
                 );
                 self.dialog = Some(Dialog::Form(Form::create_routine()));
@@ -1834,7 +1808,7 @@ impl App {
                     let tx = self.tx.clone();
                     spawn_payload(
                         &tx,
-                        async move { api.lock().await.projects().await.map_err(|e| e.message()) },
+                        async move { api.projects().await.map_err(|e| e.message()) },
                         Payload::Projects,
                     );
                     self.dialog = Some(Dialog::Form(Form::edit_routine(&routine.routine)));
@@ -1864,17 +1838,9 @@ impl App {
                     };
                     self.spawn_mutation(label, async move {
                         if enable {
-                            api.lock()
-                                .await
-                                .enable_routine(&routine_id)
-                                .await
-                                .map(|_| ())
+                            api.enable_routine(&routine_id).await.map(|_| ())
                         } else {
-                            api.lock()
-                                .await
-                                .pause_routine(&routine_id)
-                                .await
-                                .map(|_| ())
+                            api.pause_routine(&routine_id).await.map(|_| ())
                         }
                     });
                 }
@@ -1970,7 +1936,7 @@ impl App {
                 };
                 let api = self.api.clone();
                 self.spawn_mutation(format!("Provider switched to {provider}"), async move {
-                    api.lock().await.set_provider(&input).await
+                    api.set_provider(&input).await
                 });
             }
             1 => {
@@ -2011,7 +1977,7 @@ impl App {
                 };
                 let api = self.api.clone();
                 self.spawn_mutation("Project created", async move {
-                    api.lock().await.create_project(&input).await.map(|_| ())
+                    api.create_project(&input).await.map(|_| ())
                 });
                 Ok(())
             }
@@ -2028,11 +1994,7 @@ impl App {
                 let project_id = project_id.clone();
                 let api = self.api.clone();
                 self.spawn_mutation("Project updated", async move {
-                    api.lock()
-                        .await
-                        .update_project(&project_id, &input)
-                        .await
-                        .map(|_| ())
+                    api.update_project(&project_id, &input).await.map(|_| ())
                 });
                 Ok(())
             }
@@ -2044,11 +2006,7 @@ impl App {
                 let project_id = project_id.clone();
                 let api = self.api.clone();
                 self.spawn_mutation("Folder granted", async move {
-                    api.lock()
-                        .await
-                        .grant_folder(&project_id, path.trim())
-                        .await
-                        .map(|_| ())
+                    api.grant_folder(&project_id, path.trim()).await.map(|_| ())
                 });
                 Ok(())
             }
@@ -2059,11 +2017,7 @@ impl App {
                 }
                 let api = self.api.clone();
                 self.spawn_mutation("Destination granted", async move {
-                    api.lock()
-                        .await
-                        .add_destination(path.trim())
-                        .await
-                        .map(|_| ())
+                    api.add_destination(path.trim()).await.map(|_| ())
                 });
                 Ok(())
             }
@@ -2079,7 +2033,7 @@ impl App {
                 };
                 let api = self.api.clone();
                 self.spawn_mutation(format!("Key stored ({provider})"), async move {
-                    api.lock().await.set_provider_key(&input).await
+                    api.set_provider_key(&input).await
                 });
                 Ok(())
             }
@@ -2113,7 +2067,7 @@ impl App {
                 };
                 let api = self.api.clone();
                 self.spawn_mutation("Export queued for approval", async move {
-                    api.lock().await.request_export(&input).await.map(|_| ())
+                    api.request_export(&input).await.map(|_| ())
                 });
                 Ok(())
             }
@@ -2180,7 +2134,7 @@ impl App {
                         };
                         let api = self.api.clone();
                         self.spawn_mutation("Routine created (paused draft)", async move {
-                            api.lock().await.create_routine(&input).await.map(|_| ())
+                            api.create_routine(&input).await.map(|_| ())
                         });
                     }
                     FormKind::EditRoutine { routine_id } => {
@@ -2198,11 +2152,7 @@ impl App {
                         let routine_id = routine_id.clone();
                         let api = self.api.clone();
                         self.spawn_mutation("Routine updated", async move {
-                            api.lock()
-                                .await
-                                .update_routine(&routine_id, &input)
-                                .await
-                                .map(|_| ())
+                            api.update_routine(&routine_id, &input).await.map(|_| ())
                         });
                     }
                     _ => unreachable!("routine form kinds only"),
@@ -2221,10 +2171,7 @@ impl App {
                 let entry_id = entry_id.clone();
                 let api = self.api.clone();
                 self.spawn_mutation("Memory entry updated", async move {
-                    api.lock()
-                        .await
-                        .update_memory_entry(&entry_id, &input)
-                        .await
+                    api.update_memory_entry(&entry_id, &input).await
                 });
                 Ok(())
             }
@@ -2279,15 +2226,133 @@ mod tests {
     use super::*;
     use crate::contracts::{Task, TaskDetail, TaskDetailArtifact, TaskKind, TaskState};
     use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
-    use std::sync::Arc;
-    use tokio::sync::{mpsc, Mutex};
+    use tokio::sync::mpsc;
 
     fn dummy_app() -> App {
         let (tx, _rx) = mpsc::unbounded_channel();
-        let api = Arc::new(Mutex::new(
-            crate::api::ApiClient::new("http://127.0.0.1:0").unwrap(),
-        ));
+        let api = crate::api::ApiClient::new("http://127.0.0.1:0").unwrap();
         App::new(tx, api)
+    }
+
+    use crate::event::Payload;
+    use crate::refresh::{ACTIVITY_DEBOUNCE_TICKS, POLL_IDLE_TICKS};
+    use std::time::Duration;
+
+    fn main_app() -> App {
+        let mut app = dummy_app();
+        app.screen = Screen::Main;
+        app
+    }
+
+    /// Advance the app clock one tick at a time, pumping the scheduler, and
+    /// report each refresh as finished right away (as a fast API would).
+    fn run_ticks(app: &mut App, from: u64, to: u64) {
+        for now in from..to {
+            app.ticks = now;
+            app.pump_sync();
+            app.on_refresh_done(Tab::Assistant);
+        }
+    }
+
+    #[tokio::test]
+    async fn activity_burst_starts_one_refresh_after_the_debounce_window() {
+        let mut app = main_app();
+        for _ in 0..100 {
+            app.on_activity();
+        }
+        for now in 0..ACTIVITY_DEBOUNCE_TICKS {
+            app.ticks = now;
+            app.pump_sync();
+            assert_eq!(app.sync.refreshes_started(), 0, "refreshed early at {now}");
+        }
+        app.ticks = ACTIVITY_DEBOUNCE_TICKS;
+        app.pump_sync();
+        assert_eq!(app.sync.refreshes_started(), 1);
+        assert!(app.sync.is_in_flight(Tab::Assistant));
+        // The burst is spent: no second refresh on the following ticks.
+        run_ticks(
+            &mut app,
+            ACTIVITY_DEBOUNCE_TICKS + 1,
+            ACTIVITY_DEBOUNCE_TICKS + 30,
+        );
+        assert_eq!(app.sync.refreshes_started(), 1);
+    }
+
+    #[tokio::test]
+    async fn activity_during_a_running_refresh_replays_once_after_it_finishes() {
+        let mut app = main_app();
+        app.on_activity();
+        app.ticks = ACTIVITY_DEBOUNCE_TICKS;
+        app.pump_sync();
+        assert_eq!(app.sync.refreshes_started(), 1);
+
+        // A second burst lands while the first refresh is still in flight.
+        for _ in 0..10 {
+            app.on_activity();
+        }
+        app.ticks = 2 * ACTIVITY_DEBOUNCE_TICKS + 1;
+        app.pump_sync();
+        assert_eq!(
+            app.sync.refreshes_started(),
+            1,
+            "overlapping refresh started"
+        );
+        assert!(app.sync.is_dirty(Tab::Assistant));
+
+        app.on_refresh_done(Tab::Assistant);
+        assert_eq!(app.sync.refreshes_started(), 2, "trailing rerun missing");
+        app.on_refresh_done(Tab::Assistant);
+        assert_eq!(app.sync.refreshes_started(), 2);
+    }
+
+    #[tokio::test]
+    async fn no_polling_while_sse_is_connected_but_fallback_resumes_when_it_drops() {
+        let mut app = main_app();
+        app.on_sse_connection(true);
+        // One catch-up refresh for the (re)connect, then silence: neither the
+        // idle nor the busy cadence ever polls a connected stream.
+        run_ticks(&mut app, 0, 1_000);
+        assert_eq!(app.sync.refreshes_started(), 1);
+
+        app.tasks.executor = Some(ExecutorStatus {
+            busy: true,
+            activeTaskId: Some("t".into()),
+            dispatchPaused: false,
+        });
+        assert!(app.is_busy());
+        run_ticks(&mut app, 1_000, 2_000);
+        assert_eq!(app.sync.refreshes_started(), 1, "busy run polled over SSE");
+
+        // The stream drops at tick 2000: one catch-up, then fallback polling.
+        app.ticks = 2_000;
+        app.on_sse_connection(false);
+        run_ticks(&mut app, 2_000, 2_000 + 2 * POLL_IDLE_TICKS);
+        assert!(
+            app.sync.refreshes_started() > 1,
+            "fallback polling never resumed"
+        );
+    }
+
+    #[tokio::test]
+    async fn login_and_onboarding_wake_the_sse_loop_but_failures_do_not() {
+        let mut app = main_app();
+        let wake = app.sse_wake.clone();
+
+        crate::apply::apply_payload(&mut app, Payload::Auth(Err("bad password".into())));
+        assert!(
+            tokio::time::timeout(Duration::from_millis(50), wake.notified())
+                .await
+                .is_err(),
+            "a failed login must not wake the stream"
+        );
+
+        crate::apply::apply_payload(&mut app, Payload::Auth(Ok(())));
+        assert!(
+            tokio::time::timeout(Duration::from_millis(500), wake.notified())
+                .await
+                .is_ok(),
+            "a successful login must wake the stream immediately"
+        );
     }
 
     fn sample_task(has_artifact: bool) -> TaskDetail {
