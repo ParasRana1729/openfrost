@@ -13,8 +13,8 @@
 - OpenAI, Gemini, and OpenRouter adapters exist; one provider is selected in Settings.
 - Export is a reviewed exact proposal to a granted destination. Arbitrary shell and OS control are outside v0.1.
 - Execution defaults are 12 steps, 10 minutes, 20,000 input characters, and 100,000 output characters.
-- The local API and UI bind to loopback; owner sessions and origin/CSRF checks protect access.
-- Windows is the supported platform. There is no packaged installer published yet.
+- The local API binds to loopback (`127.0.0.1:8787`); owner sessions, CSRF protection, and (for browser clients) origin checks protect access. The primary Control Center is the local Rust Ratatui + Crossterm TUI (`apps/tui`, landed in S09); closing the TUI does not stop running API tasks or routines.
+- Windows is the supported platform. There is no packaged installer published yet. Building from source requires Node.js 24–26, pnpm 10.34.7, and stable Rust for `apps/tui`.
 
 ## Concept and copy
 

@@ -2,15 +2,16 @@
 
 ## Solo rebuild specification — v0.1
 
-- **Status:** Accepted product direction; S00–S06 implemented, S07 in progress (validation performed 2026-10-26; the one-working-week gate runs on the owner's real use), S09 TUI Control Center overhaul in progress on a topic branch
+- **Status:** Accepted product direction; S00–S06, S08 Phase 1, and S09 (TUI Control Center) implemented on `main`; S07 release hardening in progress (pre-week validation performed 2026-10-26; the one-working-week gate runs on the owner's real use)
 - **Owner and first user:** ParasRana1729
 - **Platform:** Windows-first, local runtime
-- **Primary interface:** Local terminal UI (TUI) Control Center; static local web landing page
+- **Primary interface:** Local terminal UI (TUI) Control Center (`apps/tui`); static local web landing page (`apps/landing`)
 
-**Repository state: S06 weekly planning implemented; S07 validation
-performed.** The workspace,
+**Repository state: S00–S06, S08 Phase 1, and S09 are implemented on `main`;
+S07's one-working-week owner-use gate remains open.** The workspace,
 shared Zod contracts, SQLite persistence, DPAPI secret storage, authenticated
-loopback API/UI, bounded single-run executor, the research-brief workflow
+loopback API, Rust Ratatui + Crossterm TUI Control Center (`apps/tui`), bounded
+single-run executor, the research-brief workflow
 (OpenAI, Gemini, and OpenRouter adapters with hosted web search, an
 SSRF-hardened fetch tool, saved Markdown reports), the project-update workflow
 (project CRUD with explicitly granted folder roots, canonical-path checks,
@@ -23,17 +24,19 @@ routines (project-scoped templates, IANA time zones, weekly/daily cadences,
 deduplicated occurrences, missed-occurrence review) exist and are covered by
 CI. S07 release hardening is in progress: its 2026-10-26 validation pass
 (real-model workflows on a free OpenRouter model, the reliability matrix,
-fresh setup, and a real S05→current migration) is recorded in the backlog;
+fresh setup, and a real S05→current migration) and subsequent security/API
+hardening follow-ups are recorded in the backlog;
 the one-working-week gate remains open. Capabilities below that depend on it
 are requirements to implement, not existing functionality. The S07 follow-up in
 [PR #28](https://github.com/ParasRana1729/openfrost/pull/28) adds provider-key
 redaction and NAT64 hardening; it does not complete S07. The
 [solo backlog](../backlog/solo-rebuild.md) is the delivery plan and per-slice
-progress record. S09 replaces the Next.js Control Center web app with a local
-terminal UI (Rust, Ratatui + Crossterm) as a client of the same loopback API;
-the API, contracts, persistence, and executor are unchanged. The static
-`apps/landing` page stays. The unfinished S08 Phase 2 web work is preserved as
-a checkpoint branch and superseded by S09.
+progress record. S09 replaced the Next.js Control Center web app (`apps/web`)
+with the local terminal UI (Rust, Ratatui + Crossterm) over the same loopback
+API (landed on `main` via PR #33, #34, #35, and #37);
+the API, contracts, persistence, and executor remain the enforcement layer. The
+static `apps/landing` page stays. The unfinished S08 Phase 2 web work is
+preserved as a checkpoint branch and superseded by S09.
 
 ## 1. Product promise
 
@@ -58,7 +61,7 @@ that interaction model, not their cloud computers, connector catalogs, or agent
 teams.
 
 OpenFrost runs only while the PC is awake and its runtime is running. Closing the
-browser does not stop the runtime; sleeping or shutting down the PC does. There
+TUI Control Center does not stop the runtime; sleeping or shutting down the PC does. There
 is no cloud failover or promise of uninterrupted 24/7 execution.
 
 ## 2. Decisions

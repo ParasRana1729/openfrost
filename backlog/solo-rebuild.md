@@ -4,11 +4,11 @@
 - **Owner for every item:** ParasRana1729
 - **Current assignment:** S09 complete and landed on main; S07's one-working-week owner-use gate remains open
 
-These are local backlog identifiers, not GitHub issue numbers. S00–S06 are
-complete (see each handoff); S07 remains in progress, the unfinished S08
-Phase 2 web work is preserved on the `feat/ui-phase2-task-lifecycle`
-checkpoint branch and superseded by S09, which is being implemented on a
-topic branch. Ownership is not permission
+These are local backlog identifiers, not GitHub issue numbers. S00–S06, S08
+Phase 1, and S09 are complete on `main` (see each handoff); S07 remains in
+progress, and the unfinished S08 Phase 2 web work is preserved on the
+`feat/ui-phase2-task-lifecycle` checkpoint branch and superseded by S09.
+Ownership is not permission
 for an agent to start all remaining items or publish anything. Implement the next
 explicitly assigned item in dependency order.
 
@@ -887,9 +887,30 @@ gate; findings marked WEEK carry into this log.
   owner-use gate.
 - Next: continue the owner's working-week log and resolve any issues it surfaces.
 
+### Follow-up: typed export/approval 404s, transport secret redaction, and doc sync (2026-11-22)
+
+- Implemented:
+  - Added `ArtifactNotFoundError` in `packages/db/src/store.ts` and mapped it to
+    HTTP `404` in `apps/api/src/app.ts` and `apps/api/src/routes/exports.ts`.
+  - Updated `TaskExecutor.decideApproval` to throw `ApprovalNotFoundError`
+    (fixing HTTP `500` on unknown approval IDs) and `TaskExecutor.enqueueExport`
+    to throw `ArtifactNotFoundError` / `ExportDestinationNotFoundError`.
+  - Wrapped `fetchImpl` in `OpenAIProvider` and `OpenRouterProvider` so
+    non-abort transport errors wrap into `ProviderError` with
+    `redactSecret(message, apiKey)` (matching `GeminiProvider`).
+  - Updated stale browser/web-UI copy in `apps/landing/app/page.tsx` and synced
+    agent instructions and docs (`AGENTS.md`, `CLAUDE.md`, `.cursorrules`,
+    `.github/copilot-instructions.md`, `CONTRIBUTING.md`, `docs/`, `backlog/`,
+    `.taste-skill/`).
+- Verification: `pnpm lint` passed; all 5 workspace builds (`@openfrost/domain`,
+  `@openfrost/db`, `@openfrost/agent`, `@openfrost/api`, `@openfrost/landing`)
+  passed; 328 TypeScript tests passed (83 domain, 54 db incl. real Windows
+  DPAPI round-trips, 121 agent, 70 api); `cargo test` in `apps/tui` passed (32
+  tests). Does not close S07's one-working-week owner-use gate.
+
 ## S08 — Improve Control Center clarity and feedback (Phase 1)
 
-- **Status:** Implementation and local verification complete on `feat/ui-phase1-quick-wins`; [PR #30](https://github.com/ParasRana1729/openfrost/pull/30) is open, with CI running
+- **Status:** Complete (merged on `main`; unfinished Phase 2 web work checkpointed on `feat/ui-phase2-task-lifecycle` and superseded by S09)
 - **Depends on:** S01–S06 (existing local UI and workflows)
 
 Implement the first, visible usability slice from the owner-provided UI/UX plan.
@@ -940,7 +961,7 @@ close S07's working-week release gate or add new runtime capabilities.
 
 ## S09 — TUI Control Center (Ratatui + Crossterm)
 
-- **Status:** Complete (landed on `main` via PR #33, PR #34, and PR #35)
+- **Status:** Complete (landed on `main` via PR #33, PR #34, PR #35, and PR #37)
 - **Depends on:** S01–S06 (existing loopback API, workflows, persistence)
 
 Replace the Next.js Control Center web app (`apps/web`) with a local terminal
@@ -991,14 +1012,17 @@ unchanged. Closing the TUI does not stop tasks or routines.
 
 ### Handoff
 
-- Landed on `main` via PR #33, PR #34, and PR #35 (commits `ce726c6`, `d0b3366`, `6f6da2b`):
-  the Rust crate at `apps/tui` with full functional parity and Codex/OpenCode
-  stream UX (authenticated SSE activity feed, rich Markdown rendering with code
-  blocks and headers, mouse and keyboard scrolling, prompt history, slash
-  commands, masked DPAPI secret key feedback, and animated braille spinner).
-- Checks run on `main` (Rust 1.99.1 `stable-x86_64-pc-windows-gnu` / Node 22):
-  `cargo fmt --all -- --check`, `cargo clippy --all-targets -- -D warnings`,
-  `cargo test` (27 passed), `cargo build`, `pnpm lint`, `pnpm test` (all 325
-  workspace tests pass), `pnpm build`. Configured CI passed on windows-latest.
+- Landed on `main` via PR #33, PR #34, PR #35, and PR #37 (commits `ce726c6`,
+  `d0b3366`, `6f6da2b`, `2eb944c`): the Rust crate at `apps/tui` with full
+  functional parity, Codex/OpenCode stream UX (authenticated SSE activity feed,
+  rich Markdown rendering with code blocks and headers, mouse and keyboard
+  scrolling, prompt history, slash commands, masked DPAPI secret key feedback,
+  and animated braille spinner), and split task-detail layout with isolated
+  report scrolling.
+- Checks run on `main`: `cargo fmt --all -- --check`,
+  `cargo clippy --all-targets -- -D warnings`, `cargo test` (32 passed as of PR
+  #37), `cargo build`, `pnpm lint`, `pnpm test` (328 passed after the S07
+  hardening follow-up), and `pnpm build`. Configured CI passed on
+  `windows-latest` for PR #37.
 - PR #31 was closed as superseded by PR #32 and #34.
 - Next: continue S07 release hardening and one-working-week owner-use gate.
