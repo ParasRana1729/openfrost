@@ -5,15 +5,16 @@
 use std::sync::Arc;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use tokio::sync::Mutex;
+use tokio::sync::{mpsc, Notify};
 use tui_textarea::TextArea;
 
 use crate::api::ApiClient;
 use crate::contracts::*;
 use crate::dialog_forms::Form;
-use crate::event::{spawn_payload, AppEvent, AppTx, Payload};
-
-pub type SharedApi = Arc<Mutex<ApiClient>>;
+use crate::event::{spawn_payload, spawn_refresh, AppEvent, AppTx, Payload};
+use crate::refresh::{
+    load_assistant_data, load_settings_bundle, load_tasks, payload_failed, SyncState,
+};
 
 // ---------------------------------------------------------------------------
 // Screens, tabs, notices
@@ -380,9 +381,25 @@ pub enum ConfirmAction {
 // App
 // ---------------------------------------------------------------------------
 
+// Private result channels preserve request identity without changing the shared
+// event protocol. A refresh is applied atomically once its done event arrives.
+struct PendingRead {
+    rx: crate::event::AppRx,
+    session: u64,
+    detail_generation: u64,
+    routine_detail_generation: u64,
+    refresh: Option<(Tab, u64)>,
+    payloads: Vec<Payload>,
+}
+
 pub struct App {
     pub tx: AppTx,
-    pub api: SharedApi,
+    /// Cheap-to-clone, lock-free API handle; every task gets its own clone.
+    pub api: ApiClient,
+    /// Refresh scheduling: SSE state, activity debounce, in-flight tabs.
+    pub sync: SyncState,
+    /// Wakes the SSE loop out of its reconnect backoff (login, onboarding).
+    pub sse_wake: Arc<Notify>,
     pub screen: Screen,
     pub tab: Tab,
     pub quit: bool,
@@ -399,15 +416,22 @@ pub struct App {
     pub tab_picker: Option<usize>,
     pub notice: Option<Notice>,
     pub ticks: u64,
+    session_generation: u64,
+    detail_generation: u64,
+    routine_detail_generation: u64,
+    detail_target: Option<String>,
+    pending_reads: Vec<PendingRead>,
 }
 
 impl App {
-    pub fn new(tx: AppTx, api: SharedApi) -> Self {
+    pub fn new(tx: AppTx, api: ApiClient) -> Self {
         let mut auth = TextArea::default();
         auth.set_mask_char('\u{2022}');
         Self {
             tx,
             api,
+            sync: SyncState::default(),
+            sse_wake: Arc::new(Notify::new()),
             screen: Screen::Connecting,
             tab: Tab::Assistant,
             quit: false,
@@ -423,6 +447,11 @@ impl App {
             tab_picker: None,
             notice: None,
             ticks: 0,
+            session_generation: 0,
+            detail_generation: 0,
+            routine_detail_generation: 0,
+            detail_target: None,
+            pending_reads: Vec::new(),
         }
     }
 
@@ -445,126 +474,217 @@ impl App {
         self.refresh(Tab::Settings);
     }
 
+    /// Refresh one tab's data in the background. A tab never has two
+    /// refreshes in flight: a request that arrives mid-refresh is replayed
+    /// once when the running one finishes (see `SyncState`).
     pub fn refresh(&mut self, tab: Tab) {
+        if !self.sync.begin_refresh(tab, self.ticks) {
+            return;
+        }
         let api = self.api.clone();
-        let tx = self.tx.clone();
+        let tx = self.read_channel(Some((tab, self.sync.generation(tab))));
         match tab {
             Tab::Assistant => {
-                spawn_payload(
+                spawn_refresh(
                     &tx,
-                    async move {
-                        let api = api.lock().await;
-                        let events = api.events(15).await.map_err(|e| e.message());
-                        let approvals = api.pending_approvals().await.map_err(|e| e.message());
-                        let routines = api.routines().await.map_err(|e| e.message());
-                        let projects = api.projects().await.map_err(|e| e.message());
-                        let tasks = api.tasks().await.map_err(|e| e.message());
-                        let latest_task = match &tasks {
-                            Ok(res) if !res.tasks.is_empty() => {
-                                api.task_detail(&res.tasks[0].id).await.ok()
-                            }
-                            _ => None,
-                        };
-                        (events, approvals, routines, projects, tasks, latest_task)
-                    },
-                    |(events, approvals, routines, projects, tasks, latest_task)| {
-                        Payload::AssistantData {
-                            events,
-                            approvals,
-                            routines,
-                            projects,
-                            tasks,
-                            latest_task,
-                        }
-                    },
+                    tab,
+                    async move { vec![load_assistant_data(&api).await] },
                 );
             }
             Tab::Tasks => {
-                spawn_payload(
+                let open_task_id = if self.tab == Tab::Tasks && self.tasks.detail_open {
+                    self.tasks
+                        .detail
+                        .as_ref()
+                        .filter(|d| self.detail_target.as_ref() == Some(&d.task.id))
+                        .map(|d| d.task.id.clone())
+                } else {
+                    None
+                };
+                spawn_refresh(
                     &tx,
-                    async move { api.lock().await.tasks().await.map_err(|e| e.message()) },
-                    Payload::Tasks,
+                    tab,
+                    async move { load_tasks(&api, open_task_id).await },
                 );
-                if let Some(detail) = &self.tasks.detail {
-                    let task_id = detail.task.id.clone();
-                    let api = self.api.clone();
-                    spawn_payload(
-                        &tx,
-                        async move {
-                            api.lock()
-                                .await
-                                .task_detail(&task_id)
-                                .await
-                                .map_err(|e| e.message())
-                        },
-                        Payload::TaskDetail,
-                    );
-                }
             }
             Tab::Projects => {
-                spawn_payload(
-                    &tx,
-                    async move { api.lock().await.projects().await.map_err(|e| e.message()) },
-                    Payload::Projects,
-                );
+                spawn_refresh(&tx, tab, async move {
+                    vec![Payload::Projects(
+                        api.projects().await.map_err(|e| e.message()),
+                    )]
+                });
             }
             Tab::Memory => {
-                spawn_payload(
-                    &tx,
-                    async move { api.lock().await.memory().await.map_err(|e| e.message()) },
-                    Payload::Memory,
-                );
+                spawn_refresh(&tx, tab, async move {
+                    vec![Payload::Memory(api.memory().await.map_err(|e| e.message()))]
+                });
             }
             Tab::Routines => {
-                spawn_payload(
-                    &tx,
-                    async move { api.lock().await.routines().await.map_err(|e| e.message()) },
-                    Payload::Routines,
-                );
+                spawn_refresh(&tx, tab, async move {
+                    vec![Payload::Routines(
+                        api.routines().await.map_err(|e| e.message()),
+                    )]
+                });
             }
             Tab::Settings => {
-                spawn_payload(
+                spawn_refresh(
                     &tx,
-                    async move {
-                        let api = api.lock().await;
-                        let settings = api.settings().await.map_err(|e| e.message());
-                        let destinations = api.destinations().await.map_err(|e| e.message());
-                        (settings, destinations)
-                    },
-                    |(settings, destinations)| Payload::SettingsBundle {
-                        settings,
-                        destinations,
-                    },
+                    tab,
+                    async move { vec![load_settings_bundle(&api).await] },
                 );
             }
         }
     }
 
+    /// True while an agent run is active or the executor reports busy.
+    pub fn is_busy(&self) -> bool {
+        self.assistant
+            .active_task_detail
+            .as_ref()
+            .is_some_and(|d| d.task.state == TaskState::Running)
+            || self.tasks.executor.as_ref().is_some_and(|e| e.busy)
+    }
+
+    /// An SSE `activity` ping: coalesced, not an immediate refresh.
+    pub fn on_activity(&mut self) {
+        if self.screen == Screen::Main {
+            self.sync.note_activity(self.ticks);
+        }
+    }
+
+    pub fn on_sse_connection(&mut self, connected: bool) {
+        self.sync.set_sse_connected(connected, self.ticks);
+    }
+
+    pub fn on_refresh_done(&mut self, tab: Tab) {
+        if self.sync.finish_refresh(tab) && self.screen == Screen::Main {
+            self.refresh(tab);
+        }
+    }
+
+    /// Apply completed reads, then run debounced activity, failed-read retries,
+    /// or the polling fallback (only due while SSE is disconnected).
+    pub fn pump_sync(&mut self) {
+        self.drain_reads();
+        if self.screen != Screen::Main {
+            return;
+        }
+        let busy = self.is_busy();
+        let activity_due = self.sync.take_due_activity(self.ticks);
+        let poll_due = self.sync.poll_due(self.ticks, busy);
+        if activity_due || poll_due {
+            self.refresh(self.tab);
+        }
+        for tab in ALL_TABS {
+            if self.sync.take_due_retry(tab, self.ticks) {
+                self.refresh(tab);
+            }
+        }
+    }
+
     pub fn open_task_detail(&mut self, task_id: String) {
+        self.detail_generation += 1;
+        self.detail_target = Some(task_id.clone());
         let api = self.api.clone();
-        let tx = self.tx.clone();
+        let tx = self.read_channel(None);
         spawn_payload(
             &tx,
-            async move {
-                api.lock()
-                    .await
-                    .task_detail(&task_id)
-                    .await
-                    .map_err(|e| e.message())
-            },
+            async move { api.task_detail(&task_id).await.map_err(|e| e.message()) },
             Payload::TaskDetail,
         );
     }
 
+    fn read_channel(&mut self, refresh: Option<(Tab, u64)>) -> AppTx {
+        let (tx, rx) = mpsc::unbounded_channel();
+        self.pending_reads.push(PendingRead {
+            rx,
+            session: self.session_generation,
+            detail_generation: self.detail_generation,
+            routine_detail_generation: self.routine_detail_generation,
+            refresh,
+            payloads: Vec::new(),
+        });
+        tx
+    }
+
+    fn drain_reads(&mut self) {
+        for mut read in std::mem::take(&mut self.pending_reads) {
+            let mut done = false;
+            loop {
+                match read.rx.try_recv() {
+                    Ok(AppEvent::Api(payload)) => read.payloads.push(*payload),
+                    Ok(AppEvent::RefreshDone(_)) => {
+                        done = true;
+                        break;
+                    }
+                    Err(mpsc::error::TryRecvError::Disconnected) => {
+                        done = true;
+                        break;
+                    }
+                    Err(mpsc::error::TryRecvError::Empty) => break,
+                    Ok(_) => {}
+                }
+            }
+            if !done {
+                self.pending_reads.push(read);
+                continue;
+            }
+            if read.session != self.session_generation || self.screen != Screen::Main {
+                continue;
+            }
+            if read
+                .refresh
+                .is_some_and(|(tab, generation)| !self.sync.is_current(tab, generation))
+            {
+                continue;
+            }
+            let mut failed = read.payloads.is_empty();
+            for payload in read.payloads {
+                if matches!(payload, Payload::TaskDetail(_))
+                    && (read.detail_generation != self.detail_generation || self.tab != Tab::Tasks)
+                {
+                    continue;
+                }
+                if matches!(payload, Payload::RoutineDetail(_))
+                    && (read.routine_detail_generation != self.routine_detail_generation
+                        || self.tab != Tab::Routines)
+                {
+                    continue;
+                }
+                failed |= payload_failed(&payload);
+                crate::apply::apply_payload(self, payload);
+            }
+            if let Some((tab, _)) = read.refresh {
+                self.sync.record_outcome(tab, failed, self.ticks);
+                self.on_refresh_done(tab);
+            }
+        }
+    }
+
+    /// Invalidate old-session reads and retry timers before starting a new
+    /// session's refreshes, or when the current session ends.
+    pub fn reset_read_session(&mut self) {
+        self.session_generation += 1;
+        self.detail_generation += 1;
+        self.routine_detail_generation += 1;
+        self.pending_reads.clear();
+        self.sync = SyncState::default();
+        self.detail_target = None;
+        self.tasks.detail = None;
+        self.tasks.detail_open = false;
+        self.routines.detail = None;
+        self.routines.detail_open = false;
+        self.routines.occurrence_selected = 0;
+    }
+
     pub fn open_routine_detail(&mut self, routine_id: String) {
+        self.routine_detail_generation += 1;
         let api = self.api.clone();
-        let tx = self.tx.clone();
+        let tx = self.read_channel(None);
         spawn_payload(
             &tx,
             async move {
-                api.lock()
-                    .await
-                    .routine_detail(&routine_id)
+                api.routine_detail(&routine_id)
                     .await
                     .map_err(|e| e.message())
             },
@@ -617,10 +737,7 @@ impl App {
             let api = self.api.clone();
             let tx = self.tx.clone();
             tokio::spawn(async move {
-                let result = {
-                    let mut api = api.lock().await;
-                    api.logout().await.map_err(|e| e.message())
-                };
+                let result = api.logout().await.map_err(|e| e.message());
                 let _ = tx.send(AppEvent::Api(Box::new(Payload::LoggedOut(result))));
             });
             return;
@@ -821,6 +938,10 @@ impl App {
     }
 
     pub fn switch_tab(&mut self, tab: Tab) {
+        if self.tab != tab {
+            self.detail_generation += 1;
+            self.routine_detail_generation += 1;
+        }
         self.tab = tab;
         self.refresh(tab);
     }
@@ -839,7 +960,6 @@ impl App {
                 let tx = self.tx.clone();
                 let onboarding = self.screen == Screen::Onboarding;
                 tokio::spawn(async move {
-                    let mut api = api.lock().await;
                     let result = if onboarding {
                         api.setup(&password)
                             .await
@@ -906,13 +1026,13 @@ impl App {
                 let api = self.api.clone();
                 let shown = provider.clone();
                 self.spawn_mutation(format!("Key removed ({shown})"), async move {
-                    api.lock().await.remove_provider_key(&provider).await
+                    api.remove_provider_key(&provider).await
                 });
             }
             ConfirmAction::RemoveDestination { destination_id } => {
                 let api = self.api.clone();
                 self.spawn_mutation("Destination removed", async move {
-                    api.lock().await.remove_destination(&destination_id).await
+                    api.remove_destination(&destination_id).await
                 });
             }
             ConfirmAction::RevokeGrant {
@@ -921,7 +1041,7 @@ impl App {
             } => {
                 let api = self.api.clone();
                 self.spawn_mutation("Folder grant revoked", async move {
-                    api.lock().await.revoke_folder(&project_id, &grant_id).await
+                    api.revoke_folder(&project_id, &grant_id).await
                 });
             }
             ConfirmAction::DeleteMemoryEntry { entry_id, file_sha } => {
@@ -930,24 +1050,19 @@ impl App {
                     let input = DeleteMemoryEntryRequest {
                         fileSha256: file_sha,
                     };
-                    api.lock()
-                        .await
-                        .delete_memory_entry(&entry_id, &input)
-                        .await
+                    api.delete_memory_entry(&entry_id, &input).await
                 });
             }
             ConfirmAction::DeleteRoutine { routine_id } => {
                 let api = self.api.clone();
                 self.spawn_mutation("Routine removed", async move {
-                    api.lock().await.delete_routine(&routine_id).await
+                    api.delete_routine(&routine_id).await
                 });
             }
             ConfirmAction::RejectApproval { approval_id } => {
                 let api = self.api.clone();
                 self.spawn_mutation("Export rejected", async move {
-                    api.lock()
-                        .await
-                        .decide_approval(&approval_id, "rejected")
+                    api.decide_approval(&approval_id, "rejected")
                         .await
                         .map(|_| ())
                 });
@@ -955,7 +1070,7 @@ impl App {
             ConfirmAction::CancelTask { task_id } => {
                 let api = self.api.clone();
                 self.spawn_mutation("Cancel requested", async move {
-                    api.lock().await.cancel_task(&task_id).await.map(|_| ())
+                    api.cancel_task(&task_id).await.map(|_| ())
                 });
             }
         }
@@ -1137,7 +1252,7 @@ impl App {
                     let task_id = detail.task.id.clone();
                     let api = self.api.clone();
                     self.spawn_mutation("Task cancellation requested", async move {
-                        api.lock().await.cancel_task(&task_id).await.map(|_| ())
+                        api.cancel_task(&task_id).await.map(|_| ())
                     });
                 } else {
                     self.set_notice("No active task to cancel", true);
@@ -1284,7 +1399,7 @@ impl App {
         };
         let api = self.api.clone();
         self.spawn_mutation("Task queued", async move {
-            api.lock().await.create_task(&input).await.map(|_| ())
+            api.create_task(&input).await.map(|_| ())
         });
         self.assistant.request = TextArea::default();
         self.assistant.title = TextArea::default();
@@ -1316,6 +1431,7 @@ impl App {
         }
         let count = self.tasks.visible().len();
         match key.code {
+            KeyCode::Esc => self.detail_generation += 1,
             KeyCode::Char('f') => {
                 self.tasks.filter = self.tasks.filter.next();
                 self.tasks.clamp_selection();
@@ -1325,9 +1441,10 @@ impl App {
             }
             KeyCode::Char('R') => {
                 let api = self.api.clone();
-                self.spawn_mutation("Dispatch resumed", async move {
-                    api.lock().await.resume_dispatch().await
-                });
+                self.spawn_mutation(
+                    "Dispatch resumed",
+                    async move { api.resume_dispatch().await },
+                );
             }
             KeyCode::Char('j') | KeyCode::Down if count > 0 => {
                 self.tasks.selected = (self.tasks.selected + 1).min(count - 1);
@@ -1376,7 +1493,7 @@ impl App {
                         let task_id = task.id.clone();
                         let api = self.api.clone();
                         self.spawn_mutation("Task requeued", async move {
-                            api.lock().await.retry_task(&task_id).await.map(|_| ())
+                            api.retry_task(&task_id).await.map(|_| ())
                         });
                     }
                 }
@@ -1394,6 +1511,7 @@ impl App {
             .is_some();
         match key.code {
             KeyCode::Esc | KeyCode::Char('b') => {
+                self.detail_generation += 1;
                 self.tasks.detail_open = false;
                 self.tasks.detail = None;
                 self.tasks.artifact_scroll = 0;
@@ -1481,7 +1599,7 @@ impl App {
                         let task_id = detail.task.id.clone();
                         let api = self.api.clone();
                         self.spawn_mutation("Task requeued", async move {
-                            api.lock().await.retry_task(&task_id).await.map(|_| ())
+                            api.retry_task(&task_id).await.map(|_| ())
                         });
                     }
                 }
@@ -1500,9 +1618,7 @@ impl App {
                     let approval_id = approval.id.clone();
                     let api = self.api.clone();
                     self.spawn_mutation("Export approved", async move {
-                        api.lock()
-                            .await
-                            .decide_approval(&approval_id, "granted")
+                        api.decide_approval(&approval_id, "granted")
                             .await
                             .map(|_| ())
                     });
@@ -1528,13 +1644,7 @@ impl App {
                     let tx = self.tx.clone();
                     spawn_payload(
                         &tx,
-                        async move {
-                            api.lock()
-                                .await
-                                .destinations()
-                                .await
-                                .map_err(|e| e.message())
-                        },
+                        async move { api.destinations().await.map_err(|e| e.message()) },
                         Payload::Destinations,
                     );
                     self.dialog = Some(Dialog::Form(Form::export(artifact_id)));
@@ -1627,7 +1737,7 @@ impl App {
             KeyCode::Char('R') => {
                 let api = self.api.clone();
                 self.spawn_mutation("Memory reloaded from disk", async move {
-                    api.lock().await.reload_memory().await
+                    api.reload_memory().await
                 });
             }
             KeyCode::Char('a') => {
@@ -1654,10 +1764,7 @@ impl App {
                     let proposal_id = proposal.id.clone();
                     let api = self.api.clone();
                     self.spawn_mutation("Memory approved", async move {
-                        api.lock()
-                            .await
-                            .approve_memory_proposal(&proposal_id, &input)
-                            .await
+                        api.approve_memory_proposal(&proposal_id, &input).await
                     });
                 }
             }
@@ -1670,7 +1777,7 @@ impl App {
                         let proposal_id = proposal.id.clone();
                         let api = self.api.clone();
                         self.spawn_mutation("Memory proposal rejected", async move {
-                            api.lock().await.reject_memory_proposal(&proposal_id).await
+                            api.reject_memory_proposal(&proposal_id).await
                         });
                     }
                 }
@@ -1764,6 +1871,7 @@ impl App {
                 .unwrap_or(0);
             match key.code {
                 KeyCode::Esc | KeyCode::Char('b') => {
+                    self.routine_detail_generation += 1;
                     self.routines.detail_open = false;
                     self.routines.detail = None;
                     self.routines.occurrence_selected = 0;
@@ -1796,15 +1904,11 @@ impl App {
                             };
                             self.spawn_mutation(label, async move {
                                 if run_now {
-                                    api.lock()
-                                        .await
-                                        .run_occurrence_now(&routine_id, &occurrence_key)
+                                    api.run_occurrence_now(&routine_id, &occurrence_key)
                                         .await
                                         .map(|_| ())
                                 } else {
-                                    api.lock()
-                                        .await
-                                        .skip_occurrence(&routine_id, &occurrence_key)
+                                    api.skip_occurrence(&routine_id, &occurrence_key)
                                         .await
                                         .map(|_| ())
                                 }
@@ -1818,12 +1922,13 @@ impl App {
         }
         let count = self.routines.routines.len();
         match key.code {
+            KeyCode::Esc | KeyCode::Char('b') => self.routine_detail_generation += 1,
             KeyCode::Char('n') => {
                 let api = self.api.clone();
                 let tx = self.tx.clone();
                 spawn_payload(
                     &tx,
-                    async move { api.lock().await.projects().await.map_err(|e| e.message()) },
+                    async move { api.projects().await.map_err(|e| e.message()) },
                     Payload::Projects,
                 );
                 self.dialog = Some(Dialog::Form(Form::create_routine()));
@@ -1834,7 +1939,7 @@ impl App {
                     let tx = self.tx.clone();
                     spawn_payload(
                         &tx,
-                        async move { api.lock().await.projects().await.map_err(|e| e.message()) },
+                        async move { api.projects().await.map_err(|e| e.message()) },
                         Payload::Projects,
                     );
                     self.dialog = Some(Dialog::Form(Form::edit_routine(&routine.routine)));
@@ -1864,17 +1969,9 @@ impl App {
                     };
                     self.spawn_mutation(label, async move {
                         if enable {
-                            api.lock()
-                                .await
-                                .enable_routine(&routine_id)
-                                .await
-                                .map(|_| ())
+                            api.enable_routine(&routine_id).await.map(|_| ())
                         } else {
-                            api.lock()
-                                .await
-                                .pause_routine(&routine_id)
-                                .await
-                                .map(|_| ())
+                            api.pause_routine(&routine_id).await.map(|_| ())
                         }
                     });
                 }
@@ -1970,7 +2067,7 @@ impl App {
                 };
                 let api = self.api.clone();
                 self.spawn_mutation(format!("Provider switched to {provider}"), async move {
-                    api.lock().await.set_provider(&input).await
+                    api.set_provider(&input).await
                 });
             }
             1 => {
@@ -2011,7 +2108,7 @@ impl App {
                 };
                 let api = self.api.clone();
                 self.spawn_mutation("Project created", async move {
-                    api.lock().await.create_project(&input).await.map(|_| ())
+                    api.create_project(&input).await.map(|_| ())
                 });
                 Ok(())
             }
@@ -2028,11 +2125,7 @@ impl App {
                 let project_id = project_id.clone();
                 let api = self.api.clone();
                 self.spawn_mutation("Project updated", async move {
-                    api.lock()
-                        .await
-                        .update_project(&project_id, &input)
-                        .await
-                        .map(|_| ())
+                    api.update_project(&project_id, &input).await.map(|_| ())
                 });
                 Ok(())
             }
@@ -2044,11 +2137,7 @@ impl App {
                 let project_id = project_id.clone();
                 let api = self.api.clone();
                 self.spawn_mutation("Folder granted", async move {
-                    api.lock()
-                        .await
-                        .grant_folder(&project_id, path.trim())
-                        .await
-                        .map(|_| ())
+                    api.grant_folder(&project_id, path.trim()).await.map(|_| ())
                 });
                 Ok(())
             }
@@ -2059,11 +2148,7 @@ impl App {
                 }
                 let api = self.api.clone();
                 self.spawn_mutation("Destination granted", async move {
-                    api.lock()
-                        .await
-                        .add_destination(path.trim())
-                        .await
-                        .map(|_| ())
+                    api.add_destination(path.trim()).await.map(|_| ())
                 });
                 Ok(())
             }
@@ -2079,7 +2164,7 @@ impl App {
                 };
                 let api = self.api.clone();
                 self.spawn_mutation(format!("Key stored ({provider})"), async move {
-                    api.lock().await.set_provider_key(&input).await
+                    api.set_provider_key(&input).await
                 });
                 Ok(())
             }
@@ -2113,7 +2198,7 @@ impl App {
                 };
                 let api = self.api.clone();
                 self.spawn_mutation("Export queued for approval", async move {
-                    api.lock().await.request_export(&input).await.map(|_| ())
+                    api.request_export(&input).await.map(|_| ())
                 });
                 Ok(())
             }
@@ -2180,7 +2265,7 @@ impl App {
                         };
                         let api = self.api.clone();
                         self.spawn_mutation("Routine created (paused draft)", async move {
-                            api.lock().await.create_routine(&input).await.map(|_| ())
+                            api.create_routine(&input).await.map(|_| ())
                         });
                     }
                     FormKind::EditRoutine { routine_id } => {
@@ -2198,11 +2283,7 @@ impl App {
                         let routine_id = routine_id.clone();
                         let api = self.api.clone();
                         self.spawn_mutation("Routine updated", async move {
-                            api.lock()
-                                .await
-                                .update_routine(&routine_id, &input)
-                                .await
-                                .map(|_| ())
+                            api.update_routine(&routine_id, &input).await.map(|_| ())
                         });
                     }
                     _ => unreachable!("routine form kinds only"),
@@ -2221,10 +2302,7 @@ impl App {
                 let entry_id = entry_id.clone();
                 let api = self.api.clone();
                 self.spawn_mutation("Memory entry updated", async move {
-                    api.lock()
-                        .await
-                        .update_memory_entry(&entry_id, &input)
-                        .await
+                    api.update_memory_entry(&entry_id, &input).await
                 });
                 Ok(())
             }
@@ -2279,15 +2357,566 @@ mod tests {
     use super::*;
     use crate::contracts::{Task, TaskDetail, TaskDetailArtifact, TaskKind, TaskState};
     use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
-    use std::sync::Arc;
-    use tokio::sync::{mpsc, Mutex};
+    use tokio::sync::mpsc;
 
     fn dummy_app() -> App {
         let (tx, _rx) = mpsc::unbounded_channel();
-        let api = Arc::new(Mutex::new(
-            crate::api::ApiClient::new("http://127.0.0.1:0").unwrap(),
-        ));
+        let api = crate::api::ApiClient::new("http://127.0.0.1:0").unwrap();
         App::new(tx, api)
+    }
+
+    use crate::event::Payload;
+    use crate::refresh::{ACTIVITY_DEBOUNCE_TICKS, POLL_IDLE_TICKS};
+    use std::time::Duration;
+
+    fn main_app() -> App {
+        let mut app = dummy_app();
+        app.screen = Screen::Main;
+        app
+    }
+
+    /// Advance the app clock one tick at a time, pumping the scheduler, and
+    /// report each refresh as finished right away (as a fast API would).
+    fn run_ticks(app: &mut App, from: u64, to: u64) {
+        for now in from..to {
+            app.ticks = now;
+            app.pump_sync();
+            app.on_refresh_done(Tab::Assistant);
+        }
+    }
+
+    #[tokio::test]
+    async fn activity_burst_starts_one_refresh_after_the_debounce_window() {
+        let mut app = main_app();
+        for _ in 0..100 {
+            app.on_activity();
+        }
+        for now in 0..ACTIVITY_DEBOUNCE_TICKS {
+            app.ticks = now;
+            app.pump_sync();
+            assert_eq!(app.sync.refreshes_started(), 0, "refreshed early at {now}");
+        }
+        app.ticks = ACTIVITY_DEBOUNCE_TICKS;
+        app.pump_sync();
+        assert_eq!(app.sync.refreshes_started(), 1);
+        assert!(app.sync.is_in_flight(Tab::Assistant));
+        // The burst is spent: no second refresh on the following ticks.
+        run_ticks(
+            &mut app,
+            ACTIVITY_DEBOUNCE_TICKS + 1,
+            ACTIVITY_DEBOUNCE_TICKS + 30,
+        );
+        assert_eq!(app.sync.refreshes_started(), 1);
+    }
+
+    #[tokio::test]
+    async fn activity_during_a_running_refresh_replays_once_after_it_finishes() {
+        let mut app = main_app();
+        app.on_activity();
+        app.ticks = ACTIVITY_DEBOUNCE_TICKS;
+        app.pump_sync();
+        assert_eq!(app.sync.refreshes_started(), 1);
+
+        // A second burst lands while the first refresh is still in flight.
+        for _ in 0..10 {
+            app.on_activity();
+        }
+        app.ticks = 2 * ACTIVITY_DEBOUNCE_TICKS + 1;
+        app.pump_sync();
+        assert_eq!(
+            app.sync.refreshes_started(),
+            1,
+            "overlapping refresh started"
+        );
+        assert!(app.sync.is_dirty(Tab::Assistant));
+
+        app.on_refresh_done(Tab::Assistant);
+        assert_eq!(app.sync.refreshes_started(), 2, "trailing rerun missing");
+        app.on_refresh_done(Tab::Assistant);
+        assert_eq!(app.sync.refreshes_started(), 2);
+    }
+
+    #[tokio::test]
+    async fn no_polling_while_sse_is_connected_but_fallback_resumes_when_it_drops() {
+        let mut app = main_app();
+        app.on_sse_connection(true);
+        // One catch-up refresh for the (re)connect, then silence: neither the
+        // idle nor the busy cadence ever polls a connected stream.
+        run_ticks(&mut app, 0, 1_000);
+        assert_eq!(app.sync.refreshes_started(), 1);
+
+        app.tasks.executor = Some(ExecutorStatus {
+            busy: true,
+            activeTaskId: Some("t".into()),
+            dispatchPaused: false,
+        });
+        assert!(app.is_busy());
+        run_ticks(&mut app, 1_000, 2_000);
+        assert_eq!(app.sync.refreshes_started(), 1, "busy run polled over SSE");
+
+        // The stream drops at tick 2000: one catch-up, then fallback polling.
+        app.ticks = 2_000;
+        app.on_sse_connection(false);
+        run_ticks(&mut app, 2_000, 2_000 + 2 * POLL_IDLE_TICKS);
+        assert!(
+            app.sync.refreshes_started() > 1,
+            "fallback polling never resumed"
+        );
+    }
+
+    #[tokio::test]
+    async fn login_and_onboarding_wake_the_sse_loop_but_failures_do_not() {
+        let mut app = main_app();
+        let wake = app.sse_wake.clone();
+
+        crate::apply::apply_payload(&mut app, Payload::Auth(Err("bad password".into())));
+        assert!(
+            tokio::time::timeout(Duration::from_millis(50), wake.notified())
+                .await
+                .is_err(),
+            "a failed login must not wake the stream"
+        );
+
+        crate::apply::apply_payload(&mut app, Payload::Auth(Ok(())));
+        assert!(
+            tokio::time::timeout(Duration::from_millis(500), wake.notified())
+                .await
+                .is_ok(),
+            "a successful login must wake the stream immediately"
+        );
+    }
+
+    fn send_detail(tx: AppTx, id: &str) {
+        let mut detail = sample_task(false);
+        detail.task.id = id.into();
+        tx.send(AppEvent::Api(Box::new(Payload::TaskDetail(Ok(detail)))))
+            .unwrap();
+    }
+
+    fn pending_detail(app: &mut App, id: &str) -> AppTx {
+        // Drive the real request setup, but control completion order without
+        // timing or network dependencies for these state-machine tests.
+        app.open_task_detail(id.into());
+        let (tx, rx) = mpsc::unbounded_channel();
+        app.pending_reads.last_mut().unwrap().rx = rx;
+        tx
+    }
+
+    fn sample_routine(id: &str) -> crate::api::RoutineDetail {
+        serde_json::from_value(serde_json::json!({
+            "id": id, "name": id, "projectId": "p1", "timezone": "UTC",
+            "schedule": { "kind": "daily", "time": "09:00" },
+            "template": { "title": "Plan", "request": "Draft priorities", "constraints": null },
+            "state": "active", "windowStartAt": "2026-11-01T00:00:00Z",
+            "lastOccurrenceKey": null, "lastOccurrenceAt": null,
+            "createdAt": "2026-11-01T00:00:00Z", "updatedAt": "2026-11-01T00:00:00Z",
+            "nextOccurrenceAt": null, "nextOccurrenceKey": null,
+            "missedCount": 2, "projectName": "Demo",
+            "occurrences": (["2026-11-20", "2026-11-21"].map(|key| serde_json::json!({
+                "id": format!("{id}-{key}"), "routineId": id, "occurrenceKey": key,
+                "scheduledFor": "2026-11-20T09:00:00Z", "state": "missed",
+                "taskId": null, "reason": null, "decidedAt": null,
+                "createdAt": "2026-11-20T09:00:00Z", "updatedAt": "2026-11-20T09:00:00Z"
+            })))
+        }))
+        .unwrap()
+    }
+
+    fn pending_routine_detail(app: &mut App, id: &str) -> AppTx {
+        app.open_routine_detail(id.into());
+        let (tx, rx) = mpsc::unbounded_channel();
+        app.pending_reads.last_mut().unwrap().rx = rx;
+        tx
+    }
+
+    fn send_routine_detail(tx: AppTx, id: &str) {
+        tx.send(AppEvent::Api(Box::new(Payload::RoutineDetail(Ok(
+            sample_routine(id),
+        )))))
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn latest_routine_detail_wins_reverse_order_without_resetting_occurrence_selection() {
+        let mut app = main_app();
+        app.tab = Tab::Routines;
+        let a = pending_routine_detail(&mut app, "a");
+        let b = pending_routine_detail(&mut app, "b");
+        send_routine_detail(b, "b");
+        app.drain_reads();
+        assert_eq!(app.routines.detail.as_ref().unwrap().view.routine.id, "b");
+        app.routines.occurrence_selected = 1;
+        send_routine_detail(a, "a");
+        app.drain_reads();
+        assert_eq!(app.routines.detail.as_ref().unwrap().view.routine.id, "b");
+        assert_eq!(app.routines.occurrence_selected, 1);
+    }
+
+    #[tokio::test]
+    async fn routine_occurrence_actions_keep_the_current_id_after_a_stale_response() {
+        use httpmock::{Method::POST, MockServer};
+        let server = MockServer::start();
+        let current = server.mock(|when, then| {
+            when.method(POST)
+                .path_contains("/api/routines/b/occurrences/2026-11-21/");
+            // Only the request target matters here; prevent follow-up refreshes.
+            then.status(503).body(r#"{"error":"observed"}"#);
+        });
+        let stale = server.mock(|when, then| {
+            when.method(POST)
+                .path_contains("/api/routines/a/occurrences/");
+            then.status(503);
+        });
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let mut app = App::new(tx, ApiClient::new(&server.base_url()).unwrap());
+        app.screen = Screen::Main;
+        app.tab = Tab::Routines;
+        let a = pending_routine_detail(&mut app, "a");
+        let b = pending_routine_detail(&mut app, "b");
+        send_routine_detail(b, "b");
+        app.drain_reads();
+        app.routines.occurrence_selected = 1;
+        send_routine_detail(a, "a");
+        app.drain_reads();
+        for key in ['r', 's'] {
+            app.on_key(KeyEvent::new(KeyCode::Char(key), KeyModifiers::NONE));
+            let event = tokio::time::timeout(Duration::from_secs(3), rx.recv())
+                .await
+                .unwrap();
+            assert!(matches!(event, Some(AppEvent::Api(payload))
+                if matches!(*payload, Payload::Mutation { result: Err(_), .. })));
+        }
+        current.assert_hits(2);
+        stale.assert_hits(0);
+    }
+
+    #[tokio::test]
+    async fn stale_routine_detail_errors_do_not_replace_the_current_notice() {
+        let mut app = main_app();
+        app.tab = Tab::Routines;
+        let a = pending_routine_detail(&mut app, "a");
+        let b = pending_routine_detail(&mut app, "b");
+        send_routine_detail(b, "b");
+        app.drain_reads();
+        app.set_notice("current", false);
+        a.send(AppEvent::Api(Box::new(Payload::RoutineDetail(Err(
+            "stale".into(),
+        )))))
+        .unwrap();
+        drop(a);
+        app.drain_reads();
+        assert_eq!(app.notice.as_ref().unwrap().message, "current");
+        assert_eq!(app.routines.detail.as_ref().unwrap().view.routine.id, "b");
+    }
+
+    #[tokio::test]
+    async fn closing_or_cancelling_routine_detail_prevents_late_reopening() {
+        for key in [KeyCode::Esc, KeyCode::Char('b')] {
+            let mut app = main_app();
+            app.tab = Tab::Routines;
+            let pending = pending_routine_detail(&mut app, "a");
+            app.on_key(KeyEvent::new(key, KeyModifiers::NONE));
+            send_routine_detail(pending, "a");
+            app.drain_reads();
+            assert!(!app.routines.detail_open);
+            assert!(app.routines.detail.is_none());
+
+            let pending = pending_routine_detail(&mut app, "a");
+            send_routine_detail(pending, "a");
+            app.drain_reads();
+            assert!(app.routines.detail_open);
+            let pending = pending_routine_detail(&mut app, "b");
+            app.on_key(KeyEvent::new(key, KeyModifiers::NONE));
+            send_routine_detail(pending, "b");
+            app.drain_reads();
+            assert!(!app.routines.detail_open);
+            assert!(app.routines.detail.is_none());
+            assert_eq!(app.routines.occurrence_selected, 0);
+        }
+    }
+
+    #[tokio::test]
+    async fn navigating_away_and_back_invalidates_pending_routine_detail() {
+        let mut app = main_app();
+        app.tab = Tab::Routines;
+        let pending = pending_routine_detail(&mut app, "a");
+        app.switch_tab(Tab::Projects);
+        send_routine_detail(pending, "a");
+        app.drain_reads();
+        assert!(!app.routines.detail_open);
+
+        app.switch_tab(Tab::Routines);
+        let pending = pending_routine_detail(&mut app, "b");
+        app.switch_tab(Tab::Projects);
+        app.switch_tab(Tab::Routines);
+        send_routine_detail(pending, "b");
+        app.drain_reads();
+        assert!(!app.routines.detail_open);
+        assert!(app.routines.detail.is_none());
+    }
+
+    #[tokio::test]
+    async fn logout_clears_open_routine_and_discards_old_session_success_and_error() {
+        let mut app = main_app();
+        app.tab = Tab::Routines;
+        let opened = pending_routine_detail(&mut app, "a");
+        send_routine_detail(opened, "a");
+        app.drain_reads();
+        app.routines.occurrence_selected = 1;
+        let pending = pending_routine_detail(&mut app, "b");
+        let error = pending_routine_detail(&mut app, "c");
+        // Already queued results must also be discarded by the session reset.
+        send_routine_detail(pending, "b");
+        error
+            .send(AppEvent::Api(Box::new(Payload::RoutineDetail(Err(
+                "old session".into(),
+            )))))
+            .unwrap();
+        crate::apply::apply_payload(&mut app, Payload::LoggedOut(Ok(())));
+        assert!(!app.routines.detail_open);
+        assert!(app.routines.detail.is_none());
+        assert_eq!(app.routines.occurrence_selected, 0);
+        crate::apply::apply_payload(&mut app, Payload::Auth(Ok(())));
+        assert!(error
+            .send(AppEvent::Api(Box::new(Payload::RoutineDetail(Ok(
+                sample_routine("c")
+            )))))
+            .is_err());
+        drop(error);
+        app.drain_reads();
+        assert!(!app.routines.detail_open);
+        assert!(app.routines.detail.is_none());
+        assert!(app.notice.is_none());
+    }
+
+    #[tokio::test]
+    async fn latest_detail_request_wins_even_when_responses_arrive_in_reverse() {
+        let mut app = main_app();
+        app.tab = Tab::Tasks;
+        let a = pending_detail(&mut app, "a");
+        let b = pending_detail(&mut app, "b");
+        send_detail(b, "b");
+        app.drain_reads();
+        assert_eq!(app.tasks.detail.as_ref().unwrap().task.id, "b");
+        app.tasks.log_scroll = 42;
+        send_detail(a, "a");
+        app.drain_reads();
+        assert_eq!(app.tasks.detail.as_ref().unwrap().task.id, "b");
+        assert_eq!(app.tasks.log_scroll, 42);
+    }
+
+    #[tokio::test]
+    async fn stale_detail_errors_do_not_replace_the_current_notice() {
+        let mut app = main_app();
+        app.tab = Tab::Tasks;
+        let a = pending_detail(&mut app, "a");
+        let b = pending_detail(&mut app, "b");
+        send_detail(b, "b");
+        app.drain_reads();
+        app.set_notice("current", false);
+        a.send(AppEvent::Api(Box::new(Payload::TaskDetail(Err(
+            "stale".into()
+        )))))
+        .unwrap();
+        drop(a);
+        app.drain_reads();
+        assert_eq!(app.notice.as_ref().unwrap().message, "current");
+    }
+
+    #[tokio::test]
+    async fn refresh_detail_cannot_overwrite_a_subsequently_requested_task() {
+        let mut app = main_app();
+        app.tab = Tab::Tasks;
+        let a = pending_detail(&mut app, "a");
+        send_detail(a, "a");
+        app.drain_reads();
+        assert!(app.sync.begin_refresh(Tab::Tasks, 0));
+        let refresh = app.read_channel(Some((Tab::Tasks, app.sync.generation(Tab::Tasks))));
+        let b = pending_detail(&mut app, "b");
+        send_detail(b, "b");
+        app.drain_reads();
+        send_detail(refresh, "a");
+        app.drain_reads();
+        assert_eq!(app.tasks.detail.as_ref().unwrap().task.id, "b");
+        assert!(!app.sync.is_in_flight(Tab::Tasks));
+    }
+
+    #[tokio::test]
+    async fn leaving_detail_or_cancelling_a_pending_open_prevents_reopening() {
+        let mut app = main_app();
+        app.tab = Tab::Tasks;
+        let pending = pending_detail(&mut app, "a");
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        send_detail(pending, "a");
+        app.drain_reads();
+        assert!(!app.tasks.detail_open);
+        assert!(app.tasks.detail.is_none());
+
+        let pending = pending_detail(&mut app, "a");
+        send_detail(pending, "a");
+        app.drain_reads();
+        assert!(app.sync.begin_refresh(Tab::Tasks, 0));
+        let refresh = app.read_channel(Some((Tab::Tasks, app.sync.generation(Tab::Tasks))));
+        app.on_key(KeyEvent::new(KeyCode::Char('b'), KeyModifiers::NONE));
+        send_detail(refresh, "a");
+        app.drain_reads();
+        assert!(!app.tasks.detail_open);
+        assert!(app.tasks.detail.is_none());
+    }
+
+    #[tokio::test]
+    async fn navigating_away_and_back_invalidates_pending_detail() {
+        let mut app = main_app();
+        app.tab = Tab::Tasks;
+        let pending = pending_detail(&mut app, "a");
+        app.switch_tab(Tab::Projects);
+        app.switch_tab(Tab::Tasks);
+        send_detail(pending, "a");
+        app.drain_reads();
+        assert!(!app.tasks.detail_open);
+    }
+
+    #[tokio::test]
+    async fn logout_and_relogin_discard_old_reads_and_retry_state() {
+        let mut app = main_app();
+        app.tab = Tab::Tasks;
+        let pending = pending_detail(&mut app, "a");
+        app.sync.record_outcome(Tab::Tasks, true, 0);
+        crate::apply::apply_payload(&mut app, Payload::LoggedOut(Ok(())));
+        let sent = pending.send(AppEvent::Api(Box::new(Payload::TaskDetail(Ok(
+            sample_task(false),
+        )))));
+        assert!(sent.is_err());
+        crate::apply::apply_payload(&mut app, Payload::Auth(Ok(())));
+        app.drain_reads();
+        assert!(!app.tasks.detail_open);
+        assert!(app.tasks.detail.is_none());
+        assert!(!app.sync.take_due_retry(Tab::Tasks, 10_000));
+    }
+
+    #[tokio::test]
+    async fn obsolete_refresh_completion_cannot_release_a_newer_flight() {
+        let mut app = main_app();
+        assert!(app.sync.begin_refresh(Tab::Projects, 0));
+        let old = app.read_channel(Some((Tab::Projects, app.sync.generation(Tab::Projects))));
+        assert!(app
+            .sync
+            .begin_refresh(Tab::Projects, crate::refresh::IN_FLIGHT_STALE_TICKS));
+        old.send(AppEvent::Api(Box::new(Payload::Projects(
+            Err("old".into()),
+        ))))
+        .unwrap();
+        drop(old);
+        app.drain_reads();
+        assert!(app.sync.is_in_flight(Tab::Projects));
+        assert!(app.notice.is_none());
+    }
+
+    #[test]
+    fn missing_latest_detail_is_a_failure_but_successful_detail_is_not() {
+        let mut payload = Payload::AssistantData {
+            events: Ok(vec![]),
+            approvals: Ok(vec![]),
+            routines: Ok(vec![]),
+            projects: Ok(vec![]),
+            tasks: Ok(TasksResponse {
+                tasks: vec![sample_task(false).task],
+                executor: ExecutorStatus {
+                    busy: false,
+                    activeTaskId: None,
+                    dispatchPaused: false,
+                },
+            }),
+            latest_task: None,
+        };
+        assert!(payload_failed(&payload));
+        if let Payload::AssistantData { latest_task, .. } = &mut payload {
+            *latest_task = Some(sample_task(false));
+        }
+        assert!(!payload_failed(&payload));
+    }
+
+    #[tokio::test]
+    async fn refresh_started_while_another_detail_is_loading_does_not_refetch_old_task() {
+        use httpmock::{Method::GET, MockServer};
+        let server = MockServer::start();
+        let list = server.mock(|when, then| {
+            when.method(GET).path("/api/tasks");
+            then.status(200).json_body(serde_json::json!({
+                "tasks": [], "executor": { "busy": false, "activeTaskId": null, "dispatchPaused": false }
+            }));
+        });
+        let old = server.mock(|when, then| {
+            when.method(GET).path("/api/tasks/task-1");
+            then.status(500);
+        });
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let mut app = App::new(tx, ApiClient::new(&server.base_url()).unwrap());
+        app.screen = Screen::Main;
+        app.tab = Tab::Tasks;
+        app.tasks.detail = Some(sample_task(false));
+        app.tasks.detail_open = true;
+        let b = pending_detail(&mut app, "b");
+        app.refresh(Tab::Tasks);
+        send_detail(b, "b");
+        wait_for_refresh(&mut app, Tab::Tasks).await;
+        assert_eq!(app.tasks.detail.as_ref().unwrap().task.id, "b");
+        list.assert_hits(1);
+        old.assert_hits(0);
+    }
+
+    async fn wait_for_refresh(app: &mut App, tab: Tab) {
+        tokio::time::timeout(Duration::from_secs(3), async {
+            while app.sync.is_in_flight(tab) {
+                app.drain_reads();
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("refresh did not finish");
+    }
+
+    #[tokio::test]
+    async fn failed_final_sse_refresh_recovers_without_activity_and_then_stops() {
+        use crate::refresh::RETRY_INITIAL_TICKS;
+        use httpmock::{Method::GET, MockServer};
+        let server = MockServer::start();
+        let mut failed = server.mock(|when, then| {
+            when.method(GET).path("/api/projects");
+            then.status(503).body(r#"{"error":"transient"}"#);
+        });
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let mut app = App::new(tx, ApiClient::new(&server.base_url()).unwrap());
+        app.screen = Screen::Main;
+        app.tab = Tab::Projects;
+        app.on_sse_connection(true);
+        app.ticks = ACTIVITY_DEBOUNCE_TICKS;
+        app.pump_sync();
+        wait_for_refresh(&mut app, Tab::Projects).await;
+        failed.assert_hits(1);
+        failed.delete();
+        let recovered = server.mock(|when, then| {
+            when.method(GET).path("/api/projects");
+            then.status(200)
+                .json_body(serde_json::json!({"projects": []}));
+        });
+        // No new activity or stream transition arrives after the failure.
+        app.ticks += RETRY_INITIAL_TICKS - 1;
+        app.pump_sync();
+        assert_eq!(app.sync.refreshes_started(), 1);
+        app.ticks += 1;
+        app.pump_sync();
+        app.pump_sync();
+        assert_eq!(app.sync.refreshes_started(), 2);
+        assert!(!app.sync.is_dirty(Tab::Projects));
+        wait_for_refresh(&mut app, Tab::Projects).await;
+        recovered.assert_hits(1);
+        for now in app.ticks..app.ticks + 2_000 {
+            app.ticks = now;
+            app.pump_sync();
+        }
+        assert_eq!(app.sync.refreshes_started(), 2);
+        recovered.assert_hits(1);
     }
 
     fn sample_task(has_artifact: bool) -> TaskDetail {
