@@ -1025,10 +1025,12 @@ does not close S07's one-working-week owner-use gate.
   list returned one; Settings runs `settings`/`destinations` with
   `tokio::join!`. Loaders live in the new `apps/tui/src/refresh.rs`.
 - Implemented (SSE and refresh storms): `subscribe_events` moved to
-  `event.rs` and takes an `Arc<Notify>`; a successful login/onboarding
-  (`apply.rs`) notifies it so the stream reconnects at once instead of
-  waiting out up to 30 s of backoff (it also replaces a stream opened under a
-  previous session). Connection state is reported as `AppEvent::SseConnection`
+  `event.rs` and takes an `Arc<Notify>`; a successful login/onboarding or
+  logout (`apply.rs`) notifies it so the stream reconnects at once on sign-in
+  instead of waiting out up to 30 s of backoff, replaces a stream opened under
+  a previous session, and closes immediately on logout (where the reconnect
+  attempt gets 401 and drops back to disconnected). Connection state is
+  reported as `AppEvent::SseConnection`
   and tracked in `App`. While connected there is no polling at all (the old
   400 ms busy / 4.8 s idle polling is gone); only while disconnected does a
   fallback poll run (about 1 s when a run is active, 4.8 s idle). `Activity`
@@ -1040,12 +1042,15 @@ does not close S07's one-working-week owner-use gate.
 - Found en route: the shared `reqwest` client has a 30 s total-request
   timeout, which also covers streaming the response body, so the SSE stream was
   being cut every ~30 s. The SSE stream now uses a second client (same cookie
-  jar, 10 s connect timeout, no total timeout) from `ApiClient::stream_http()`.
+  jar, 10 s connect timeout, no total timeout, and a 45 s per-read timeout —
+  3× the API's 15 s heartbeat — so a silent half-open connection drops and
+  reconnects) from `ApiClient::stream_http()`.
   Not observed against the real API in this slice (see not run below).
 - Verification (inside `apps/tui`, Windows, 2026-11-22):
   `cargo fmt --all -- --check` passed; `cargo clippy --all-targets -- -D
-  warnings` passed; `cargo test` passed (63 tests, up from 32; six
-  consecutive runs all green, about 0.7 s each); `cargo build` passed. The
+  warnings` passed; `cargo test` passed (64 tests, up from 32, including
+  `apply::tests::logout_wakes_sse_to_close_previous_session_stream`);
+  `cargo build` passed. The
   new tests use `httpmock` and `tokio` paused time (dev-dependency feature
   `test-util`, no new crates in the lockfile): a slow request does not block
   another clone; independent reads overlap in time; the Assistant/Settings/Tasks
@@ -1054,20 +1059,22 @@ does not close S07's one-working-week owner-use gate.
   propagation across clones for login, setup, re-login, logout, and eight
   concurrent mutations; the slow-logout race; SSE open/activity/disconnect
   reporting, backoff doubling to the 30 s cap, a wake that cuts a backoff short
-  (including a wake sent just before the wait), and a login wake that connects
-  well inside the 1 s backoff; the debounce and fallback-polling state machine,
-  and in-flight/replay behavior through `App`. `pnpm` checks were not run
-  because nothing outside `apps/tui` changed.
+  (including a wake sent just before the wait), a login wake that connects
+  well inside the 1 s backoff, and a logout wake that closes the prior session
+  stream; the debounce and fallback-polling state machine, and in-flight/replay
+  behavior through `App`. `pnpm` checks were not run because nothing outside
+  `apps/tui` changed.
 - Not run/verified: the TUI against the real API (no manual login/SSE/task run,
-  so the 30 s stream-cut finding and the end-to-end disappearance of the
-  400 ms polling are reasoned from the code and mock-server tests, not
-  observed); no CI run yet (branch is not pushed or opened as a PR); the
-  timing assertions (for example "five 300 ms reads finish in under 1 s") use
-  generous margins but are wall-clock based.
+  so the 30 s stream-cut finding, 45 s per-read timeout against live 15 s
+  heartbeats, and the end-to-end disappearance of the 400 ms polling are
+  reasoned from the code and mock-server tests, not observed); no CI run yet
+  (branch is not pushed or opened as a PR); the timing assertions (for example
+  "five 300 ms reads finish in under 1 s") use generous margins but are
+  wall-clock based.
 - Known limitations: while SSE is connected the only refresh triggers are
-  `activity` pings, tab switches, and mutations, so a half-open connection
-  that stays silent is not detected until it errors (the fallback poll resumes
-  only once the state is reported disconnected). In-flight tracking is per tab
+  `activity` pings, tab switches, and mutations; a silent half-open connection
+  now times out after 45 s via `read_timeout` (3× the 15 s heartbeat) and
+  reverts to fallback polling until reconnected. In-flight tracking is per tab
   and cleared by an explicit done event, with a 40 s staleness escape in case a
   refresh task is lost. The debounce adds up to 320 ms before an activity
   refresh (previously immediate, but a burst could trigger a refresh per ping).

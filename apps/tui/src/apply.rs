@@ -210,6 +210,9 @@ pub fn apply_payload(app: &mut App, payload: Payload) {
             if let Ok(()) = result {
                 app.screen = Screen::Login;
                 app.auth = masking_area();
+                // Close any SSE stream opened under the previous session; the
+                // reconnect attempt gets 401 and drops back to disconnected.
+                app.sse_wake.notify_one();
             }
         }
     }
@@ -219,4 +222,32 @@ fn masking_area() -> tui_textarea::TextArea<'static> {
     let mut area = tui_textarea::TextArea::default();
     area.set_mask_char('\u{2022}');
     area
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::api::ApiClient;
+    use tokio::sync::mpsc;
+
+    #[tokio::test]
+    async fn logout_wakes_sse_to_close_previous_session_stream() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let api = ApiClient::new("http://127.0.0.1:8787").unwrap();
+        let mut app = App::new(tx, api);
+        app.screen = Screen::Main;
+
+        let wake = app.sse_wake.clone();
+        let waiter = tokio::spawn(async move {
+            wake.notified().await;
+        });
+        tokio::task::yield_now().await;
+
+        apply_payload(&mut app, Payload::LoggedOut(Ok(())));
+        assert_eq!(app.screen, Screen::Login);
+        tokio::time::timeout(std::time::Duration::from_millis(500), waiter)
+            .await
+            .expect("logout must wake the SSE loop")
+            .unwrap();
+    }
 }
