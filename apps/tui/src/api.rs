@@ -89,8 +89,9 @@ impl ApiClient {
             .timeout(Duration::from_secs(30))
             .build()?;
         // The API sends an SSE heartbeat comment every 15 s; a 45 s per-read
-        // timeout keeps healthy long-lived streams open indefinitely while
-        // ensuring a silent half-open connection errors out and reconnects.
+        // timeout detects silent half-open connections. event::subscribe_events
+        // separately bounds stream lifetime so heartbeats cannot keep an
+        // expired/revoked session connected indefinitely.
         let stream_http = Client::builder()
             .cookie_provider(cookie_jar.clone())
             .connect_timeout(Duration::from_secs(10))
@@ -114,6 +115,7 @@ impl ApiClient {
     /// Client for the long-lived SSE stream: same cookie jar, no total
     /// request timeout, and a 45 s per-read timeout (3x the API's 15 s
     /// heartbeat) so a silent half-open connection drops and reconnects.
+    /// The subscriber also rotates healthy streams on a fixed auth deadline.
     pub fn stream_http(&self) -> Client {
         self.stream_http.clone()
     }

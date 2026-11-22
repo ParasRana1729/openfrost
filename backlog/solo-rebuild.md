@@ -1083,3 +1083,28 @@ does not close S07's one-working-week owner-use gate.
   authorization for this change, push, open a PR, confirm CI on `windows-latest`,
   and merge. A short manual pass (log in, queue a fake-provider task, watch the
   live stream, drop and restart the API) would close the not-run items above.
+
+### Pre-merge review fixes (2026-11-22)
+
+- Confirmed and fixed three concurrency/security regressions before landing:
+  healthy SSE connections now rotate after a non-renewable five-minute
+  lifetime, forcing authentication again independently of heartbeat traffic;
+  task and routine detail reads carry request/navigation/session generations
+  so stale responses cannot reopen or overwrite a newer selection; failed or
+  partially failed tab refreshes retry with exponential backoff capped at
+  about 30 seconds, without needing another activity event. Successful reads
+  still do not poll while SSE is connected.
+- Five-minute rotation is a client mitigation, not immediate server-side
+  session revocation. Local logout still closes the old stream immediately.
+  Silent stream headers/body still time out after 45 seconds.
+- Added held-open loopback socket tests for healthy rotation, revocation at
+  rotation, silent response/read timeouts, and logout TCP closure/cookie
+  removal; deterministic regressions cover reverse-order task/routine reads,
+  close/navigation/logout, action target IDs, obsolete refresh completion,
+  partial failures, and retry recovery/backoff.
+- Verification on Windows: Rust fmt, Clippy with warnings denied, all 88
+  tests, and build passed. These supersede the initial 64-test result above.
+  No paid-provider calls or interactive live API/TUI workflow were run.
+- Next: integrate the merged S07 PR #38 without rewriting history, repeat
+  both required check suites, open the performance PR, and merge only after
+  Windows CI passes. S07 owner-use evaluation remains open.

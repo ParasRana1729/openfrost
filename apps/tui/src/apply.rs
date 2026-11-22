@@ -7,6 +7,7 @@ pub fn apply_payload(app: &mut App, payload: Payload) {
     match payload {
         Payload::Session(result) => match result {
             Ok(session) => {
+                app.reset_read_session();
                 if session.authenticated {
                     app.screen = Screen::Main;
                     app.refresh_all();
@@ -26,6 +27,7 @@ pub fn apply_payload(app: &mut App, payload: Payload) {
             app.auth_busy = false;
             match result {
                 Ok(()) => {
+                    app.reset_read_session();
                     app.screen = Screen::Main;
                     app.auth = masking_area();
                     // Login/onboarding just created the session the SSE
@@ -208,6 +210,7 @@ pub fn apply_payload(app: &mut App, payload: Payload) {
         },
         Payload::LoggedOut(result) => {
             if let Ok(()) = result {
+                app.reset_read_session();
                 app.screen = Screen::Login;
                 app.auth = masking_area();
                 // Close any SSE stream opened under the previous session; the

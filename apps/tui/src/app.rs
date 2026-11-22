@@ -5,14 +5,16 @@
 use std::sync::Arc;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use tokio::sync::Notify;
+use tokio::sync::{mpsc, Notify};
 use tui_textarea::TextArea;
 
 use crate::api::ApiClient;
 use crate::contracts::*;
 use crate::dialog_forms::Form;
 use crate::event::{spawn_payload, spawn_refresh, AppEvent, AppTx, Payload};
-use crate::refresh::{load_assistant_data, load_settings_bundle, load_tasks, SyncState};
+use crate::refresh::{
+    load_assistant_data, load_settings_bundle, load_tasks, payload_failed, SyncState,
+};
 
 // ---------------------------------------------------------------------------
 // Screens, tabs, notices
@@ -379,6 +381,17 @@ pub enum ConfirmAction {
 // App
 // ---------------------------------------------------------------------------
 
+// Private result channels preserve request identity without changing the shared
+// event protocol. A refresh is applied atomically once its done event arrives.
+struct PendingRead {
+    rx: crate::event::AppRx,
+    session: u64,
+    detail_generation: u64,
+    routine_detail_generation: u64,
+    refresh: Option<(Tab, u64)>,
+    payloads: Vec<Payload>,
+}
+
 pub struct App {
     pub tx: AppTx,
     /// Cheap-to-clone, lock-free API handle; every task gets its own clone.
@@ -403,6 +416,11 @@ pub struct App {
     pub tab_picker: Option<usize>,
     pub notice: Option<Notice>,
     pub ticks: u64,
+    session_generation: u64,
+    detail_generation: u64,
+    routine_detail_generation: u64,
+    detail_target: Option<String>,
+    pending_reads: Vec<PendingRead>,
 }
 
 impl App {
@@ -429,6 +447,11 @@ impl App {
             tab_picker: None,
             notice: None,
             ticks: 0,
+            session_generation: 0,
+            detail_generation: 0,
+            routine_detail_generation: 0,
+            detail_target: None,
+            pending_reads: Vec::new(),
         }
     }
 
@@ -459,7 +482,7 @@ impl App {
             return;
         }
         let api = self.api.clone();
-        let tx = self.tx.clone();
+        let tx = self.read_channel(Some((tab, self.sync.generation(tab))));
         match tab {
             Tab::Assistant => {
                 spawn_refresh(
@@ -469,7 +492,15 @@ impl App {
                 );
             }
             Tab::Tasks => {
-                let open_task_id = self.tasks.detail.as_ref().map(|d| d.task.id.clone());
+                let open_task_id = if self.tab == Tab::Tasks && self.tasks.detail_open {
+                    self.tasks
+                        .detail
+                        .as_ref()
+                        .filter(|d| self.detail_target.as_ref() == Some(&d.task.id))
+                        .map(|d| d.task.id.clone())
+                } else {
+                    None
+                };
                 spawn_refresh(
                     &tx,
                     tab,
@@ -531,9 +562,10 @@ impl App {
         }
     }
 
-    /// Run whatever refresh is due: one for an elapsed activity window, or
-    /// the polling fallback (only ever due while SSE is disconnected).
+    /// Apply completed reads, then run debounced activity, failed-read retries,
+    /// or the polling fallback (only due while SSE is disconnected).
     pub fn pump_sync(&mut self) {
+        self.drain_reads();
         if self.screen != Screen::Main {
             return;
         }
@@ -543,11 +575,18 @@ impl App {
         if activity_due || poll_due {
             self.refresh(self.tab);
         }
+        for tab in ALL_TABS {
+            if self.sync.take_due_retry(tab, self.ticks) {
+                self.refresh(tab);
+            }
+        }
     }
 
     pub fn open_task_detail(&mut self, task_id: String) {
+        self.detail_generation += 1;
+        self.detail_target = Some(task_id.clone());
         let api = self.api.clone();
-        let tx = self.tx.clone();
+        let tx = self.read_channel(None);
         spawn_payload(
             &tx,
             async move { api.task_detail(&task_id).await.map_err(|e| e.message()) },
@@ -555,9 +594,93 @@ impl App {
         );
     }
 
+    fn read_channel(&mut self, refresh: Option<(Tab, u64)>) -> AppTx {
+        let (tx, rx) = mpsc::unbounded_channel();
+        self.pending_reads.push(PendingRead {
+            rx,
+            session: self.session_generation,
+            detail_generation: self.detail_generation,
+            routine_detail_generation: self.routine_detail_generation,
+            refresh,
+            payloads: Vec::new(),
+        });
+        tx
+    }
+
+    fn drain_reads(&mut self) {
+        for mut read in std::mem::take(&mut self.pending_reads) {
+            let mut done = false;
+            loop {
+                match read.rx.try_recv() {
+                    Ok(AppEvent::Api(payload)) => read.payloads.push(*payload),
+                    Ok(AppEvent::RefreshDone(_)) => {
+                        done = true;
+                        break;
+                    }
+                    Err(mpsc::error::TryRecvError::Disconnected) => {
+                        done = true;
+                        break;
+                    }
+                    Err(mpsc::error::TryRecvError::Empty) => break,
+                    Ok(_) => {}
+                }
+            }
+            if !done {
+                self.pending_reads.push(read);
+                continue;
+            }
+            if read.session != self.session_generation || self.screen != Screen::Main {
+                continue;
+            }
+            if read
+                .refresh
+                .is_some_and(|(tab, generation)| !self.sync.is_current(tab, generation))
+            {
+                continue;
+            }
+            let mut failed = read.payloads.is_empty();
+            for payload in read.payloads {
+                if matches!(payload, Payload::TaskDetail(_))
+                    && (read.detail_generation != self.detail_generation || self.tab != Tab::Tasks)
+                {
+                    continue;
+                }
+                if matches!(payload, Payload::RoutineDetail(_))
+                    && (read.routine_detail_generation != self.routine_detail_generation
+                        || self.tab != Tab::Routines)
+                {
+                    continue;
+                }
+                failed |= payload_failed(&payload);
+                crate::apply::apply_payload(self, payload);
+            }
+            if let Some((tab, _)) = read.refresh {
+                self.sync.record_outcome(tab, failed, self.ticks);
+                self.on_refresh_done(tab);
+            }
+        }
+    }
+
+    /// Invalidate old-session reads and retry timers before starting a new
+    /// session's refreshes, or when the current session ends.
+    pub fn reset_read_session(&mut self) {
+        self.session_generation += 1;
+        self.detail_generation += 1;
+        self.routine_detail_generation += 1;
+        self.pending_reads.clear();
+        self.sync = SyncState::default();
+        self.detail_target = None;
+        self.tasks.detail = None;
+        self.tasks.detail_open = false;
+        self.routines.detail = None;
+        self.routines.detail_open = false;
+        self.routines.occurrence_selected = 0;
+    }
+
     pub fn open_routine_detail(&mut self, routine_id: String) {
+        self.routine_detail_generation += 1;
         let api = self.api.clone();
-        let tx = self.tx.clone();
+        let tx = self.read_channel(None);
         spawn_payload(
             &tx,
             async move {
@@ -815,6 +938,10 @@ impl App {
     }
 
     pub fn switch_tab(&mut self, tab: Tab) {
+        if self.tab != tab {
+            self.detail_generation += 1;
+            self.routine_detail_generation += 1;
+        }
         self.tab = tab;
         self.refresh(tab);
     }
@@ -1304,6 +1431,7 @@ impl App {
         }
         let count = self.tasks.visible().len();
         match key.code {
+            KeyCode::Esc => self.detail_generation += 1,
             KeyCode::Char('f') => {
                 self.tasks.filter = self.tasks.filter.next();
                 self.tasks.clamp_selection();
@@ -1383,6 +1511,7 @@ impl App {
             .is_some();
         match key.code {
             KeyCode::Esc | KeyCode::Char('b') => {
+                self.detail_generation += 1;
                 self.tasks.detail_open = false;
                 self.tasks.detail = None;
                 self.tasks.artifact_scroll = 0;
@@ -1742,6 +1871,7 @@ impl App {
                 .unwrap_or(0);
             match key.code {
                 KeyCode::Esc | KeyCode::Char('b') => {
+                    self.routine_detail_generation += 1;
                     self.routines.detail_open = false;
                     self.routines.detail = None;
                     self.routines.occurrence_selected = 0;
@@ -1792,6 +1922,7 @@ impl App {
         }
         let count = self.routines.routines.len();
         match key.code {
+            KeyCode::Esc | KeyCode::Char('b') => self.routine_detail_generation += 1,
             KeyCode::Char('n') => {
                 let api = self.api.clone();
                 let tx = self.tx.clone();
@@ -2353,6 +2484,439 @@ mod tests {
                 .is_ok(),
             "a successful login must wake the stream immediately"
         );
+    }
+
+    fn send_detail(tx: AppTx, id: &str) {
+        let mut detail = sample_task(false);
+        detail.task.id = id.into();
+        tx.send(AppEvent::Api(Box::new(Payload::TaskDetail(Ok(detail)))))
+            .unwrap();
+    }
+
+    fn pending_detail(app: &mut App, id: &str) -> AppTx {
+        // Drive the real request setup, but control completion order without
+        // timing or network dependencies for these state-machine tests.
+        app.open_task_detail(id.into());
+        let (tx, rx) = mpsc::unbounded_channel();
+        app.pending_reads.last_mut().unwrap().rx = rx;
+        tx
+    }
+
+    fn sample_routine(id: &str) -> crate::api::RoutineDetail {
+        serde_json::from_value(serde_json::json!({
+            "id": id, "name": id, "projectId": "p1", "timezone": "UTC",
+            "schedule": { "kind": "daily", "time": "09:00" },
+            "template": { "title": "Plan", "request": "Draft priorities", "constraints": null },
+            "state": "active", "windowStartAt": "2026-11-01T00:00:00Z",
+            "lastOccurrenceKey": null, "lastOccurrenceAt": null,
+            "createdAt": "2026-11-01T00:00:00Z", "updatedAt": "2026-11-01T00:00:00Z",
+            "nextOccurrenceAt": null, "nextOccurrenceKey": null,
+            "missedCount": 2, "projectName": "Demo",
+            "occurrences": (["2026-11-20", "2026-11-21"].map(|key| serde_json::json!({
+                "id": format!("{id}-{key}"), "routineId": id, "occurrenceKey": key,
+                "scheduledFor": "2026-11-20T09:00:00Z", "state": "missed",
+                "taskId": null, "reason": null, "decidedAt": null,
+                "createdAt": "2026-11-20T09:00:00Z", "updatedAt": "2026-11-20T09:00:00Z"
+            })))
+        }))
+        .unwrap()
+    }
+
+    fn pending_routine_detail(app: &mut App, id: &str) -> AppTx {
+        app.open_routine_detail(id.into());
+        let (tx, rx) = mpsc::unbounded_channel();
+        app.pending_reads.last_mut().unwrap().rx = rx;
+        tx
+    }
+
+    fn send_routine_detail(tx: AppTx, id: &str) {
+        tx.send(AppEvent::Api(Box::new(Payload::RoutineDetail(Ok(
+            sample_routine(id),
+        )))))
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn latest_routine_detail_wins_reverse_order_without_resetting_occurrence_selection() {
+        let mut app = main_app();
+        app.tab = Tab::Routines;
+        let a = pending_routine_detail(&mut app, "a");
+        let b = pending_routine_detail(&mut app, "b");
+        send_routine_detail(b, "b");
+        app.drain_reads();
+        assert_eq!(app.routines.detail.as_ref().unwrap().view.routine.id, "b");
+        app.routines.occurrence_selected = 1;
+        send_routine_detail(a, "a");
+        app.drain_reads();
+        assert_eq!(app.routines.detail.as_ref().unwrap().view.routine.id, "b");
+        assert_eq!(app.routines.occurrence_selected, 1);
+    }
+
+    #[tokio::test]
+    async fn routine_occurrence_actions_keep_the_current_id_after_a_stale_response() {
+        use httpmock::{Method::POST, MockServer};
+        let server = MockServer::start();
+        let current = server.mock(|when, then| {
+            when.method(POST)
+                .path_contains("/api/routines/b/occurrences/2026-11-21/");
+            // Only the request target matters here; prevent follow-up refreshes.
+            then.status(503).body(r#"{"error":"observed"}"#);
+        });
+        let stale = server.mock(|when, then| {
+            when.method(POST)
+                .path_contains("/api/routines/a/occurrences/");
+            then.status(503);
+        });
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let mut app = App::new(tx, ApiClient::new(&server.base_url()).unwrap());
+        app.screen = Screen::Main;
+        app.tab = Tab::Routines;
+        let a = pending_routine_detail(&mut app, "a");
+        let b = pending_routine_detail(&mut app, "b");
+        send_routine_detail(b, "b");
+        app.drain_reads();
+        app.routines.occurrence_selected = 1;
+        send_routine_detail(a, "a");
+        app.drain_reads();
+        for key in ['r', 's'] {
+            app.on_key(KeyEvent::new(KeyCode::Char(key), KeyModifiers::NONE));
+            let event = tokio::time::timeout(Duration::from_secs(3), rx.recv())
+                .await
+                .unwrap();
+            assert!(matches!(event, Some(AppEvent::Api(payload))
+                if matches!(*payload, Payload::Mutation { result: Err(_), .. })));
+        }
+        current.assert_hits(2);
+        stale.assert_hits(0);
+    }
+
+    #[tokio::test]
+    async fn stale_routine_detail_errors_do_not_replace_the_current_notice() {
+        let mut app = main_app();
+        app.tab = Tab::Routines;
+        let a = pending_routine_detail(&mut app, "a");
+        let b = pending_routine_detail(&mut app, "b");
+        send_routine_detail(b, "b");
+        app.drain_reads();
+        app.set_notice("current", false);
+        a.send(AppEvent::Api(Box::new(Payload::RoutineDetail(Err(
+            "stale".into(),
+        )))))
+        .unwrap();
+        drop(a);
+        app.drain_reads();
+        assert_eq!(app.notice.as_ref().unwrap().message, "current");
+        assert_eq!(app.routines.detail.as_ref().unwrap().view.routine.id, "b");
+    }
+
+    #[tokio::test]
+    async fn closing_or_cancelling_routine_detail_prevents_late_reopening() {
+        for key in [KeyCode::Esc, KeyCode::Char('b')] {
+            let mut app = main_app();
+            app.tab = Tab::Routines;
+            let pending = pending_routine_detail(&mut app, "a");
+            app.on_key(KeyEvent::new(key, KeyModifiers::NONE));
+            send_routine_detail(pending, "a");
+            app.drain_reads();
+            assert!(!app.routines.detail_open);
+            assert!(app.routines.detail.is_none());
+
+            let pending = pending_routine_detail(&mut app, "a");
+            send_routine_detail(pending, "a");
+            app.drain_reads();
+            assert!(app.routines.detail_open);
+            let pending = pending_routine_detail(&mut app, "b");
+            app.on_key(KeyEvent::new(key, KeyModifiers::NONE));
+            send_routine_detail(pending, "b");
+            app.drain_reads();
+            assert!(!app.routines.detail_open);
+            assert!(app.routines.detail.is_none());
+            assert_eq!(app.routines.occurrence_selected, 0);
+        }
+    }
+
+    #[tokio::test]
+    async fn navigating_away_and_back_invalidates_pending_routine_detail() {
+        let mut app = main_app();
+        app.tab = Tab::Routines;
+        let pending = pending_routine_detail(&mut app, "a");
+        app.switch_tab(Tab::Projects);
+        send_routine_detail(pending, "a");
+        app.drain_reads();
+        assert!(!app.routines.detail_open);
+
+        app.switch_tab(Tab::Routines);
+        let pending = pending_routine_detail(&mut app, "b");
+        app.switch_tab(Tab::Projects);
+        app.switch_tab(Tab::Routines);
+        send_routine_detail(pending, "b");
+        app.drain_reads();
+        assert!(!app.routines.detail_open);
+        assert!(app.routines.detail.is_none());
+    }
+
+    #[tokio::test]
+    async fn logout_clears_open_routine_and_discards_old_session_success_and_error() {
+        let mut app = main_app();
+        app.tab = Tab::Routines;
+        let opened = pending_routine_detail(&mut app, "a");
+        send_routine_detail(opened, "a");
+        app.drain_reads();
+        app.routines.occurrence_selected = 1;
+        let pending = pending_routine_detail(&mut app, "b");
+        let error = pending_routine_detail(&mut app, "c");
+        // Already queued results must also be discarded by the session reset.
+        send_routine_detail(pending, "b");
+        error
+            .send(AppEvent::Api(Box::new(Payload::RoutineDetail(Err(
+                "old session".into(),
+            )))))
+            .unwrap();
+        crate::apply::apply_payload(&mut app, Payload::LoggedOut(Ok(())));
+        assert!(!app.routines.detail_open);
+        assert!(app.routines.detail.is_none());
+        assert_eq!(app.routines.occurrence_selected, 0);
+        crate::apply::apply_payload(&mut app, Payload::Auth(Ok(())));
+        assert!(error
+            .send(AppEvent::Api(Box::new(Payload::RoutineDetail(Ok(
+                sample_routine("c")
+            )))))
+            .is_err());
+        drop(error);
+        app.drain_reads();
+        assert!(!app.routines.detail_open);
+        assert!(app.routines.detail.is_none());
+        assert!(app.notice.is_none());
+    }
+
+    #[tokio::test]
+    async fn latest_detail_request_wins_even_when_responses_arrive_in_reverse() {
+        let mut app = main_app();
+        app.tab = Tab::Tasks;
+        let a = pending_detail(&mut app, "a");
+        let b = pending_detail(&mut app, "b");
+        send_detail(b, "b");
+        app.drain_reads();
+        assert_eq!(app.tasks.detail.as_ref().unwrap().task.id, "b");
+        app.tasks.log_scroll = 42;
+        send_detail(a, "a");
+        app.drain_reads();
+        assert_eq!(app.tasks.detail.as_ref().unwrap().task.id, "b");
+        assert_eq!(app.tasks.log_scroll, 42);
+    }
+
+    #[tokio::test]
+    async fn stale_detail_errors_do_not_replace_the_current_notice() {
+        let mut app = main_app();
+        app.tab = Tab::Tasks;
+        let a = pending_detail(&mut app, "a");
+        let b = pending_detail(&mut app, "b");
+        send_detail(b, "b");
+        app.drain_reads();
+        app.set_notice("current", false);
+        a.send(AppEvent::Api(Box::new(Payload::TaskDetail(Err(
+            "stale".into()
+        )))))
+        .unwrap();
+        drop(a);
+        app.drain_reads();
+        assert_eq!(app.notice.as_ref().unwrap().message, "current");
+    }
+
+    #[tokio::test]
+    async fn refresh_detail_cannot_overwrite_a_subsequently_requested_task() {
+        let mut app = main_app();
+        app.tab = Tab::Tasks;
+        let a = pending_detail(&mut app, "a");
+        send_detail(a, "a");
+        app.drain_reads();
+        assert!(app.sync.begin_refresh(Tab::Tasks, 0));
+        let refresh = app.read_channel(Some((Tab::Tasks, app.sync.generation(Tab::Tasks))));
+        let b = pending_detail(&mut app, "b");
+        send_detail(b, "b");
+        app.drain_reads();
+        send_detail(refresh, "a");
+        app.drain_reads();
+        assert_eq!(app.tasks.detail.as_ref().unwrap().task.id, "b");
+        assert!(!app.sync.is_in_flight(Tab::Tasks));
+    }
+
+    #[tokio::test]
+    async fn leaving_detail_or_cancelling_a_pending_open_prevents_reopening() {
+        let mut app = main_app();
+        app.tab = Tab::Tasks;
+        let pending = pending_detail(&mut app, "a");
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        send_detail(pending, "a");
+        app.drain_reads();
+        assert!(!app.tasks.detail_open);
+        assert!(app.tasks.detail.is_none());
+
+        let pending = pending_detail(&mut app, "a");
+        send_detail(pending, "a");
+        app.drain_reads();
+        assert!(app.sync.begin_refresh(Tab::Tasks, 0));
+        let refresh = app.read_channel(Some((Tab::Tasks, app.sync.generation(Tab::Tasks))));
+        app.on_key(KeyEvent::new(KeyCode::Char('b'), KeyModifiers::NONE));
+        send_detail(refresh, "a");
+        app.drain_reads();
+        assert!(!app.tasks.detail_open);
+        assert!(app.tasks.detail.is_none());
+    }
+
+    #[tokio::test]
+    async fn navigating_away_and_back_invalidates_pending_detail() {
+        let mut app = main_app();
+        app.tab = Tab::Tasks;
+        let pending = pending_detail(&mut app, "a");
+        app.switch_tab(Tab::Projects);
+        app.switch_tab(Tab::Tasks);
+        send_detail(pending, "a");
+        app.drain_reads();
+        assert!(!app.tasks.detail_open);
+    }
+
+    #[tokio::test]
+    async fn logout_and_relogin_discard_old_reads_and_retry_state() {
+        let mut app = main_app();
+        app.tab = Tab::Tasks;
+        let pending = pending_detail(&mut app, "a");
+        app.sync.record_outcome(Tab::Tasks, true, 0);
+        crate::apply::apply_payload(&mut app, Payload::LoggedOut(Ok(())));
+        let sent = pending.send(AppEvent::Api(Box::new(Payload::TaskDetail(Ok(
+            sample_task(false),
+        )))));
+        assert!(sent.is_err());
+        crate::apply::apply_payload(&mut app, Payload::Auth(Ok(())));
+        app.drain_reads();
+        assert!(!app.tasks.detail_open);
+        assert!(app.tasks.detail.is_none());
+        assert!(!app.sync.take_due_retry(Tab::Tasks, 10_000));
+    }
+
+    #[tokio::test]
+    async fn obsolete_refresh_completion_cannot_release_a_newer_flight() {
+        let mut app = main_app();
+        assert!(app.sync.begin_refresh(Tab::Projects, 0));
+        let old = app.read_channel(Some((Tab::Projects, app.sync.generation(Tab::Projects))));
+        assert!(app
+            .sync
+            .begin_refresh(Tab::Projects, crate::refresh::IN_FLIGHT_STALE_TICKS));
+        old.send(AppEvent::Api(Box::new(Payload::Projects(
+            Err("old".into()),
+        ))))
+        .unwrap();
+        drop(old);
+        app.drain_reads();
+        assert!(app.sync.is_in_flight(Tab::Projects));
+        assert!(app.notice.is_none());
+    }
+
+    #[test]
+    fn missing_latest_detail_is_a_failure_but_successful_detail_is_not() {
+        let mut payload = Payload::AssistantData {
+            events: Ok(vec![]),
+            approvals: Ok(vec![]),
+            routines: Ok(vec![]),
+            projects: Ok(vec![]),
+            tasks: Ok(TasksResponse {
+                tasks: vec![sample_task(false).task],
+                executor: ExecutorStatus {
+                    busy: false,
+                    activeTaskId: None,
+                    dispatchPaused: false,
+                },
+            }),
+            latest_task: None,
+        };
+        assert!(payload_failed(&payload));
+        if let Payload::AssistantData { latest_task, .. } = &mut payload {
+            *latest_task = Some(sample_task(false));
+        }
+        assert!(!payload_failed(&payload));
+    }
+
+    #[tokio::test]
+    async fn refresh_started_while_another_detail_is_loading_does_not_refetch_old_task() {
+        use httpmock::{Method::GET, MockServer};
+        let server = MockServer::start();
+        let list = server.mock(|when, then| {
+            when.method(GET).path("/api/tasks");
+            then.status(200).json_body(serde_json::json!({
+                "tasks": [], "executor": { "busy": false, "activeTaskId": null, "dispatchPaused": false }
+            }));
+        });
+        let old = server.mock(|when, then| {
+            when.method(GET).path("/api/tasks/task-1");
+            then.status(500);
+        });
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let mut app = App::new(tx, ApiClient::new(&server.base_url()).unwrap());
+        app.screen = Screen::Main;
+        app.tab = Tab::Tasks;
+        app.tasks.detail = Some(sample_task(false));
+        app.tasks.detail_open = true;
+        let b = pending_detail(&mut app, "b");
+        app.refresh(Tab::Tasks);
+        send_detail(b, "b");
+        wait_for_refresh(&mut app, Tab::Tasks).await;
+        assert_eq!(app.tasks.detail.as_ref().unwrap().task.id, "b");
+        list.assert_hits(1);
+        old.assert_hits(0);
+    }
+
+    async fn wait_for_refresh(app: &mut App, tab: Tab) {
+        tokio::time::timeout(Duration::from_secs(3), async {
+            while app.sync.is_in_flight(tab) {
+                app.drain_reads();
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("refresh did not finish");
+    }
+
+    #[tokio::test]
+    async fn failed_final_sse_refresh_recovers_without_activity_and_then_stops() {
+        use crate::refresh::RETRY_INITIAL_TICKS;
+        use httpmock::{Method::GET, MockServer};
+        let server = MockServer::start();
+        let mut failed = server.mock(|when, then| {
+            when.method(GET).path("/api/projects");
+            then.status(503).body(r#"{"error":"transient"}"#);
+        });
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let mut app = App::new(tx, ApiClient::new(&server.base_url()).unwrap());
+        app.screen = Screen::Main;
+        app.tab = Tab::Projects;
+        app.on_sse_connection(true);
+        app.ticks = ACTIVITY_DEBOUNCE_TICKS;
+        app.pump_sync();
+        wait_for_refresh(&mut app, Tab::Projects).await;
+        failed.assert_hits(1);
+        failed.delete();
+        let recovered = server.mock(|when, then| {
+            when.method(GET).path("/api/projects");
+            then.status(200)
+                .json_body(serde_json::json!({"projects": []}));
+        });
+        // No new activity or stream transition arrives after the failure.
+        app.ticks += RETRY_INITIAL_TICKS - 1;
+        app.pump_sync();
+        assert_eq!(app.sync.refreshes_started(), 1);
+        app.ticks += 1;
+        app.pump_sync();
+        app.pump_sync();
+        assert_eq!(app.sync.refreshes_started(), 2);
+        assert!(!app.sync.is_dirty(Tab::Projects));
+        wait_for_refresh(&mut app, Tab::Projects).await;
+        recovered.assert_hits(1);
+        for now in app.ticks..app.ticks + 2_000 {
+            app.ticks = now;
+            app.pump_sync();
+        }
+        assert_eq!(app.sync.refreshes_started(), 2);
+        recovered.assert_hits(1);
     }
 
     fn sample_task(has_artifact: bool) -> TaskDetail {

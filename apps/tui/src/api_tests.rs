@@ -601,3 +601,246 @@ async fn tasks_loader_adds_detail_only_when_a_task_is_open() {
     assert!(matches!(with_detail[1], Payload::TaskDetail(Ok(_))));
     detail.assert_hits(1);
 }
+
+// Finite mock bodies exercise EOF, not cancellation/deadlines of live streams.
+mod live_sse {
+    use super::*;
+    use std::future::{poll_fn, Future};
+    use std::sync::Arc;
+    use std::task::Poll;
+
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::{TcpListener, TcpStream};
+    use tokio::sync::{mpsc, Notify};
+    use tokio::task::JoinHandle;
+
+    use crate::event::{subscribe_events, AppEvent, AppRx, SSE_MAX_STREAM_LIFETIME};
+
+    // Keep the test runnable during loopback IO so paused time cannot auto-
+    // advance past a deadline. A separate wall-clock bound prevents hangs.
+    // Deadline assertions advance an extra 1 ms for Tokio's timer rounding.
+    async fn io<T>(future: impl Future<Output = T>) -> T {
+        tokio::pin!(future);
+        let started = Instant::now();
+        poll_fn(|cx| {
+            assert!(started.elapsed() < Duration::from_secs(5), "IO stalled");
+            match future.as_mut().poll(cx) {
+                Poll::Ready(value) => Poll::Ready(value),
+                Poll::Pending => {
+                    cx.waker().wake_by_ref();
+                    Poll::Pending
+                }
+            }
+        })
+        .await
+    }
+
+    struct Subscription {
+        listener: TcpListener,
+        api: ApiClient,
+        rx: AppRx,
+        wake: Arc<Notify>,
+        handle: JoinHandle<()>,
+    }
+
+    impl Drop for Subscription {
+        fn drop(&mut self) {
+            self.handle.abort();
+        }
+    }
+
+    impl Subscription {
+        async fn new() -> Self {
+            let listener = io(TcpListener::bind("127.0.0.1:0")).await.unwrap();
+            let base_url = format!("http://{}", listener.local_addr().unwrap());
+            let api = ApiClient::new(&base_url).unwrap();
+            api.cookie_jar().add_cookie_str(
+                "openfrost_session=test-session; Path=/",
+                &url::Url::parse(&base_url).unwrap(),
+            );
+            api.set_csrf_token(Some("test-csrf".into()));
+            let (tx, rx) = mpsc::unbounded_channel();
+            let wake = Arc::new(Notify::new());
+            let handle = tokio::spawn(subscribe_events(
+                base_url,
+                api.stream_http(),
+                tx,
+                wake.clone(),
+            ));
+            Self {
+                listener,
+                api,
+                rx,
+                wake,
+                handle,
+            }
+        }
+
+        async fn request(&self, path: &str) -> (TcpStream, String) {
+            let (mut stream, _) = io(self.listener.accept()).await.unwrap();
+            let mut headers = Vec::new();
+            while !headers.ends_with(b"\r\n\r\n") {
+                let mut byte = [0];
+                assert_eq!(io(stream.read(&mut byte)).await.unwrap(), 1);
+                headers.push(byte[0]);
+                assert!(headers.len() < 16_384);
+            }
+            let headers = String::from_utf8(headers).unwrap().to_ascii_lowercase();
+            assert!(headers.starts_with(path), "{headers}");
+            (stream, headers)
+        }
+
+        async fn open(&mut self) -> TcpStream {
+            let (mut stream, headers) = self.request("get /api/events/stream ").await;
+            assert!(headers.contains("openfrost_session=test-session"));
+            // Close-delimited HTTP/1.1 body, intentionally left open.
+            io(stream.write_all(
+                b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\n: heartbeat\n\n",
+            )).await.unwrap();
+            self.connected(true).await;
+            stream
+        }
+
+        async fn connected(&mut self, expected: bool) {
+            assert!(matches!(
+                io(self.rx.recv()).await,
+                Some(AppEvent::SseConnection(value)) if value == expected
+            ));
+        }
+
+        async fn activity(&mut self, stream: &mut TcpStream) {
+            io(stream.write_all(b": heartbeat\n\nevent: activity\ndata: {}\n\n"))
+                .await
+                .unwrap();
+            assert!(matches!(io(self.rx.recv()).await, Some(AppEvent::Activity)));
+        }
+    }
+
+    async fn closed(stream: &mut TcpStream) {
+        let mut byte = [0];
+        assert_eq!(io(stream.read(&mut byte)).await.unwrap(), 0);
+    }
+
+    async fn refuse(stream: &mut TcpStream) {
+        io(stream.write_all(
+            b"HTTP/1.1 401 Unauthorized\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+        ))
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn healthy_stream_rotates_at_fixed_deadline_despite_heartbeats_and_activity() {
+        tokio::time::pause();
+        let mut subscription = Subscription::new().await;
+        let mut stream = subscription.open().await;
+        // Traffic survives the former 30 s total timeout and keeps the 45 s
+        // read timeout alive, but must never renew the auth deadline.
+        for _ in 0..(SSE_MAX_STREAM_LIFETIME.as_secs() / 15 - 1) {
+            tokio::time::advance(Duration::from_secs(15)).await;
+            subscription.activity(&mut stream).await;
+            assert!(subscription.rx.try_recv().is_err());
+        }
+        tokio::time::advance(Duration::from_secs(14)).await;
+        subscription.activity(&mut stream).await;
+        assert!(subscription.rx.try_recv().is_err());
+        tokio::time::advance(Duration::from_millis(1_001)).await;
+        subscription.connected(false).await;
+        closed(&mut stream).await;
+        // A scheduled rotation makes a fresh authenticated GET without backoff.
+        let mut replacement = subscription.open().await;
+        subscription.activity(&mut replacement).await;
+        assert!(subscription.rx.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn revoked_session_is_rejected_at_rotation_then_backs_off_and_wakes_on_login() {
+        tokio::time::pause();
+        let mut subscription = Subscription::new().await;
+        let mut stream = subscription.open().await;
+        // Model initial-only auth: revocation does not stop the old stream.
+        for _ in 0..(SSE_MAX_STREAM_LIFETIME.as_secs() / 15 - 1) {
+            tokio::time::advance(Duration::from_secs(15)).await;
+            subscription.activity(&mut stream).await;
+        }
+        tokio::time::advance(Duration::from_millis(15_001)).await;
+        subscription.connected(false).await;
+        closed(&mut stream).await;
+        let (mut rejected, _) = subscription.request("get /api/events/stream ").await;
+        refuse(&mut rejected).await;
+        subscription.connected(false).await;
+        assert!(subscription.rx.try_recv().is_err());
+        // A failed rotation uses the existing 1 s, then 2 s backoff.
+        tokio::time::advance(Duration::from_millis(999)).await;
+        assert!(futures::poll!(Box::pin(subscription.listener.accept())).is_pending());
+        tokio::time::advance(Duration::from_millis(2)).await;
+        let (mut rejected, _) = subscription.request("get /api/events/stream ").await;
+        refuse(&mut rejected).await;
+        subscription.connected(false).await;
+        let before_wake = tokio::time::Instant::now();
+        subscription.wake.notify_one();
+        let _replacement = subscription.open().await;
+        assert_eq!(before_wake.elapsed(), Duration::ZERO);
+    }
+
+    #[tokio::test]
+    async fn silent_established_stream_times_out_after_45_seconds() {
+        tokio::time::pause();
+        let mut subscription = Subscription::new().await;
+        let mut stream = subscription.open().await;
+        tokio::time::advance(Duration::from_secs(44)).await;
+        assert!(subscription.rx.try_recv().is_err());
+        tokio::time::advance(Duration::from_millis(1_001)).await;
+        subscription.connected(false).await;
+        closed(&mut stream).await;
+        tokio::time::advance(Duration::from_millis(1_001)).await;
+        let _replacement = subscription.open().await;
+    }
+
+    #[tokio::test]
+    async fn stream_client_times_out_silent_response_headers_after_45_seconds() {
+        tokio::time::pause();
+        let listener = io(TcpListener::bind("127.0.0.1:0")).await.unwrap();
+        let base_url = format!("http://{}", listener.local_addr().unwrap());
+        let api = ApiClient::new(&base_url).unwrap();
+        let request = api
+            .stream_http()
+            .get(format!("{base_url}/api/events/stream"));
+        let pending = tokio::spawn(request.send());
+        let (_silent, _) = io(listener.accept()).await.unwrap();
+        tokio::time::advance(Duration::from_secs(44)).await;
+        assert!(!pending.is_finished());
+        tokio::time::advance(Duration::from_millis(1_001)).await;
+        let error = io(pending).await.unwrap().unwrap_err();
+        assert!(error.is_timeout(), "{error:?}");
+    }
+
+    #[tokio::test]
+    async fn logout_wake_closes_established_stream_and_reauthenticates_without_cookie() {
+        tokio::time::pause();
+        let mut subscription = Subscription::new().await;
+        let mut stream = subscription.open().await;
+        subscription.activity(&mut stream).await;
+        let api = subscription.api.clone();
+        let logout = tokio::spawn(async move { api.logout().await });
+        let (mut logout_stream, headers) = subscription.request("post /api/auth/logout ").await;
+        assert!(headers.contains("x-csrf-token: test-csrf"));
+        assert!(headers.contains("openfrost_session=test-session"));
+        io(logout_stream.write_all(
+            b"HTTP/1.1 204 No Content\r\nSet-Cookie: openfrost_session=; Max-Age=0; Path=/\r\nConnection: close\r\n\r\n",
+        )).await.unwrap();
+        io(logout).await.unwrap().unwrap();
+        assert_eq!(subscription.api.csrf_token(), None);
+        // The app supplies this wake after applying the logout result.
+        let before_wake = tokio::time::Instant::now();
+        subscription.wake.notify_one();
+        subscription.connected(false).await;
+        closed(&mut stream).await;
+        let (mut rejected, headers) = subscription.request("get /api/events/stream ").await;
+        assert!(!headers.contains("openfrost_session=test-session"));
+        refuse(&mut rejected).await;
+        subscription.connected(false).await;
+        assert_eq!(before_wake.elapsed(), Duration::ZERO);
+        assert!(subscription.rx.try_recv().is_err());
+    }
+}

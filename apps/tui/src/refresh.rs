@@ -5,8 +5,8 @@
 //! start:
 //!
 //! * SSE `activity` bursts are coalesced into one refresh per debounce window.
-//! * While the SSE stream is connected there is no periodic polling at all;
-//!   polling is only a fallback for a disconnected stream.
+//! * While SSE is connected, successful reads do not poll. Failed reads retry
+//!   with capped backoff; polling is a fallback for a disconnected stream.
 //! * A tab never has two refreshes in flight; a request that arrives while one
 //!   is running is remembered and replayed once when it finishes, so a
 //!   mutation's follow-up refresh is never lost to an older, overlapping one.
@@ -24,6 +24,9 @@ pub const ACTIVITY_DEBOUNCE_TICKS: u64 = 4;
 pub const POLL_IDLE_TICKS: u64 = 60;
 /// Fallback polling while SSE is disconnected and a run is active (~1 s).
 pub const POLL_BUSY_TICKS: u64 = 12;
+/// Failed reads retry after ~1 s, backing off to at most ~30 s.
+pub const RETRY_INITIAL_TICKS: u64 = 12;
+pub const RETRY_MAX_TICKS: u64 = 375;
 /// A refresh that has not reported back after this long (~40 s, longer than
 /// the 30 s request timeout) is treated as lost so a tab can never wedge.
 pub const IN_FLIGHT_STALE_TICKS: u64 = 500;
@@ -37,6 +40,9 @@ pub struct SyncState {
     in_flight: [Option<u64>; 6],
     dirty: [bool; 6],
     started: u64,
+    generations: [u64; 6],
+    retry_at: [Option<u64>; 6],
+    retry_delays: [u64; 6],
 }
 
 fn index(tab: Tab) -> usize {
@@ -114,6 +120,8 @@ impl SyncState {
         self.in_flight[i] = Some(now);
         self.dirty[i] = false;
         self.started += 1;
+        self.generations[i] = self.started;
+        self.retry_at[i] = None;
         true
     }
 
@@ -123,6 +131,36 @@ impl SyncState {
         let i = index(tab);
         self.in_flight[i] = None;
         std::mem::take(&mut self.dirty[i])
+    }
+
+    pub fn generation(&self, tab: Tab) -> u64 {
+        self.generations[index(tab)]
+    }
+
+    pub fn is_current(&self, tab: Tab, generation: u64) -> bool {
+        self.in_flight[index(tab)].is_some() && self.generation(tab) == generation
+    }
+
+    pub fn record_outcome(&mut self, tab: Tab, failed: bool, now: u64) {
+        let i = index(tab);
+        if failed {
+            let delay = self.retry_delays[i].max(RETRY_INITIAL_TICKS);
+            self.retry_at[i] = Some(now.saturating_add(delay));
+            self.retry_delays[i] = (delay * 2).min(RETRY_MAX_TICKS);
+        } else {
+            self.retry_at[i] = None;
+            self.retry_delays[i] = 0;
+        }
+    }
+
+    pub fn take_due_retry(&mut self, tab: Tab, now: u64) -> bool {
+        let i = index(tab);
+        if self.in_flight[i].is_none() && self.retry_at[i].is_some_and(|due| now >= due) {
+            self.retry_at[i] = None;
+            true
+        } else {
+            false
+        }
     }
 
     #[cfg(test)]
@@ -138,6 +176,38 @@ impl SyncState {
     #[cfg(test)]
     pub fn refreshes_started(&self) -> u64 {
         self.started
+    }
+}
+
+/// Includes partial bundle failures and the optional latest-detail read, whose
+/// error is otherwise deliberately hidden by the Assistant loader.
+pub fn payload_failed(payload: &Payload) -> bool {
+    match payload {
+        Payload::Tasks(result) => result.is_err(),
+        Payload::TaskDetail(result) => result.is_err(),
+        Payload::Projects(result) => result.is_err(),
+        Payload::Memory(result) => result.is_err(),
+        Payload::Routines(result) => result.is_err(),
+        Payload::SettingsBundle {
+            settings,
+            destinations,
+        } => settings.is_err() || destinations.is_err(),
+        Payload::AssistantData {
+            events,
+            approvals,
+            routines,
+            projects,
+            tasks,
+            latest_task,
+        } => {
+            events.is_err()
+                || approvals.is_err()
+                || routines.is_err()
+                || projects.is_err()
+                || tasks.is_err()
+                || (tasks.as_ref().is_ok_and(|res| !res.tasks.is_empty()) && latest_task.is_none())
+        }
+        _ => false,
     }
 }
 
@@ -203,6 +273,81 @@ pub async fn load_tasks(api: &ApiClient, open_task_id: Option<String>) -> Vec<Pa
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn failed_reads_back_off_at_a_bounded_rate_and_success_cancels_retries() {
+        let mut sync = SyncState::default();
+        sync.set_sse_connected(true, 0);
+        let mut now = 0;
+        for attempt in 0..12 {
+            assert!(sync.begin_refresh(Tab::Assistant, now));
+            sync.record_outcome(Tab::Assistant, true, now);
+            assert!(!sync.finish_refresh(Tab::Assistant));
+            let delay = (RETRY_INITIAL_TICKS * (1 << attempt)).min(RETRY_MAX_TICKS);
+            assert!(!sync.take_due_retry(Tab::Assistant, now + delay - 1));
+            now += delay;
+            assert!(sync.take_due_retry(Tab::Assistant, now));
+            assert!(!sync.take_due_retry(Tab::Assistant, now));
+            assert!(!sync.poll_due(now, true));
+        }
+        assert!(sync.begin_refresh(Tab::Assistant, now));
+        sync.record_outcome(Tab::Assistant, false, now);
+        sync.finish_refresh(Tab::Assistant);
+        assert!(!sync.take_due_retry(Tab::Assistant, now + RETRY_MAX_TICKS * 10));
+        sync.record_outcome(Tab::Assistant, true, now);
+        assert!(sync.take_due_retry(Tab::Assistant, now + RETRY_INITIAL_TICKS));
+    }
+
+    #[test]
+    fn dirty_replay_absorbs_retry_and_cannot_create_a_second_flight() {
+        let mut sync = SyncState::default();
+        assert!(sync.begin_refresh(Tab::Tasks, 0));
+        assert!(!sync.begin_refresh(Tab::Tasks, 1));
+        sync.record_outcome(Tab::Tasks, true, 2);
+        assert!(sync.finish_refresh(Tab::Tasks));
+        assert!(sync.begin_refresh(Tab::Tasks, 2));
+        assert!(!sync.take_due_retry(Tab::Tasks, 1_000));
+        sync.record_outcome(Tab::Tasks, false, 1_000);
+        assert!(!sync.finish_refresh(Tab::Tasks));
+        assert!(!sync.take_due_retry(Tab::Tasks, 2_000));
+        assert_eq!(sync.refreshes_started(), 2);
+    }
+
+    #[test]
+    fn partial_bundle_failures_need_reconciliation_but_an_empty_task_list_does_not() {
+        use crate::contracts::{ExecutorStatus, TasksResponse};
+        let mut payload = Payload::AssistantData {
+            events: Ok(vec![]),
+            approvals: Ok(vec![]),
+            routines: Ok(vec![]),
+            projects: Ok(vec![]),
+            tasks: Ok(TasksResponse {
+                tasks: vec![],
+                executor: ExecutorStatus {
+                    busy: false,
+                    activeTaskId: None,
+                    dispatchPaused: false,
+                },
+            }),
+            latest_task: None,
+        };
+        assert!(
+            !payload_failed(&payload),
+            "an empty task list is not a failed detail read"
+        );
+        if let Payload::AssistantData { approvals, .. } = &mut payload {
+            *approvals = Err("transient".into());
+        }
+        assert!(payload_failed(&payload));
+        assert!(payload_failed(&Payload::SettingsBundle {
+            settings: Err("transient".into()),
+            destinations: Ok(vec![]),
+        }));
+        assert!(payload_failed(&Payload::SettingsBundle {
+            settings: Err("transient".into()),
+            destinations: Err("transient".into()),
+        }));
+    }
 
     #[test]
     fn activity_burst_coalesces_into_one_refresh_per_window() {

@@ -144,6 +144,10 @@ where
 pub const SSE_INITIAL_BACKOFF_MS: u64 = 1_000;
 pub const SSE_MAX_BACKOFF_MS: u64 = 30_000;
 
+// The server authenticates only when opening a stream. Force a fresh request
+// at least every five minutes, even while heartbeats/activity keep reads alive.
+pub(crate) const SSE_MAX_STREAM_LIFETIME: Duration = Duration::from_secs(5 * 60);
+
 /// Exponential reconnect delay: 1 s, 2 s, 4 s ... capped at 30 s.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Backoff {
@@ -196,7 +200,10 @@ pub async fn wait_before_retry(delay: Duration, wake: &Notify) -> RetryWake {
 /// or onboarding so it reconnects at once instead of waiting out the
 /// (up to 30 s) exponential backoff, and also replaces a stream that was
 /// opened under a previous session. Connection state is reported as
-/// `AppEvent::SseConnection`; the app polls only while it is `false`.
+/// `AppEvent::SseConnection`; the app polls only while it is `false`. A fixed
+/// five-minute deadline bounds stale-session access after expiry/revocation;
+/// heartbeats and activity do not extend it. Rotation reconnects immediately
+/// through the authenticated endpoint; failures still use normal backoff.
 pub async fn subscribe_events(
     base_url: String,
     http: reqwest::Client,
@@ -206,12 +213,21 @@ pub async fn subscribe_events(
     let url = format!("{base_url}/api/events/stream");
     let mut backoff = Backoff::new();
     loop {
-        let mut woken = false;
+        let mut reconnect_now = false;
+        let deadline = tokio::time::sleep(SSE_MAX_STREAM_LIFETIME);
+        tokio::pin!(deadline);
         if let Ok(mut es) = EventSource::new(http.get(&url)) {
             loop {
                 tokio::select! {
+                    // Neither a busy stream nor a simultaneous message may
+                    // starve logout or the non-renewable session deadline.
+                    biased;
                     _ = wake.notified() => {
-                        woken = true;
+                        reconnect_now = true;
+                        break;
+                    }
+                    _ = &mut deadline => {
+                        reconnect_now = true;
                         break;
                     }
                     next = es.next() => match next {
@@ -239,7 +255,7 @@ pub async fn subscribe_events(
         if tx.send(AppEvent::SseConnection(false)).is_err() {
             return;
         }
-        if woken {
+        if reconnect_now {
             backoff.reset();
             continue;
         }
