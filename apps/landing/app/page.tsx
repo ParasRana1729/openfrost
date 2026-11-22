@@ -25,7 +25,7 @@ const faqs = [
   ['Can I download a Windows installer?', 'There is no packaged installer published yet. OpenFrost is available from its source repository; check Releases for future packaged builds.'],
   ['Does local mean offline?', 'No. The app and structured data run locally, but prompts, selected context, and retrieved excerpts are sent to your configured model or search provider for processing.'],
   ['Which providers are supported?', 'OpenAI, Gemini, and OpenRouter adapters are included. One configured provider is active at a time.'],
-  ['What happens when I close the browser?', 'The local API runs tasks while the computer is awake and the runtime process is running. Closing the browser does not stop the API task.'],
+  ['What happens when I close the TUI?', 'The local API runs tasks while the computer is awake and the runtime process is running. Closing the terminal UI does not stop the API task.'],
   ['Can it read any folder or run commands?', 'No. Project reads require explicitly granted folder roots. Arbitrary shell and operating-system control are outside v0.1.'],
   ['How does file export work?', 'A new report can be exported to a granted destination after you review the exact proposal. The destination is checked again when the write runs.'],
 ] as const;
@@ -145,7 +145,7 @@ export default function Home() {
             <div className="boundary-node"><span>01 / YOUR PC</span><strong>OpenFrost runtime</strong><p>Queue · project files · artifacts</p></div>
             <div className="boundary-connector"><i />selected prompt + context<i /></div>
             <div className="boundary-node provider-node"><span>02 / CONFIGURED SERVICE</span><strong>Chosen provider</strong><p>{providers.join(' · ')}</p></div>
-            <div className="boundary-note">Provider keys are protected with Windows DPAPI. The local UI binds to loopback.</div>
+            <div className="boundary-note">Provider keys are protected with Windows DPAPI. The local API binds to loopback.</div>
           </div>
         </section>
 

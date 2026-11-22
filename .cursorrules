@@ -1,16 +1,26 @@
 # Cursor Rules for OpenFrost
 
-Read and strictly adhere to `AGENTS.md` and `docs/ai-os-project-spec.md`.
+Read and strictly adhere to `AGENTS.md`, `docs/ai-os-project-spec.md`, and
+`backlog/solo-rebuild.md`.
 
-Current state: specification only. No implementation, package manifests, tests,
-or CI workflows exist yet. Paths in the spec describe planned architecture.
+## Current state
 
-1. Implement only the assigned S00–S07 item in `backlog/solo-rebuild.md`.
-2. When code is introduced, use strict TypeScript and shared Zod contracts in
-   `packages/domain`.
-3. Use local SQLite + Drizzle. No Docker or cloud database for the runtime.
-4. Protect credentials with Windows DPAPI; never commit or print plaintext keys.
-5. Enforce the `auto`, `telegram`, and `local` risk tiers per `AGENTS.md`.
-6. S01 must define the toolchain and scripts for
-   `pnpm lint && pnpm test && pnpm build`. Until then, those checks are unavailable,
-   not passing.
+S00–S06, S08 Phase 1, and S09 (Rust Ratatui + Crossterm TUI Control Center in
+`apps/tui`, replacing the removed `apps/web`) are implemented on `main`.
+`apps/landing` is a static Next.js product page. S07's one-working-week
+owner-use evaluation gate remains open.
+
+## Rules
+
+1. Implement only the explicitly assigned item in `backlog/solo-rebuild.md`.
+2. Use strict TypeScript (no `any`) and shared Zod contracts in `packages/domain`.
+   Keep Rust serde types in `apps/tui/src/contracts.rs` aligned with `packages/domain`.
+3. Use local `better-sqlite3` + Drizzle with additive migrations (`packages/db`)
+   and Markdown as canonical storage for approved memory. No Docker or cloud DB.
+4. Protect credentials with Windows DPAPI (`packages/db/src/dpapi.ts`); never
+   commit, log, or echo plaintext keys.
+5. Enforce the `auto`, `telegram`, and `local` risk tiers and security
+   boundaries per `AGENTS.md`.
+6. Verify changes before handoff:
+   - TypeScript workspace: `pnpm lint && pnpm test && pnpm build`
+   - Rust TUI (`apps/tui`): `cargo fmt --all -- --check && cargo clippy --all-targets -- -D warnings && cargo test && cargo build`

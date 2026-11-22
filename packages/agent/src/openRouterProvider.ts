@@ -91,15 +91,27 @@ export class OpenRouterProvider implements LlmProvider {
     if (request.webSearch) {
       requestBody.plugins = [{ id: 'web' }];
     }
-    const response = await this.#fetchImpl(OPENROUTER_CHAT_URL, {
-      method: 'POST',
-      headers: {
-        authorization: `Bearer ${apiKey}`,
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify(requestBody),
-      signal: request.signal,
-    });
+    // Abort errors propagate unchanged so the executor classifies them against
+    // cancellation and the wall-clock limit; other transport errors are
+    // wrapped and redacted so key material never reaches persisted failures.
+    let response: Response;
+    try {
+      response = await this.#fetchImpl(OPENROUTER_CHAT_URL, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${apiKey}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
+        signal: request.signal,
+      });
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        throw err;
+      }
+      const message = err instanceof Error ? err.message : String(err);
+      throw new ProviderError(`OpenRouter request failed: ${redactSecret(message, apiKey)}`);
+    }
 
     if (!response.ok) {
       throw new ProviderError(

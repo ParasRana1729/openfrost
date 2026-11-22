@@ -89,8 +89,8 @@ not a description of an existing runtime.
 5. **Three risk tiers:** classify every tool execution and record its outcome.
    - `auto`: bounded authorized reads/planning and app-internal result persistence.
    - `telegram`: standard writes; this risk identifier does not require a Telegram
-     integration. In v0.1 approval is in the local web app. Initially only
-     new-report export is supported.
+     integration. In v0.1 approval is in the local TUI Control Center. Initially
+     only new-report export is supported.
    - `local`: high-risk changes require local Control Center authorization and
      cannot be approved remotely. Such tools are disabled in v0.1.
 6. **Deny before approval:** an approval never grants an unsupported capability or
@@ -110,22 +110,27 @@ not a description of an existing runtime.
 
 ## 4. Working on an assigned item
 
-1. Read its S00–S08 entry in the active backlog and relevant spec sections.
+1. Read its S00–S09 entry in the active backlog and relevant spec sections.
 2. Confirm dependencies actually work in the current code; documentation or a
    completed planning task is not implementation evidence. S01 starts from an
    empty implementation and must first define the workspace and toolchain.
 3. Keep one slice focused. Add tests alongside shared utilities, endpoints, state
    transitions, and trust boundaries. Prefer fake providers and clocks so tests
    require no paid API calls or real credentials.
-4. S01 must create working scripts for the exact project checks:
+4. S01 defined the TypeScript workspace checks and S09 added the Rust TUI checks
+   in `apps/tui`:
 
    ```bash
    pnpm lint && pnpm test && pnpm build
    ```
 
-   Since S01 these commands exist and CI runs them. For documentation-only
-   changes, additionally validate links and consistency; never label checks
-   that were not run as passing.
+   ```bash
+   cargo fmt --all -- --check && cargo clippy --all-targets -- -D warnings && cargo test && cargo build
+   ```
+
+   CI runs both suites on `windows-latest`. For documentation-only changes,
+   additionally validate links and consistency; never label checks that were not
+   run as passing.
 
 5. Exercise the workflow named in the acceptance criteria. State what passed,
    what was not run, and what is still assumed. Do not claim a feature works from

@@ -284,9 +284,9 @@ impl MemoryState {
             for index in 0..snapshot.global.entries.len() {
                 rows.push(MemRow::GlobalEntry(index));
             }
-            for project in 0..snapshot.projects.len() {
+            for (project, memory) in snapshot.projects.iter().enumerate() {
                 rows.push(MemRow::ProjectHeader);
-                for entry in 0..snapshot.projects[project].entries.len() {
+                for entry in 0..memory.entries.len() {
                     rows.push(MemRow::ProjectEntry { project, entry });
                 }
             }
