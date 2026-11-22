@@ -11,34 +11,37 @@ Read these in order:
 1. [AGENTS.md](../AGENTS.md): engineering and security constraints.
 2. [Product one-pager](./product-one-pager.md): the promise and first three jobs.
 3. [Full specification](./ai-os-project-spec.md): behavior and release gates.
-4. [Solo backlog](../backlog/solo-rebuild.md): the assigned S00–S08 slice.
+4. [Solo backlog](../backlog/solo-rebuild.md): the assigned S00–S09 slice.
 
 Then inspect current `origin/main`, relevant recent commits/PRs, and the assigned
 entry's handoff. Those are shared context; do not assume another agent's private
 conversation or unpushed edits are available.
 
-**Current state: S00–S06 are implemented on `main`.** S07 pre-week validation
-was performed on 2026-10-26, and the owner's one-working-week evaluation remains
+**Current state: S00–S06, S08 Phase 1, and S09 (Rust Ratatui + Crossterm TUI
+Control Center in `apps/tui`, replacing `apps/web`) are implemented on `main`.**
+`apps/landing` is the static marketing page. S07 pre-week validation was
+performed on 2026-10-26, and the owner's one-working-week evaluation remains
 open. The S07 follow-up in
 [PR #28](https://github.com/ParasRana1729/openfrost/pull/28) adds provider-key
 redaction and NAT64 hardening; it does not complete S07. Check the solo backlog
-handoffs for evidence, status, and limitations before building.
-S08 Phase 1 Control Center usability is a separate UI slice and does not close
-the S07 owner-use gate.
+handoffs for evidence, status, and limitations before building. S08 Phase 1 and
+S09 do not close the S07 owner-use gate.
 
 ## 2. Set up and choose one slice
 
-Start with the current assignment. S07's owner-use gate remains open; S08 Phase 1
-Control Center usability is a separate UI slice. S06 weekly planning is already
-implemented. Check the solo backlog entry and handoffs,
-then confirm dependencies in the code. The toolchain exists: `pnpm install`,
-`pnpm lint`, `pnpm test`, `pnpm build`, and `pnpm dev` are the working commands.
+Start with the current assignment. S00–S06, S08 Phase 1, and S09 are complete on
+`main`; S07's one-working-week owner-use gate remains open. Check the solo
+backlog entry and handoffs, then confirm dependencies in the code. Both
+toolchains exist: `pnpm install`, `pnpm lint`, `pnpm test`, `pnpm build`, and
+`pnpm dev` for the TypeScript workspace, plus `cargo fmt`, `cargo clippy`,
+`cargo test`, and `cargo build` in `apps/tui`.
 
 Never put a real API key in `.env`, a prompt, or an issue. Provider keys are
 stored only through Settings and Windows DPAPI.
 
-Use a focused topic branch, for example `feat/s02-research-brief`. Check that the
-slice's dependencies actually work before building on them.
+Use a focused topic branch, for example `feat/s02-research-brief` or
+`fix/s07-export-errors`. Check that the slice's dependencies actually work
+before building on them.
 
 ## 3. Give the coding assistant a bounded assignment
 
@@ -52,7 +55,8 @@ Do not invent existing components beyond what the repository actually contains; 
 Create only what the assigned slice needs and preserve unrelated work.
 
 Use strict TypeScript, shared Zod contracts in packages/domain, and Vitest tests.
-Use fake providers/clocks for automated tests; never request keys in chat.
+Keep Rust serde contracts in apps/tui/src/contracts.rs aligned when payloads change.
+Use fake providers/clocks and local mock HTTP servers for automated tests; never request keys in chat.
 Exercise the actual workflow and report exactly what was verified or blocked.
 
 Make meaningful checkpoint commits and push the task branch as work progresses.
@@ -68,25 +72,30 @@ change repository settings, or deploy under this authorization.
 
 Replace the placeholder with the specific task before sending the assignment;
 the merge authorization applies to that scope, not the whole backlog. Check the
-backlog for the current assignment; S00–S06 are implemented, S07's owner-use
-gate remains open, and S08 Phase 1 usability is tracked separately.
+backlog for the current assignment; S00–S06, S08 Phase 1, and S09 are
+implemented on `main`, and S07's owner-use gate remains open.
 
 ## 4. Verify the implementation
 
-The project defines the scripts for the exact project checks:
+Run the exact CI checks for the areas you change:
 
 ```bash
 pnpm lint && pnpm test && pnpm build
 ```
 
-They exist and CI runs them on `windows-latest`. Never claim checks passed when
-they were not run. For documentation-only work, check local links, consistency,
-and contents.
+And in `apps/tui` when changing the Rust Control Center or shared API contracts:
 
-Then exercise the slice's workflow: submit a task, inspect its result and evidence,
-and test applicable failure, permission, cancellation, and restart behavior.
-For documentation-only work, also check local links and conflicting scope claims.
-If a check cannot run, record why instead of marking it passed.
+```bash
+cargo fmt --all -- --check && cargo clippy --all-targets -- -D warnings && cargo test && cargo build
+```
+
+CI runs both suites on `windows-latest`. Never claim checks passed when they
+were not run. For documentation-only work, check local links, consistency, and
+contents.
+
+Then exercise the slice's workflow: submit a task, inspect its result and
+evidence, and test applicable failure, permission, cancellation, and restart
+behavior. If a check cannot run, record why instead of marking it passed.
 
 Do not paste credentials or unredacted private source content into bug reports.
 An AI-generated summary is not proof that a test or real workflow was run.

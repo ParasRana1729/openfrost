@@ -7,8 +7,8 @@ import {
 import { validateGrantPath } from '@openfrost/agent';
 import {
   ApprovalNotFoundError,
+  ArtifactNotFoundError,
   ExportDestinationNotFoundError,
-  TaskNotFoundError,
 } from '@openfrost/db';
 import type { AppContext } from '../types.js';
 
@@ -65,7 +65,7 @@ export const makeExportRoutes = (ctx: AppContext): FastifyPluginAsync => async (
   app.post('/exports', async (request, reply) => {
     const input = createExportRequestSchema.parse(request.body);
     if (ctx.store.artifacts.get(input.artifactId) === null) {
-      throw new TaskNotFoundError(input.artifactId);
+      throw new ArtifactNotFoundError(input.artifactId);
     }
     if (ctx.store.exportDestinations.get(input.destinationId) === null) {
       throw new ExportDestinationNotFoundError(input.destinationId);

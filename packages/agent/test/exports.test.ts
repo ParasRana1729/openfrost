@@ -4,7 +4,15 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { InvalidApprovalTransitionError } from '@openfrost/domain';
-import { createStore, openDatabase, type OpenDatabaseResult, type Store } from '@openfrost/db';
+import {
+  ApprovalNotFoundError,
+  ArtifactNotFoundError,
+  ExportDestinationNotFoundError,
+  createStore,
+  openDatabase,
+  type OpenDatabaseResult,
+  type Store,
+} from '@openfrost/db';
 import { TaskExecutor } from '../src/index.js';
 
 /** Anchored to the real clock so approval TTL timers (which run on the real
@@ -397,5 +405,28 @@ describe('approval-bound export flow', () => {
     await executor.whenIdle();
     expect(store.tasks.get(task.id)?.state).toBe('canceled');
     expect(store.approvals.get(approval.id)?.state).toBe('canceled');
+  });
+
+  it('throws typed not-found errors for missing approvals, artifacts, and destinations', async () => {
+    const artifactId = seedArtifact();
+    const executor = makeExecutor();
+
+    expect(() => executor.decideApproval('missing-approval', 'granted')).toThrowError(
+      ApprovalNotFoundError,
+    );
+    await expect(
+      executor.enqueueExport({
+        artifactId: 'missing-artifact',
+        destinationId,
+        filename: 'missing.md',
+      }),
+    ).rejects.toThrowError(ArtifactNotFoundError);
+    await expect(
+      executor.enqueueExport({
+        artifactId,
+        destinationId: 'missing-destination',
+        filename: 'missing.md',
+      }),
+    ).rejects.toThrowError(ExportDestinationNotFoundError);
   });
 });

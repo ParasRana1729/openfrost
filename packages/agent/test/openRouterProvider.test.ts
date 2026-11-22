@@ -384,6 +384,27 @@ describe('OpenRouterProvider error handling', () => {
     expect(requests).toHaveLength(0); // no request is sent without a key
   });
 
+  it('redacts the API key from transport errors', async () => {
+    const fetchImpl: typeof fetch = async () => {
+      throw new Error(`transport failed with ${FAKE_KEY}`);
+    };
+    const provider = new OpenRouterProvider({
+      model: 'openrouter/auto',
+      getApiKey: async () => FAKE_KEY,
+      fetchImpl,
+    });
+
+    const err = await provider.step(stepRequest).then(
+      () => null,
+      (error: unknown) => error,
+    );
+    expect(err).toBeInstanceOf(ProviderError);
+    if (err instanceof ProviderError) {
+      expect(err.message).toContain('transport failed with [redacted]');
+      expect(err.message).not.toContain(FAKE_KEY);
+    }
+  });
+
   it('propagates abort errors unchanged', async () => {
     const abortError = new Error('provider step aborted');
     abortError.name = 'AbortError';

@@ -1,17 +1,19 @@
 # OpenFrost — Product one-pager
 
-- **Direction:** Accepted; implementation in progress
+- **Direction:** Accepted; core workflows and TUI Control Center implemented on `main`
 - **Builder and first user:** ParasRana1729
-- **Release:** v0.1, Windows-first local runtime and local web app
+- **Release:** v0.1, Windows-first local runtime and Rust terminal UI (TUI) Control Center
 - **Source of truth:** [Full specification](./ai-os-project-spec.md)
 
-**Current repository: S00–S06 are implemented on `main`.** The shipped product
-includes research briefs, project updates, approval-bound export, owner-approved
-memory, and owner-confirmed weekly planning. S07 pre-week validation was
-performed on 2026-10-26; the owner's one-working-week evaluation remains open.
-The S07 follow-up in [PR #28](https://github.com/ParasRana1729/openfrost/pull/28)
-adds provider-key redaction and NAT64 private-address checks; it does not close
-S07.
+**Current repository: S00–S06, S08 Phase 1, and S09 (Rust Ratatui + Crossterm
+TUI Control Center in `apps/tui`, replacing `apps/web`) are implemented on
+`main`.** The shipped product includes research briefs, project updates,
+approval-bound export, owner-approved memory, and owner-confirmed weekly
+planning, alongside the static product page in `apps/landing`. S07 pre-week
+validation was performed on 2026-10-26; the owner's one-working-week evaluation
+remains open. The S07 follow-up in
+[PR #28](https://github.com/ParasRana1729/openfrost/pull/28) adds provider-key
+redaction and NAT64 private-address checks; it does not close S07.
 
 ## Problem
 
@@ -38,14 +40,14 @@ background execution, not a replacement for Windows or a collection of personas.
 ## Smallest coherent product
 
 - One assistant; projects scope its context without creating separate identities.
-- One local web app for conversation, tasks, results, memory, and approvals.
+- One local terminal UI (TUI) Control Center (`apps/tui`) for conversation, tasks, results, memory, routines, and approvals over the loopback API, plus a static landing page (`apps/landing`).
 - One globally active run, with a persistent queue, finite limits, and cancellation.
 - Owner-chosen model provider (OpenAI, Gemini, or OpenRouter) with a DPAPI-protected key; SQLite + Drizzle for local state.
 - Inspectable, editable, owner-approved global preferences and project memory.
 - Public web research, granted text-file reads, approved export of new reports,
   and owner-approved memory.
 
-The PC must be awake and the runtime running. Closing the browser is fine;
+The PC must be awake and the runtime running. Closing the TUI is fine;
 shutting down the PC stops work. Local-first is not offline: selected context is
 sent to the model/search provider, with that disclosure during onboarding.
 
@@ -53,8 +55,8 @@ sent to the model/search provider, with that disclosure during onboarding.
 
 - Reads stay within granted scope; out-of-scope requests are denied.
 - Keep `auto`, `telegram`, and `local` risk identifiers. In v0.1 all approvals are
-  local web approvals; `telegram` names the standard-write tier, not a required
-  Telegram integration. High-risk tools remain disabled.
+  local Control Center approvals; `telegram` names the standard-write tier, not a
+  required Telegram integration. High-risk tools remain disabled.
 - A report is saved internally before any separate export. Source files are not
   changed; exporting a new file requires review of its content and destination.
 - No arbitrary shell, deletion, overwrites, credential handling by the model, or
@@ -62,9 +64,10 @@ sent to the model/search provider, with that disclosure during onboarding.
 
 ## Not v0.1
 
-Agent teams, remote/mobile clients, Telegram, cloud workers, Docker, native apps,
-connector catalogs, marketplace/MCP integrations, voice, multiple providers, and
-self-directed proactive work. Do not add infrastructure for hypothetical users.
+Agent teams, remote/mobile/GUI desktop clients, Telegram, cloud workers, Docker,
+connector catalogs, marketplace/MCP integrations, voice, multiple simultaneous
+providers, and self-directed proactive work. Do not add infrastructure for
+hypothetical users.
 
 ## Success and delivery
 
@@ -75,4 +78,5 @@ The complete release gates are in the full specification.
 
 Build sequentially from the [solo backlog](../backlog/solo-rebuild.md): local
 foundation → research brief → projects → reviewable export → memory → weekly
-planning → release hardening. S00–S06 are complete; S07 remains in progress.
+planning → TUI Control Center (S09, landed) → release hardening (S07). S00–S06,
+S08 Phase 1, and S09 are complete on `main`; S07 remains in progress.

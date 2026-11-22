@@ -173,6 +173,17 @@ describe('approval-bound export over the API', () => {
       },
     });
     expect(badArtifact.statusCode).toBe(404);
+    expect(badArtifact.json().error).toBe('Artifact missing-artifact not found');
+
+    // Deciding an unknown approval returns 404 rather than 500.
+    const unknownApproval = await app.built.app.inject({
+      method: 'POST',
+      url: '/api/approvals/missing-approval/decision',
+      headers: jarHeaders(app),
+      payload: { decision: 'granted' },
+    });
+    expect(unknownApproval.statusCode).toBe(404);
+    expect(unknownApproval.json().error).toBe('Approval missing-approval not found');
     const badFilename = await app.built.app.inject({
       method: 'POST',
       url: '/api/exports',

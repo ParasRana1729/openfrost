@@ -8,19 +8,20 @@ assigned entry in the [solo backlog](backlog/solo-rebuild.md) before starting.
 
 ## 1. Scope and branches
 
-- Work on one explicitly assigned active backlog item. S00–S08 are local IDs,
+- Work on one explicitly assigned active backlog item. S00–S09 are local IDs,
   not GitHub issue numbers.
 - Confirm dependencies in the code, not just in planning documents.
 - Use a topic branch, for example `feat/s02-research-brief`,
   `fix/s03-folder-boundary`, or `docs/s00-product-reset`.
-- S00–S06 are implemented on `main`. S07 pre-week validation is recorded; the
-  owner's one-working-week evaluation remains open. The S07 follow-up in
-  [PR #28](https://github.com/ParasRana1729/openfrost/pull/28) adds provider-key
-  redaction and NAT64 hardening; it does not complete S07. Build only what the
-  assigned slice needs and verify dependencies
-  in the actual code; do not infer capabilities from the spec.
-- S08 Phase 1 Control Center usability is a separate UI slice; it does not close
-  S07 or change the release gate.
+- S00–S06, S08 Phase 1, and S09 (the Rust Ratatui + Crossterm TUI Control
+  Center in `apps/tui`, replacing `apps/web`) are implemented on `main`. S07
+  pre-week validation and hardening follow-ups (including
+  [PR #28](https://github.com/ParasRana1729/openfrost/pull/28)) are recorded,
+  but the owner's one-working-week evaluation remains open. Build only what the
+  assigned slice needs and verify dependencies in the actual code; do not infer
+  capabilities from the spec.
+- S08 Phase 1 and S09 do not close S07 or change the one-working-week release
+  gate.
 - Keep unrelated cleanup and destructive operations out of an assigned slice
   unless explicitly authorized.
 
@@ -50,17 +51,25 @@ force-push shared branches or change repository merge settings without permissio
 
 ## 3. Verification and landing authorization
 
-- Add Vitest coverage for changed utilities, endpoints, state transitions, and
-  trust boundaries. Fake providers/clocks should keep automated tests independent
-  of real keys, network availability, and paid model calls.
-- S01 must define the scripts for:
+- Add Vitest coverage for changed TypeScript utilities, endpoints, state
+  transitions, and trust boundaries, and `cargo test` coverage for Rust TUI
+  contracts, client behavior, and rendering. Fake providers/clocks and local
+  mock servers should keep automated tests independent of real keys, network
+  availability, and paid model calls.
+- Run the exact CI checks for the areas you touch:
 
   ```bash
   pnpm lint && pnpm test && pnpm build
   ```
 
-- These checks exist since S01 and CI runs them on `windows-latest`; run them
-  for implementation changes and before landing code.
+  And in `apps/tui`:
+
+  ```bash
+  cargo fmt --all -- --check && cargo clippy --all-targets -- -D warnings && cargo test && cargo build
+  ```
+
+- CI runs both suites on `windows-latest`; run them for implementation changes
+  and before landing code.
 - Exercise the relevant real workflow as well. For documentation-only changes,
   check local links and consistency; report any project checks not run.
 - Review the diff, criteria, security implications, and evidence before landing.
