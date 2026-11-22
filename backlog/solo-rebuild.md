@@ -1135,6 +1135,14 @@ does not close S07's one-working-week owner-use gate.
 - Verification on Windows: Rust fmt, Clippy with warnings denied, all 88
   tests, and build passed. These supersede the initial 64-test result above.
   No paid-provider calls or interactive live API/TUI workflow were run.
-- Next: integrate the merged S07 PR #38 without rewriting history, repeat
-  both required check suites, open the performance PR, and merge only after
-  Windows CI passes. S07 owner-use evaluation remains open.
+- Integrated S07 PR #38 (remote main 220d778) with a merge commit; both
+  backlog additions were retained and history was not rewritten. Final
+  independent review found no remaining concrete blockers.
+- Post-integration verification: pnpm lint, all 328 TypeScript tests (83
+  domain, 54 db including real Windows DPAPI, 121 agent, 70 API), and pnpm
+  build passed. Rust fmt, Clippy with warnings denied, all 88 tests, and
+  build passed again. The worktree initially lacked node_modules; offline
+  frozen-lockfile installation succeeded before rerunning the pnpm suite.
+- Next: open the performance PR and merge only after Windows CI passes,
+  verify remote main, then remove the clean performance worktree. S07
+  owner-use evaluation and the interactive workflow check remain open.
