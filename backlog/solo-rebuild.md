@@ -907,6 +907,12 @@ gate; findings marked WEEK carry into this log.
   passed; 328 TypeScript tests passed (83 domain, 54 db incl. real Windows
   DPAPI round-trips, 121 agent, 70 api); `cargo test` in `apps/tui` passed (32
   tests). Does not close S07's one-working-week owner-use gate.
+- PR: [#38](https://github.com/ParasRana1729/openfrost/pull/38). Its initial
+  Windows CI run passed TypeScript checks but Rust 1.100 Clippy rejected the
+  existing indexed project-memory loop (`needless_range_loop`). Replaced that
+  loop with `iter().enumerate()` without changing row ordering or indices.
+  Local Rust formatting, Clippy, all 32 tests, and build passed again on Rust
+  1.99.1; the updated head requires passing Windows CI before merge.
 
 ## S08 — Improve Control Center clarity and feedback (Phase 1)
 
