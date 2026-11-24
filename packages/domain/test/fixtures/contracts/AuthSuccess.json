@@ -1,0 +1,9 @@
+[
+  {
+    "name": "setup-or-login",
+    "value": {
+      "authenticated": true,
+      "csrfToken": "fixture-csrf-not-a-secret"
+    }
+  }
+]

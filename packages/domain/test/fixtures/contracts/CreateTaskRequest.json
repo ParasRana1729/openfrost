@@ -1,0 +1,32 @@
+[
+  {
+    "name": "required-only",
+    "value": {
+      "title": "Compare options",
+      "request": "Compare A and B"
+    }
+  },
+  {
+    "name": "all-optionals",
+    "value": {
+      "title": "Project update",
+      "request": "Summarize notes",
+      "constraints": "Use evidence",
+      "startingUrls": [
+        "https://example.com"
+      ],
+      "projectId": "p1",
+      "kind": "project_update"
+    }
+  },
+  {
+    "name": "empty-optionals",
+    "value": {
+      "title": "Research",
+      "request": "Compare A and B",
+      "constraints": "",
+      "startingUrls": [],
+      "kind": "research_brief"
+    }
+  }
+]

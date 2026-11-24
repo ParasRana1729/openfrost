@@ -1,0 +1,21 @@
+[
+  {
+    "name": "default-owner",
+    "value": {
+      "password": "fixture-password"
+    }
+  },
+  {
+    "name": "named-owner",
+    "value": {
+      "username": "owner",
+      "password": "fixture-password"
+    }
+  },
+  {
+    "name": "short-existing-password",
+    "value": {
+      "password": "x"
+    }
+  }
+]

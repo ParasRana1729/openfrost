@@ -1146,3 +1146,28 @@ does not close S07's one-working-week owner-use gate.
 - Next: open the performance PR and merge only after Windows CI passes,
   verify remote main, then remove the clean performance worktree. S07
   owner-use evaluation and the interactive workflow check remain open.
+
+
+### Checkpoint — S09 Priority 4 contract parity (2026-11-24)
+
+- Branch `test/s09-contract-parity`, isolated `.worktrees/priority-4`, based on
+  `a52e85c` (includes prerequisites PR #38 and #39). Priority 4 only; no push or
+  merge authorized. No production app/UI refactor or Priority 5B changes.
+- Added canonical shared fixtures and Zod/Rust parity checks, lightweight
+  domain transport envelopes, and explicit Windows CI test-step documentation.
+  Corrected nested routine views, project updates without grants, title-less
+  task serialization, and omitted-versus-null provider model representation.
+  Existing mock fixtures needed only a required task title and nested routine
+  object (the latter is a two-line test-only change in `app.rs`).
+- Verification: root `pnpm lint && pnpm test && pnpm build` passed; all 503 TS
+  tests passed (258 domain including 175 new contract tests, 54 db with real
+  Windows DPAPI, 121 agent, 70 API). Rust fmt, Clippy with warnings denied,
+  all 117 tests (38 contract tests), and build passed using
+  `--manifest-path apps/tui/Cargo.toml` from this worktree root. A subsequent
+  append-only root test run and Rust test run passed with those same counts.
+- Initial install/compilation timeouts and one existing API DPAPI timeout were
+  resolved by bounded reruns; no test timeout settings were weakened. Build
+  still emits the existing landing `metadataBase` warning. Detailed final
+  handoff follows in a separate commit referencing this implementation SHA.
+- Not run: remote CI or interactive live API/TUI/provider workflow. S07's
+  one-working-week owner-use gate remains open.

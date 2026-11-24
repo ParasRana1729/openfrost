@@ -1,0 +1,28 @@
+[
+  {
+    "name": "new-file",
+    "value": {
+      "fileSha256": null
+    }
+  },
+  {
+    "name": "existing-file",
+    "value": {
+      "fileSha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  },
+  {
+    "name": "edited",
+    "value": {
+      "content": "Edited preference",
+      "fileSha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  },
+  {
+    "name": "empty-edit",
+    "value": {
+      "content": "",
+      "fileSha256": null
+    }
+  }
+]

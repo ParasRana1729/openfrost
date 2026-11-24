@@ -1,0 +1,159 @@
+[
+  {
+    "name": "empty",
+    "value": {
+      "approvals": []
+    }
+  },
+  {
+    "name": "all-states",
+    "value": {
+      "approvals": [
+        {
+          "id": "ap1",
+          "taskId": "t1",
+          "runId": "r1",
+          "action": "export_file",
+          "artifactId": "a1",
+          "destinationId": "d1",
+          "destinationPath": "C:/exports",
+          "filename": "report.md",
+          "contentSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "riskTier": "telegram",
+          "state": "pending",
+          "requestedAt": "2026-11-24T09:00:00.000Z",
+          "expiresAt": "2026-11-24T09:00:00.000Z",
+          "decidedAt": null,
+          "executedAt": null,
+          "outcome": null,
+          "refusalReason": null,
+          "artifactChars": null,
+          "artifactMarkdown": null,
+          "taskTitle": null
+        },
+        {
+          "id": "ap1",
+          "taskId": "t1",
+          "runId": "r1",
+          "action": "export_file",
+          "artifactId": "a1",
+          "destinationId": "d1",
+          "destinationPath": "C:/exports",
+          "filename": "report.md",
+          "contentSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "riskTier": "telegram",
+          "state": "granted",
+          "requestedAt": "2026-11-24T09:00:00.000Z",
+          "expiresAt": "2026-11-24T09:00:00.000Z",
+          "decidedAt": "2026-11-24T09:00:00.000Z",
+          "executedAt": "2026-11-24T09:00:00.000Z",
+          "outcome": {
+            "file": "C:/exports/report.md",
+            "bytes": 12,
+            "ms": 1
+          },
+          "refusalReason": "Grant revoked",
+          "artifactChars": 8,
+          "artifactMarkdown": "# Report",
+          "taskTitle": "Export brief"
+        },
+        {
+          "id": "ap1",
+          "taskId": "t1",
+          "runId": "r1",
+          "action": "export_file",
+          "artifactId": "a1",
+          "destinationId": "d1",
+          "destinationPath": "C:/exports",
+          "filename": "report.md",
+          "contentSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "riskTier": "telegram",
+          "state": "rejected",
+          "requestedAt": "2026-11-24T09:00:00.000Z",
+          "expiresAt": "2026-11-24T09:00:00.000Z",
+          "decidedAt": null,
+          "executedAt": null,
+          "outcome": null,
+          "refusalReason": null,
+          "artifactChars": null,
+          "artifactMarkdown": null,
+          "taskTitle": null
+        },
+        {
+          "id": "ap1",
+          "taskId": "t1",
+          "runId": "r1",
+          "action": "export_file",
+          "artifactId": "a1",
+          "destinationId": "d1",
+          "destinationPath": "C:/exports",
+          "filename": "report.md",
+          "contentSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "riskTier": "telegram",
+          "state": "canceled",
+          "requestedAt": "2026-11-24T09:00:00.000Z",
+          "expiresAt": "2026-11-24T09:00:00.000Z",
+          "decidedAt": "2026-11-24T09:00:00.000Z",
+          "executedAt": "2026-11-24T09:00:00.000Z",
+          "outcome": {
+            "file": "C:/exports/report.md",
+            "bytes": 12,
+            "ms": 1
+          },
+          "refusalReason": "Grant revoked",
+          "artifactChars": 8,
+          "artifactMarkdown": "# Report",
+          "taskTitle": "Export brief"
+        },
+        {
+          "id": "ap1",
+          "taskId": "t1",
+          "runId": "r1",
+          "action": "export_file",
+          "artifactId": "a1",
+          "destinationId": "d1",
+          "destinationPath": "C:/exports",
+          "filename": "report.md",
+          "contentSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "riskTier": "telegram",
+          "state": "expired",
+          "requestedAt": "2026-11-24T09:00:00.000Z",
+          "expiresAt": "2026-11-24T09:00:00.000Z",
+          "decidedAt": null,
+          "executedAt": null,
+          "outcome": null,
+          "refusalReason": null,
+          "artifactChars": null,
+          "artifactMarkdown": null,
+          "taskTitle": null
+        },
+        {
+          "id": "ap1",
+          "taskId": "t1",
+          "runId": "r1",
+          "action": "export_file",
+          "artifactId": "a1",
+          "destinationId": "d1",
+          "destinationPath": "C:/exports",
+          "filename": "report.md",
+          "contentSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "riskTier": "telegram",
+          "state": "executed",
+          "requestedAt": "2026-11-24T09:00:00.000Z",
+          "expiresAt": "2026-11-24T09:00:00.000Z",
+          "decidedAt": "2026-11-24T09:00:00.000Z",
+          "executedAt": "2026-11-24T09:00:00.000Z",
+          "outcome": {
+            "file": "C:/exports/report.md",
+            "bytes": 12,
+            "ms": 1
+          },
+          "refusalReason": "Grant revoked",
+          "artifactChars": 8,
+          "artifactMarkdown": "# Report",
+          "taskTitle": "Export brief"
+        }
+      ]
+    }
+  }
+]
