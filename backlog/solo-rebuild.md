@@ -914,6 +914,20 @@ gate; findings marked WEEK carry into this log.
   Local Rust formatting, Clippy, all 32 tests, and build passed again on Rust
   1.99.1; the updated head requires passing Windows CI before merge.
 
+### Priority 3 checkpoint — secondary indexes
+
+- On `perf/s07-db-indexes-and-async-auth`, generated additive
+  `0006_indexes.sql`, its journal entry and snapshot from the eight matching
+  schema declarations. Fresh-install and populated-0005 upgrade tests verify
+  index columns/non-uniqueness, unchanged rows, restart idempotence, foreign
+  keys, and database integrity.
+- Verification: `pnpm --filter @openfrost/db test -- test/migrations.test.ts`
+  passed (the script ran all 56 DB tests, including real Windows DPAPI);
+  `pnpm exec eslint packages/db/src/schema.ts packages/db/test/migrations.test.ts`
+  and `git diff --check` passed.
+- Remaining: async password hashing/callers and deterministic login backoff;
+  full workspace checks and final handoff. No push/merge; S07 remains open.
+
 ## S08 — Improve Control Center clarity and feedback (Phase 1)
 
 - **Status:** Complete (merged on `main`; unfinished Phase 2 web work checkpointed on `feat/ui-phase2-task-lifecycle` and superseded by S09)
