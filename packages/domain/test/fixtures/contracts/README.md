@@ -13,8 +13,8 @@ there is no separate onboarding endpoint or body. All credential-like values
 are inert test strings, never usable keys or sessions.
 
 - Vitest parses payloads through exported production Zod schemas. New transport
-  envelopes compose the existing entity schemas; auth schemas match the current
-  API route validators (which remain local to that route, outside this slice).
+  envelopes compose the existing entity schemas; setup/login API routes import
+  the same domain validators used by these fixture tests (no route-local copies).
 - Rust deserializes responses and verifies every fixture field survives
   serialization, catching silently ignored/renamed fields as well as null drift.
   Extra serialized default nulls for omitted response optionals are allowed.

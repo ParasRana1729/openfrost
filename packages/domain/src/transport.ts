@@ -51,7 +51,7 @@ export const routineDetailSchema = routineViewSchema.extend({
 });
 
 // Setup completes onboarding atomically; there is no separate onboarding body.
-// These match the existing auth route validators, including the default owner.
+// Shared by the API auth routes and contract tests, including the default owner.
 export const setupRequestSchema = z.strictObject({
   username: z.string().min(1).max(60).default('owner'),
   password: z.string().min(8).max(200),

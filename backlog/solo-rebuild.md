@@ -1259,3 +1259,44 @@ does not close S07's one-working-week owner-use gate.
 - **Next:** owner review of this branch/implementation and handoff. Push or merge
   only with explicit authorization; confirm both Windows CI jobs then. No other
   priority was started.
+
+
+### Review follow-up — Priority 4 auth source of truth (2026-11-24)
+
+- Addressed the review's P2 coverage gap on `test/s09-contract-parity` in
+  `.worktrees/priority-4`, with the approved scope extension to
+  `apps/api/src/routes/auth.ts`. Setup/login now import `setupRequestSchema`
+  and `loginRequestSchema` from `@openfrost/domain`, so production API routes
+  and parity fixtures exercise the same validators, not equivalent copies.
+  Removed both route-local definitions and the now-unused Zod import.
+- Verified both removed definitions were textually identical to their domain
+  definitions before replacement: strict unknown-key rejection, default owner,
+  username bounds, and distinct setup/login password bounds are unchanged.
+  No session, CSRF, cookie, credential-storage, onboarding, or route behavior
+  changes. Updated the domain comment and fixture README to reflect actual use.
+  This supersedes the earlier handoff's route-local-auth limitation.
+- Verification, all from this isolated worktree, passed on the first attempt:
+  - `pnpm lint`: PASS (exit 0, no lint errors).
+  - `pnpm test`: PASS, **503 passed, 0 failed**, 35 test files: domain
+    **258** (including **175** contract tests), db **54**, agent **121**, API
+    **70**. Real Windows DPAPI round-trip and provider-key tests passed.
+  - `pnpm build`: PASS (exit 0), all five workspace packages/apps, including
+    the static landing build. Commands ran sequentially with bounded subprocess
+    timeouts: lint 180 s, test 300 s, build 300 s; no timeout occurred.
+  - `git --no-pager diff --check`: PASS before committing.
+  - Rust not rerun: no Rust production code, tests, fixtures, dependencies, or
+    Cargo configuration changed in this follow-up; the prior 117-test Rust
+    validation remains recorded above, not claimed as newly rerun.
+- Integration with isolated Priority 5B: its moved test helper
+  `sample_routine()` is at `apps/tui/src/app/mod.rs:790` (reviewed P5B head
+  `e8f7e3f`). Carry Priority 4's two-line nesting correction into that helper:
+  line 792 must open `"routine": {` before the entity fields, and line 797 must
+  close that object after `updatedAt`, before `nextOccurrenceAt`. The original
+  `apps/tui/src/app.rs` is deleted by P5B; do not resurrect it or lose the fix
+  when resolving the move. Retain both branches' appended backlog entries;
+  append conflicts are expected when integrating these isolated branches.
+- Limitations: no remote CI, live API/TUI manual workflow, push, PR, merge, or
+  edits to another worktree. The S07 owner-use gate remains open. Original
+  finite-fixture/model-reset limitations still apply. Next: owner integration
+  review, preserve the moved fixture correction and both backlog handoffs,
+  then rerun affected checks on the integrated branch with authorization.
