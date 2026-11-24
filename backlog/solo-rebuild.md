@@ -1607,3 +1607,30 @@ does not close S07's one-working-week owner-use gate.
 - Not run: interactive visual TUI, paid-provider calls, or TypeScript suite
   (no TS changes in this slice). S07 owner-use gate remains open.
   Next: push branch, open PR, Windows CI, then authorized merge.
+
+### Handoff — `openfrost` CLI Launcher (`feat/tui-cli-launcher`, 2026-11-24)
+
+- Scope (S09 follow-up, cut from `origin/main` at `90b66d8`): single-command
+  `openfrost` binary (`[[bin]] name = "openfrost"` in `apps/tui/Cargo.toml`)
+  with CLI parsing (`apps/tui/src/cli.rs`), local loopback API auto-spawn and
+  lifecycle subcommands (`start`, `stop`, `status`, `logs`, `--no-spawn`,
+  `--api`) in `apps/tui/src/runtime.rs` and `apps/tui/src/main.rs`, Windows
+  installer (`scripts/install.ps1` + root `pnpm run install:cli`), and updated
+  `README.md` quick start. Closing the TUI still leaves the background API
+  running; OS-boot autostart remains out of scope (`AGENTS.md` §6).
+- Verification:
+  - Rust (`apps/tui`): `cargo fmt --all -- --check`,
+    `cargo clippy --all-targets -- -D warnings`, `cargo test` (**130 passed**),
+    and `cargo build` passed.
+  - TypeScript workspace: `pnpm build` and `pnpm test` (**521 passed**: domain
+    258, db 64 with real Windows DPAPI, agent 121, api 78) passed. `pnpm lint`
+    failed only on pre-existing untracked `.worktrees/integration-smoke.mjs`
+    (no TS/JS files changed in this slice).
+  - Real workflow: isolated temp `OPENFROST_HOME` + port `18787` CLI smoke test
+    verified `--version`, `status`, `start` (detached Node + `/health`), `logs`,
+    and `stop` (PID validation + clean removal); owner confirmed live `openfrost`
+    works.
+- Not run: paid-provider calls. S07 owner-use gate remains open.
+  Next: open PR from `feat/tui-cli-launcher`, verify Windows CI, and merge when
+  authorized.
+
