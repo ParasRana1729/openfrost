@@ -958,6 +958,59 @@ gate; findings marked WEEK carry into this log.
   push, or merge. Existing landing `metadataBase` build warning remains
   outside scope. Final handoff below will record the implementation SHA.
 
+### Handoff — Priority 3 (perf/s07-db-indexes-and-async-auth)
+
+- **Commits:**
+  - `1594cb64fccc83c596da077fe25ea18d03a9f3c7` — additive indexed schema,
+    generated 0006 migration/journal/snapshot, fresh and populated-upgrade tests.
+  - `b8cdf9e0f702a52c006da89922b6a22089378e89` — final implementation:
+    async-compatible owner hashing/auth, awaited callers, deterministic backoff.
+- **What changed:**
+  - `packages/db/src/schema.ts`, `packages/db/drizzle/0006_indexes.sql`,
+    `packages/db/drizzle/meta/{_journal,0006_snapshot}.json`: eight non-unique
+    indexes on events/task, runs/task, artifacts/task, tasks/state,
+    approvals/task and state, grants/project, routines/state; no table rebuilds.
+  - `packages/db/src/{passwords,store}.ts`: async scrypt with unchanged
+    `scrypt$N$r$p$salt$hash` format and timing-safe verification; transactional
+    post-hash single-owner check. Legacy credentials are not rehashed.
+  - `apps/api/src/routes/auth.ts`: awaited setup/login; per-app serialized
+    login checks; five failed authentications trigger a 30-second in-memory
+    window, 429 plus ceil-rounded Retry-After, reset on success/expiry. All
+    throttle timing uses injected `ctx.now()`; trust guards remain unchanged.
+  - DB migration/password/persistence tests, API auth tests, and the approved
+    direct caller in `packages/agent/test/failures.test.ts`: fresh/0005 upgrade
+    preservation and restart, old-hash compatibility, setup races, threshold,
+    Retry-After rounding, exact expiry, reset, simultaneous attempts, and guards.
+- **Verification run:**
+  - `pnpm install --offline --frozen-lockfile`: passed; worktree-local
+    node_modules and build outputs, no lockfile/dependency changes.
+  - `pnpm --filter @openfrost/db exec vitest run test/passwords.test.ts test/persistence.test.ts`:
+    passed, 15 tests; `pnpm --filter @openfrost/api exec vitest run test/auth.test.ts`:
+    passed, 23 tests.
+  - `pnpm lint`: passed (120-second bound).
+  - `pnpm test`: passed twice, 346 tests / 36 files, zero skips or failures
+    (83 domain, 64 DB, 121 agent, 78 API; 180-second bound). Real Windows
+    CryptProtectData/CryptUnprotectData, purpose rejection, provider-key
+    storage and API key-redaction tests passed, not mocked or skipped.
+  - `pnpm build`: final run passed all five workspace builds (180-second
+    bound). Initial scrypt overload typing failure was corrected; full
+    lint/test were rerun after the typed adapter fix. No command timed out.
+  - `pnpm --filter @openfrost/db exec drizzle-kit generate --name indexes`:
+    passed; no schema changes after generation, snapshot links to 0005.
+  - `node` built-API loopback HTTP smoke (30-second bound): passed in a
+    disposable home, setup/logout/401 threshold/429+Retry-After/expiry/login/
+    authenticated tasks; server closed and home removed. Clock was injected.
+  - `git diff --check`: passed; backlog relative links checked before handoff.
+- **Not run / Limitations:**
+  - Backoff is single-owner, app-instance memory, not persisted; restarting
+    clears it. Verification is serialized, not other API traffic. No broad
+    load/latency benchmark or interactive TUI run was performed.
+  - Migration upgrade fixture uses real migrations 0000–0005 and populated
+    SQLite data, not the owner's live database. No owner data was touched.
+  - Existing unrelated landing `metadataBase` warning remains. No Rust checks
+    (no Rust edits), CI, real-provider calls, push, or merge; owner review is
+    next. S07's one-working-week owner-use evaluation remains open.
+
 ## S08 — Improve Control Center clarity and feedback (Phase 1)
 
 - **Status:** Complete (merged on `main`; unfinished Phase 2 web work checkpointed on `feat/ui-phase2-task-lifecycle` and superseded by S09)
