@@ -3,7 +3,7 @@ import * as fs from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { jarHeaders, setupOwner, startApp, type TestApp } from './helpers.js';
+import { startApp, type TestApp } from './helpers.js';
 
 let app: TestApp;
 let destDir: string;
@@ -17,7 +17,6 @@ beforeAll(async () => {
       { type: 'final', text: 'unused — exports never call the model (brief 3)' },
     ],
   });
-  await setupOwner(app);
   destDir = mkdtempSync(join(tmpdir(), 'openfrost-api-export-'));
   canonicalDir = fs.realpathSync(destDir);
 });
@@ -35,13 +34,13 @@ interface ApprovalResponse {
   destinationPath: string;
   artifactMarkdown: string | null;
   taskTitle: string | null;
+  riskTier?: string;
 }
 
 async function listApprovals(state?: string): Promise<ApprovalResponse[]> {
   const res = await app.built.app.inject({
     method: 'GET',
     url: `/api/approvals${state ? `?state=${state}` : ''}`,
-    headers: { cookie: app.cookie! },
   });
   expect(res.statusCode).toBe(200);
   return res.json().approvals;
@@ -52,7 +51,6 @@ async function waitForTaskState(taskId: string, states: string[]): Promise<strin
     const detail = await app.built.app.inject({
       method: 'GET',
       url: `/api/tasks/${taskId}`,
-      headers: { cookie: app.cookie! },
     });
     const state = detail.json().task.state as string;
     if (states.includes(state)) {
@@ -64,23 +62,10 @@ async function waitForTaskState(taskId: string, states: string[]): Promise<strin
 }
 
 describe('export destinations over the API', () => {
-  it('requires authentication and CSRF', async () => {
-    const anon = await app.built.app.inject({ method: 'GET', url: '/api/exports/destinations' });
-    expect(anon.statusCode).toBe(401);
-    const noCsrf = await app.built.app.inject({
-      method: 'POST',
-      url: '/api/exports/destinations',
-      headers: { cookie: app.cookie! },
-      payload: { path: canonicalDir },
-    });
-    expect(noCsrf.statusCode).toBe(403);
-  });
-
   it('grants canonical destinations, refuses duplicates and unsafe roots', async () => {
     const granted = await app.built.app.inject({
       method: 'POST',
       url: '/api/exports/destinations',
-      headers: jarHeaders(app),
       payload: { path: destDir },
     });
     expect(granted.statusCode).toBe(201);
@@ -89,7 +74,6 @@ describe('export destinations over the API', () => {
     const duplicate = await app.built.app.inject({
       method: 'POST',
       url: '/api/exports/destinations',
-      headers: jarHeaders(app),
       payload: { path: canonicalDir },
     });
     expect(duplicate.statusCode).toBe(409);
@@ -97,7 +81,6 @@ describe('export destinations over the API', () => {
     const missing = await app.built.app.inject({
       method: 'POST',
       url: '/api/exports/destinations',
-      headers: jarHeaders(app),
       payload: { path: join(destDir, 'nope') },
     });
     expect(missing.statusCode).toBe(400);
@@ -105,7 +88,6 @@ describe('export destinations over the API', () => {
     const homeRoot = await app.built.app.inject({
       method: 'POST',
       url: '/api/exports/destinations',
-      headers: jarHeaders(app),
       payload: { path: app.home },
     });
     expect(homeRoot.statusCode).toBe(400);
@@ -113,7 +95,6 @@ describe('export destinations over the API', () => {
     const list = await app.built.app.inject({
       method: 'GET',
       url: '/api/exports/destinations',
-      headers: { cookie: app.cookie! },
     });
     expect(list.json().destinations.some((d: { path: string }) => d.path === canonicalDir)).toBe(true);
   });
@@ -123,20 +104,17 @@ describe('export destinations over the API', () => {
     const granted = await app.built.app.inject({
       method: 'POST',
       url: '/api/exports/destinations',
-      headers: jarHeaders(app),
       payload: { path: temp },
     });
     const id = granted.json().destination.id as string;
     const removed = await app.built.app.inject({
       method: 'DELETE',
       url: `/api/exports/destinations/${id}`,
-      headers: jarHeaders(app),
     });
     expect(removed.statusCode).toBe(200);
     const unknown = await app.built.app.inject({
       method: 'DELETE',
       url: `/api/exports/destinations/${id}`,
-      headers: jarHeaders(app),
     });
     expect(unknown.statusCode).toBe(404);
     fs.rmSync(temp, { recursive: true, force: true });
@@ -149,7 +127,6 @@ describe('approval-bound export over the API', () => {
     const create = await app.built.app.inject({
       method: 'POST',
       url: '/api/tasks',
-      headers: jarHeaders(app),
       payload: { title: 'Brief for export', request: 'research something' },
     });
     const taskId = create.json().task.id as string;
@@ -157,7 +134,6 @@ describe('approval-bound export over the API', () => {
     const detail = await app.built.app.inject({
       method: 'GET',
       url: `/api/tasks/${taskId}`,
-      headers: { cookie: app.cookie! },
     });
     const artifactId = detail.json().artifact.id as string;
 
@@ -165,7 +141,6 @@ describe('approval-bound export over the API', () => {
     const badArtifact = await app.built.app.inject({
       method: 'POST',
       url: '/api/exports',
-      headers: jarHeaders(app),
       payload: {
         artifactId: 'missing-artifact',
         destinationId: 'missing-destination',
@@ -179,7 +154,6 @@ describe('approval-bound export over the API', () => {
     const unknownApproval = await app.built.app.inject({
       method: 'POST',
       url: '/api/approvals/missing-approval/decision',
-      headers: jarHeaders(app),
       payload: { decision: 'granted' },
     });
     expect(unknownApproval.statusCode).toBe(404);
@@ -187,7 +161,6 @@ describe('approval-bound export over the API', () => {
     const badFilename = await app.built.app.inject({
       method: 'POST',
       url: '/api/exports',
-      headers: jarHeaders(app),
       payload: { artifactId, destinationId: 'missing', filename: '../evil.md' },
     });
     expect(badFilename.statusCode).toBe(400);
@@ -197,7 +170,6 @@ describe('approval-bound export over the API', () => {
     const proposed = await app.built.app.inject({
       method: 'POST',
       url: '/api/exports',
-      headers: jarHeaders(app),
       payload: { artifactId, destinationId, filename: 'brief-copy.md' },
     });
     expect(proposed.statusCode).toBe(202);
@@ -219,7 +191,6 @@ describe('approval-bound export over the API', () => {
     const decided = await app.built.app.inject({
       method: 'POST',
       url: `/api/approvals/${proposal.id}/decision`,
-      headers: jarHeaders(app),
       payload: { decision: 'granted' },
     });
     expect(decided.statusCode).toBe(200);
@@ -228,7 +199,6 @@ describe('approval-bound export over the API', () => {
     const replay = await app.built.app.inject({
       method: 'POST',
       url: `/api/approvals/${proposal.id}/decision`,
-      headers: jarHeaders(app),
       payload: { decision: 'rejected' },
     });
     expect(replay.statusCode).toBe(409);
@@ -242,7 +212,6 @@ describe('approval-bound export over the API', () => {
     const finalDetail = await app.built.app.inject({
       method: 'GET',
       url: `/api/tasks/${exportTaskId}`,
-      headers: { cookie: app.cookie! },
     });
     expect(finalDetail.json().approval.state).toBe('executed');
     expect(finalDetail.json().approval.outcome.file).toBe(written);
@@ -252,7 +221,6 @@ describe('approval-bound export over the API', () => {
     const create = await app.built.app.inject({
       method: 'POST',
       url: '/api/tasks',
-      headers: jarHeaders(app),
       payload: { title: 'Rejected brief', request: 'research something' },
     });
     const taskId = create.json().task.id as string;
@@ -260,14 +228,12 @@ describe('approval-bound export over the API', () => {
     const artifactId = (await app.built.app.inject({
       method: 'GET',
       url: `/api/tasks/${taskId}`,
-      headers: { cookie: app.cookie! },
     })).json().artifact.id as string;
 
     const destinationId = app.store.exportDestinations.list()[0]!.id;
     const proposed = await app.built.app.inject({
       method: 'POST',
       url: '/api/exports',
-      headers: jarHeaders(app),
       payload: { artifactId, destinationId, filename: 'rejected-copy.md' },
     });
     const exportTaskId = proposed.json().task.id as string;
@@ -277,7 +243,6 @@ describe('approval-bound export over the API', () => {
     const rejected = await app.built.app.inject({
       method: 'POST',
       url: `/api/approvals/${proposal.id}/decision`,
-      headers: jarHeaders(app),
       payload: { decision: 'rejected' },
     });
     expect(rejected.statusCode).toBe(200);

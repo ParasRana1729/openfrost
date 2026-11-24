@@ -2,13 +2,12 @@ import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { MemoryFileView, MemoryProposal } from '@openfrost/domain';
-import { jarHeaders, setupOwner, startApp, type TestApp } from './helpers.js';
+import { startApp, type TestApp } from './helpers.js';
 
 let app: TestApp;
 
 beforeEach(async () => {
   app = await startApp();
-  await setupOwner(app);
 });
 
 afterEach(async () => {
@@ -52,7 +51,6 @@ async function getSnapshot(): Promise<Snapshot> {
   const response = await app.built.app.inject({
     method: 'GET',
     url: '/api/memory',
-    headers: { cookie: app.cookie! },
   });
   expect(response.statusCode).toBe(200);
   return response.json() as Snapshot;
@@ -63,11 +61,8 @@ function globalFile(): string {
 }
 
 describe('memory API', () => {
-  it('requires an owner session and exposes inspectable scope, source, and dates', async () => {
+  it('exposes inspectable scope, source, and dates', async () => {
     const proposal = createProposal('Prefer concise summaries.');
-
-    const anon = await app.built.app.inject({ method: 'GET', url: '/api/memory' });
-    expect(anon.statusCode).toBe(401);
 
     const snapshot = await getSnapshot();
     expect(snapshot.global).toMatchObject({
@@ -95,14 +90,6 @@ describe('memory API', () => {
       },
     });
     expect(snapshot.limits.contentMaxChars).toBeGreaterThan(0);
-
-    const noCsrf = await app.built.app.inject({
-      method: 'POST',
-      url: `/api/memory/proposals/${proposal.id}/approve`,
-      headers: { cookie: app.cookie! },
-      payload: { fileSha256: null },
-    });
-    expect(noCsrf.statusCode).toBe(403);
   });
 
   it('approves, edits, and deletes memory with canonical Markdown and audit events', async () => {
@@ -112,7 +99,6 @@ describe('memory API', () => {
     const approved = await app.built.app.inject({
       method: 'POST',
       url: `/api/memory/proposals/${proposal.id}/approve`,
-      headers: jarHeaders(app),
       payload: { fileSha256: before.global.sha256 },
     });
     expect(approved.statusCode).toBe(200);
@@ -134,7 +120,6 @@ describe('memory API', () => {
     const edited = await app.built.app.inject({
       method: 'PUT',
       url: `/api/memory/entries/${approvedBody.entry.id}`,
-      headers: jarHeaders(app),
       payload: {
         content: 'Prefer evidence-first briefs with exact citations.',
         fileSha256: approvedBody.file.sha256,
@@ -150,7 +135,6 @@ describe('memory API', () => {
     const deleted = await app.built.app.inject({
       method: 'DELETE',
       url: `/api/memory/entries/${approvedBody.entry.id}`,
-      headers: jarHeaders(app),
       payload: { fileSha256: editedBody.file.sha256 },
     });
     expect(deleted.statusCode).toBe(200);
@@ -185,7 +169,6 @@ describe('memory API', () => {
     const rejected = await app.built.app.inject({
       method: 'POST',
       url: `/api/memory/proposals/${proposal.id}/reject`,
-      headers: jarHeaders(app),
     });
     expect(rejected.statusCode).toBe(200);
     const body = rejected.json() as { proposal: MemoryProposal };
@@ -221,7 +204,6 @@ describe('memory API', () => {
       const response = await app.built.app.inject({
         method: 'POST',
         url: `/api/memory/proposals/${proposal.id}/approve`,
-        headers: jarHeaders(app),
         payload: { fileSha256: view.sha256 },
       });
       expect(response.statusCode).toBe(200);
@@ -245,7 +227,6 @@ describe('memory API', () => {
     const missingProject = await app.built.app.inject({
       method: 'GET',
       url: '/api/memory',
-      headers: { cookie: app.cookie! },
     });
     expect(missingProject.statusCode).toBe(200);
     expect(() =>
@@ -258,7 +239,6 @@ describe('memory API', () => {
     const approveResponse = await app.built.app.inject({
       method: 'POST',
       url: `/api/memory/proposals/${first.id}/approve`,
-      headers: jarHeaders(app),
       payload: { fileSha256: null },
     });
     expect(approveResponse.statusCode).toBe(200);
@@ -276,7 +256,6 @@ describe('memory API', () => {
     const staleApprove = await app.built.app.inject({
       method: 'POST',
       url: `/api/memory/proposals/${second.id}/approve`,
-      headers: jarHeaders(app),
       payload: { fileSha256: approved.file.sha256 },
     });
     expect(staleApprove.statusCode).toBe(409);
@@ -289,7 +268,6 @@ describe('memory API', () => {
     const staleEdit = await app.built.app.inject({
       method: 'PUT',
       url: `/api/memory/entries/${approved.entry.id}`,
-      headers: jarHeaders(app),
       payload: {
         content: 'Prefer shorter paragraphs.',
         fileSha256: approved.file.sha256,
@@ -300,7 +278,6 @@ describe('memory API', () => {
     const staleDelete = await app.built.app.inject({
       method: 'DELETE',
       url: `/api/memory/entries/${approved.entry.id}`,
-      headers: jarHeaders(app),
       payload: { fileSha256: approved.file.sha256 },
     });
     expect(staleDelete.statusCode).toBe(409);
@@ -309,7 +286,6 @@ describe('memory API', () => {
     const reload = await app.built.app.inject({
       method: 'POST',
       url: '/api/memory/reload',
-      headers: jarHeaders(app),
     });
     expect(reload.statusCode).toBe(200);
     const reloaded = reload.json() as { files: MemoryFileView[] };
@@ -327,7 +303,6 @@ describe('memory API', () => {
     const freshEdit = await app.built.app.inject({
       method: 'PUT',
       url: `/api/memory/entries/${approved.entry.id}`,
-      headers: jarHeaders(app),
       payload: {
         content: 'Prefer shorter paragraphs.',
         fileSha256: fresh.global.sha256,
@@ -345,7 +320,6 @@ describe('memory API', () => {
     const response = await app.built.app.inject({
       method: 'POST',
       url: `/api/memory/proposals/${proposal.id}/approve`,
-      headers: jarHeaders(app),
       payload: {
         content: `Remember ${key}`,
         fileSha256: null,
@@ -364,7 +338,6 @@ describe('memory API', () => {
     const missingProposal = await app.built.app.inject({
       method: 'POST',
       url: '/api/memory/proposals/missing/approve',
-      headers: jarHeaders(app),
       payload: { fileSha256: null },
     });
     expect(missingProposal.statusCode).toBe(404);
@@ -372,7 +345,6 @@ describe('memory API', () => {
     const missingEntry = await app.built.app.inject({
       method: 'PUT',
       url: '/api/memory/entries/missing',
-      headers: jarHeaders(app),
       payload: { content: 'x', fileSha256: 'a'.repeat(64) },
     });
     expect(missingEntry.statusCode).toBe(404);
@@ -380,7 +352,6 @@ describe('memory API', () => {
     const missingReject = await app.built.app.inject({
       method: 'POST',
       url: '/api/memory/proposals/missing/reject',
-      headers: jarHeaders(app),
     });
     expect(missingReject.statusCode).toBe(404);
   });

@@ -5,42 +5,18 @@ use crate::event::Payload;
 
 pub fn apply_payload(app: &mut App, payload: Payload) {
     match payload {
-        Payload::Session(result) => match result {
-            Ok(session) => {
-                app.reset_read_session();
-                if session.authenticated {
-                    app.screen = Screen::Main;
-                    app.refresh_all();
-                } else if session.ownerCreated {
-                    app.screen = Screen::Login;
-                } else {
-                    app.screen = Screen::Onboarding;
-                }
+        Payload::Health(result) => match result {
+            Ok(()) => {
+                app.reset_reads();
+                app.screen = Screen::Main;
+                app.refresh_all();
             }
             Err(message) => {
                 // API unreachable: stay on the connecting screen with the
-                // error visible; the poller retries.
+                // error visible; the startup poller retries.
                 app.set_notice(format!("API unreachable: {message}"), true);
             }
         },
-        Payload::Auth(result) => {
-            app.auth_busy = false;
-            match result {
-                Ok(()) => {
-                    app.reset_read_session();
-                    app.screen = Screen::Main;
-                    app.auth = masking_area();
-                    // Login/onboarding just created the session the SSE
-                    // stream needs: reconnect now rather than after the
-                    // remainder of an exponential backoff.
-                    app.sse_wake.notify_one();
-                    app.refresh_all();
-                }
-                Err(message) => {
-                    app.set_notice(message, true);
-                }
-            }
-        }
         Payload::Tasks(result) => match result {
             Ok(response) => {
                 app.tasks.executor = Some(response.executor);
@@ -208,23 +184,7 @@ pub fn apply_payload(app: &mut App, payload: Payload) {
             }
             Err(message) => app.set_notice(format!("{label} failed: {message}"), true),
         },
-        Payload::LoggedOut(result) => {
-            if let Ok(()) = result {
-                app.reset_read_session();
-                app.screen = Screen::Login;
-                app.auth = masking_area();
-                // Close any SSE stream opened under the previous session; the
-                // reconnect attempt gets 401 and drops back to disconnected.
-                app.sse_wake.notify_one();
-            }
-        }
     }
-}
-
-fn masking_area() -> tui_textarea::TextArea<'static> {
-    let mut area = tui_textarea::TextArea::default();
-    area.set_mask_char('\u{2022}');
-    area
 }
 
 #[cfg(test)]
@@ -234,23 +194,31 @@ mod tests {
     use tokio::sync::mpsc;
 
     #[tokio::test]
-    async fn logout_wakes_sse_to_close_previous_session_stream() {
+    async fn health_payload_transitions_to_main_and_refreshes() {
         let (tx, _rx) = mpsc::unbounded_channel();
         let api = ApiClient::new("http://127.0.0.1:8787").unwrap();
         let mut app = App::new(tx, api);
-        app.screen = Screen::Main;
+        assert_eq!(app.screen, Screen::Connecting);
 
-        let wake = app.sse_wake.clone();
-        let waiter = tokio::spawn(async move {
-            wake.notified().await;
-        });
-        tokio::task::yield_now().await;
+        apply_payload(&mut app, Payload::Health(Ok(())));
+        assert_eq!(app.screen, Screen::Main);
+    }
 
-        apply_payload(&mut app, Payload::LoggedOut(Ok(())));
-        assert_eq!(app.screen, Screen::Login);
-        tokio::time::timeout(std::time::Duration::from_millis(500), waiter)
-            .await
-            .expect("logout must wake the SSE loop")
-            .unwrap();
+    #[tokio::test]
+    async fn health_payload_failure_keeps_connecting_and_sets_notice() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let api = ApiClient::new("http://127.0.0.1:8787").unwrap();
+        let mut app = App::new(tx, api);
+        assert_eq!(app.screen, Screen::Connecting);
+
+        apply_payload(&mut app, Payload::Health(Err("connection refused".into())));
+        assert_eq!(app.screen, Screen::Connecting);
+        assert!(app.notice.as_ref().unwrap().is_error);
+        assert!(app
+            .notice
+            .as_ref()
+            .unwrap()
+            .message
+            .contains("connection refused"));
     }
 }

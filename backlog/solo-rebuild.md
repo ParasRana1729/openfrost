@@ -1634,3 +1634,72 @@ does not close S07's one-working-week owner-use gate.
   Next: open PR from `feat/tui-cli-launcher`, verify Windows CI, and merge when
   authorized.
 
+### Handoff — Local Auth Removal to Loopback-Only Model (`feat/remove-local-auth`, 2026-11-24)
+
+- **Scope & Rationale:**
+  - Removed local authentication (passwords, user onboarding/login screens,
+    session cookies, CSRF protection, and logout) in favor of a loopback-only
+    single-user model suited for a Windows-first personal AI OS.
+  - Streamlines user experience: launching `openfrost` or running the TUI opens
+    directly into the main Control Center without onboarding hurdles or session
+    expiry.
+  - Eliminates CSRF tokens and cookie handling across API and TUI clients while
+    preserving all essential security invariants.
+- **Architectural & Security Boundaries Preserved:**
+  - **Loopback binding:** API binds strictly to `127.0.0.1` (loopback only).
+  - **Browser Origin guard:** Fastify `onRequest` hook validates incoming
+    `Origin` headers against allowlisted origins; foreign origins are rejected
+    with `403 Forbidden`. Non-browser clients (such as the local TUI) send no
+    `Origin` header and are permitted directly.
+  - **Windows DPAPI secret protection:** Provider API keys remain encrypted with
+    per-user Windows DPAPI; keys are stored via Settings and never exposed in
+    plaintext files or logs.
+  - **Folder grants & path boundaries:** Project access requires explicit root
+    folder grants with canonical-path verification, junction/symlink escaping
+    prevention, and bounded file reads.
+  - **SSRF protection:** Public web fetch tool enforces strict DNS resolution,
+    private/loopback/link-local/NAT64 address filtering, and redirect checks.
+  - **Approval-bound exports:** Report exports remain guarded by explicit owner
+    approval on exact immutable proposals, create-only writes, and audit events.
+  - **Database schema preservation:** SQLite `users` and `sessions` tables and
+    historical domain events are retained without dropping, preserving additive
+    migration history and database compatibility.
+- **Component Changes:**
+  - `apps/api`:
+    - Removed `/api/auth` endpoints (`setup`, `login`, `session`, `logout`) and
+      deleted `src/routes/auth.ts`.
+    - Removed `@fastify/cookie`, session tracking, and CSRF token verification.
+    - Preserved `onRequest` origin validation and CORS allowlisting in `src/app.ts`.
+    - Updated API test suites (`test/auth.test.ts`, `test/helpers.ts`, etc.) to
+      verify origin guarding and direct loopback API access without session cookies.
+  - `apps/tui`:
+    - Removed `Screen::Login` and `Screen::Onboarding`, `render_auth`, password
+      `TextArea`, and `Alt+X` logout action across `src/app/mod.rs`, `src/apply.rs`,
+      `src/ui/mod.rs`, `src/main.rs`, and `src/api_tests.rs`.
+    - Updated `ApiClient` in `src/api.rs`: removed auth endpoints (`setup`,
+      `login`, `session`, `logout`), removed CSRF token header management and
+      cookie jar.
+    - Updated startup sequence in `src/main.rs`: checks `GET /health` and drops
+      straight into `Screen::Main` (retaining retry on `Screen::Connecting` when
+      `--no-spawn` is used before the API is ready).
+  - `packages/domain`:
+    - Removed `SetupRequest`, `LoginRequest`, `SessionResponse`, and `AuthSuccess`
+      schemas and contract fixtures.
+  - Documentation:
+    - Updated `README.md` (security overview and quick start) and `AGENTS.md`
+      (direction, target architecture, and rule 8) to reflect the loopback-only
+      single-user model.
+- **Verification Commands:**
+  - `pnpm lint && pnpm test && pnpm build`
+  - `cargo fmt --all --manifest-path apps/tui/Cargo.toml -- --check`
+  - `cargo clippy --manifest-path apps/tui/Cargo.toml --all-targets -- -D warnings`
+  - `cargo test --manifest-path apps/tui/Cargo.toml`
+  - `cargo build --manifest-path apps/tui/Cargo.toml`
+  - `cargo install --path apps/tui --locked`
+- **Limitations / Not Run:**
+  - No paid-provider model or web-search calls.
+  - S07 owner-use gate remains open.
+- **Next steps:**
+  - Full verification suite run by `@verifier`.
+  - Open PR from `feat/remove-local-auth`, verify Windows CI, and merge upon owner authorization.
+

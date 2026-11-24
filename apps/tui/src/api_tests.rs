@@ -30,63 +30,18 @@ async fn health_reports_ok() {
 }
 
 #[tokio::test]
-async fn login_stores_csrf_token_and_sends_it_on_mutations() {
-    let server = MockServer::start();
-
-    server.mock(|when, then| {
-        when.method(httpmock::Method::POST)
-            .path("/api/auth/login")
-            .body(r#"{"password":"hunter2hunter2"}"#);
-        then.status(200)
-            .header("set-cookie", "openfrost_session=sid123; Path=/")
-            .body(r#"{ "authenticated": true, "csrfToken": "csrf-1" }"#);
-    });
-
-    let client = client(&server);
-    let success = client.login("hunter2hunter2").await.unwrap();
-    assert_eq!(success.csrfToken, "csrf-1");
-    assert_eq!(client.csrf_token(), Some("csrf-1".to_string()));
-
-    // A mutation must carry the session's CSRF token header; the API enforces it.
-    server.mock(|when, then| {
-        when.method(httpmock::Method::POST)
-            .path("/api/tasks/t1/cancel")
-            .header("x-csrf-token", "csrf-1");
-        then.status(200)
-            .body(format!(r#"{{ "task": {CANCELED_TASK_JSON} }}"#));
-    });
-    client.cancel_task("t1").await.unwrap();
-}
-
-#[tokio::test]
-async fn mutation_without_csrf_is_rejected_by_the_mock_like_the_api() {
-    let server = MockServer::start();
-    // The client has no session here, so it sends no CSRF header — exactly
-    // what the real API answers with 403.
-    server.mock(|when, then| {
-        when.method(httpmock::Method::POST)
-            .path("/api/tasks/t1/cancel");
-        then.status(403)
-            .body(r#"{ "error": "CSRF token missing or invalid" }"#);
-    });
-    let client = client(&server);
-    let error = client.cancel_task("t1").await.unwrap_err();
-    assert!(error.message().contains("CSRF"), "got: {error}");
-}
-
-#[tokio::test]
 async fn api_error_bodies_surface_their_message() {
     let server = MockServer::start();
     server.mock(|when, then| {
-        when.method(httpmock::Method::POST).path("/api/auth/login");
-        then.status(401)
-            .body(r#"{ "error": "Invalid username or password" }"#);
+        when.method(httpmock::Method::POST)
+            .path("/api/tasks/t1/cancel");
+        then.status(404).body(r#"{ "error": "Task not found" }"#);
     });
     let client = client(&server);
-    let error = client.login("nope").await.unwrap_err();
+    let error = client.cancel_task("t1").await.unwrap_err();
     assert_eq!(
         error.message(),
-        "The API rejected the request (401): Invalid username or password"
+        "The API rejected the request (404): Task not found"
     );
 }
 
@@ -154,12 +109,10 @@ async fn approval_decision_sends_the_body() {
     server.mock(|when, then| {
         when.method(httpmock::Method::POST)
             .path("/api/approvals/ap1/decision")
-            .header("x-csrf-token", "tok")
             .body(r#"{"decision":"granted"}"#);
         then.status(200).body(GRANTED_APPROVAL_JSON);
     });
     let client = client(&server);
-    client.set_csrf_token(Some("tok".into()));
     let approval = client.decide_approval("ap1", "granted").await.unwrap();
     assert_eq!(approval.state, ApprovalState::Granted);
 }
@@ -173,7 +126,6 @@ async fn delete_destination_uses_delete_verb() {
         then.status(204);
     });
     let client = client(&server);
-    client.set_csrf_token(Some("tok".into()));
     client.remove_destination("d1").await.unwrap();
 }
 
@@ -190,13 +142,11 @@ async fn memory_and_settings_round_trip() {
     });
     server.mock(|when, then| {
         when.method(httpmock::Method::PUT)
-            .path("/api/settings/provider")
-            .header("x-csrf-token", "tok");
+            .path("/api/settings/provider");
         then.status(200)
             .body(r#"{ "ok": true, "provider": "openai" }"#);
     });
     let client = client(&server);
-    client.set_csrf_token(Some("tok".into()));
     let snapshot = client.memory().await.unwrap();
     assert_eq!(snapshot.limits.contentMaxChars, 4000);
     client
@@ -291,125 +241,16 @@ async fn independent_reads_overlap_instead_of_serializing() {
 }
 
 #[tokio::test]
-async fn csrf_token_set_by_login_is_visible_to_every_clone() {
-    let server = MockServer::start();
-    server.mock(|when, then| {
-        when.method(httpmock::Method::POST).path("/api/auth/login");
-        then.status(200)
-            .body(r#"{ "authenticated": true, "csrfToken": "csrf-shared" }"#);
-    });
-    let cancel = server.mock(|when, then| {
-        when.method(httpmock::Method::POST)
-            .path("/api/tasks/t1/cancel")
-            .header("x-csrf-token", "csrf-shared");
-        then.status(200)
-            .body(format!(r#"{{ "task": {CANCELED_TASK_JSON} }}"#));
-    });
-    let login_client = client(&server);
-    let other = login_client.clone();
-    assert_eq!(other.csrf_token(), None);
-
-    login_client.login("hunter2hunter2").await.unwrap();
-    assert_eq!(other.csrf_token(), Some("csrf-shared".to_string()));
-    // A clone that never logged in sends the token the login produced.
-    other.cancel_task("t1").await.unwrap();
-    cancel.assert();
-}
-
-#[tokio::test]
-async fn setup_and_relogin_replace_the_token_for_all_clones() {
-    let server = MockServer::start();
-    let mut setup = server.mock(|when, then| {
-        when.method(httpmock::Method::POST).path("/api/auth/setup");
-        then.status(201)
-            .body(r#"{ "authenticated": true, "csrfToken": "csrf-setup" }"#);
-    });
-    let api = client(&server);
-    let other = api.clone();
-    api.setup("hunter2hunter2").await.unwrap();
-    assert_eq!(other.csrf_token(), Some("csrf-setup".to_string()));
-    setup.delete();
-
-    server.mock(|when, then| {
-        when.method(httpmock::Method::POST).path("/api/auth/login");
-        then.status(200)
-            .body(r#"{ "authenticated": true, "csrfToken": "csrf-relogin" }"#);
-    });
-    let stale = server.mock(|when, then| {
-        when.method(httpmock::Method::POST)
-            .path("/api/tasks/t1/cancel")
-            .header("x-csrf-token", "csrf-setup");
-        then.status(403).body(r#"{ "error": "stale token" }"#);
-    });
-    let fresh = server.mock(|when, then| {
-        when.method(httpmock::Method::POST)
-            .path("/api/tasks/t1/cancel")
-            .header("x-csrf-token", "csrf-relogin");
-        then.status(200)
-            .body(format!(r#"{{ "task": {CANCELED_TASK_JSON} }}"#));
-    });
-    other.login("hunter2hunter2").await.unwrap();
-    assert_eq!(api.csrf_token(), Some("csrf-relogin".to_string()));
-    api.cancel_task("t1").await.unwrap();
-    fresh.assert();
-    stale.assert_hits(0);
-}
-
-#[tokio::test]
-async fn logout_clears_the_token_for_every_clone() {
-    let server = MockServer::start();
-    server.mock(|when, then| {
-        when.method(httpmock::Method::POST)
-            .path("/api/auth/logout")
-            .header("x-csrf-token", "tok");
-        then.status(204);
-    });
-    let api = client(&server);
-    let other = api.clone();
-    api.set_csrf_token(Some("tok".into()));
-    other.logout().await.unwrap();
-    assert_eq!(api.csrf_token(), None);
-    assert_eq!(other.csrf_token(), None);
-}
-
-#[tokio::test]
-async fn a_slow_logout_cannot_wipe_a_newer_login_token() {
-    let server = MockServer::start();
-    server.mock(|when, then| {
-        when.method(httpmock::Method::POST).path("/api/auth/logout");
-        then.status(204).delay(Duration::from_millis(300));
-    });
-    server.mock(|when, then| {
-        when.method(httpmock::Method::POST).path("/api/auth/login");
-        then.status(200)
-            .body(r#"{ "authenticated": true, "csrfToken": "csrf-new" }"#);
-    });
-    let api = client(&server);
-    api.set_csrf_token(Some("csrf-old".into()));
-    let logging_out = api.clone();
-    let logout = tokio::spawn(async move { logging_out.logout().await });
-
-    // While the logout is still in flight, the owner signs in again.
-    tokio::time::sleep(Duration::from_millis(100)).await;
-    api.login("hunter2hunter2").await.unwrap();
-    logout.await.unwrap().unwrap();
-
-    assert_eq!(api.csrf_token(), Some("csrf-new".to_string()));
-}
-
-#[tokio::test]
-async fn concurrent_mutations_all_carry_the_current_token() {
+async fn concurrent_mutations_execute_in_parallel() {
     let server = MockServer::start();
     let cancel = server.mock(|when, then| {
         when.method(httpmock::Method::POST)
-            .path("/api/tasks/t1/cancel")
-            .header("x-csrf-token", "tok");
+            .path("/api/tasks/t1/cancel");
         then.status(200)
             .delay(Duration::from_millis(100))
             .body(format!(r#"{{ "task": {CANCELED_TASK_JSON} }}"#));
     });
     let api = client(&server);
-    api.set_csrf_token(Some("tok".into()));
     let handles: Vec<_> = (0..8)
         .map(|_| {
             let api = api.clone();
@@ -637,7 +478,6 @@ mod live_sse {
 
     struct Subscription {
         listener: TcpListener,
-        api: ApiClient,
         rx: AppRx,
         wake: Arc<Notify>,
         handle: JoinHandle<()>,
@@ -654,11 +494,6 @@ mod live_sse {
             let listener = io(TcpListener::bind("127.0.0.1:0")).await.unwrap();
             let base_url = format!("http://{}", listener.local_addr().unwrap());
             let api = ApiClient::new(&base_url).unwrap();
-            api.cookie_jar().add_cookie_str(
-                "openfrost_session=test-session; Path=/",
-                &url::Url::parse(&base_url).unwrap(),
-            );
-            api.set_csrf_token(Some("test-csrf".into()));
             let (tx, rx) = mpsc::unbounded_channel();
             let wake = Arc::new(Notify::new());
             let handle = tokio::spawn(subscribe_events(
@@ -669,7 +504,6 @@ mod live_sse {
             ));
             Self {
                 listener,
-                api,
                 rx,
                 wake,
                 handle,
@@ -691,8 +525,7 @@ mod live_sse {
         }
 
         async fn open(&mut self) -> TcpStream {
-            let (mut stream, headers) = self.request("get /api/events/stream ").await;
-            assert!(headers.contains("openfrost_session=test-session"));
+            let (mut stream, _) = self.request("get /api/events/stream ").await;
             // Close-delimited HTTP/1.1 body, intentionally left open.
             io(stream.write_all(
                 b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\n: heartbeat\n\n",
@@ -747,18 +580,17 @@ mod live_sse {
         tokio::time::advance(Duration::from_millis(1_001)).await;
         subscription.connected(false).await;
         closed(&mut stream).await;
-        // A scheduled rotation makes a fresh authenticated GET without backoff.
+        // A scheduled rotation makes a fresh GET without backoff.
         let mut replacement = subscription.open().await;
         subscription.activity(&mut replacement).await;
         assert!(subscription.rx.try_recv().is_err());
     }
 
     #[tokio::test]
-    async fn revoked_session_is_rejected_at_rotation_then_backs_off_and_wakes_on_login() {
+    async fn disconnected_stream_at_rotation_backs_off_and_wakes_on_notify() {
         tokio::time::pause();
         let mut subscription = Subscription::new().await;
         let mut stream = subscription.open().await;
-        // Model initial-only auth: revocation does not stop the old stream.
         for _ in 0..(SSE_MAX_STREAM_LIFETIME.as_secs() / 15 - 1) {
             tokio::time::advance(Duration::from_secs(15)).await;
             subscription.activity(&mut stream).await;
@@ -813,34 +645,5 @@ mod live_sse {
         tokio::time::advance(Duration::from_millis(1_001)).await;
         let error = io(pending).await.unwrap().unwrap_err();
         assert!(error.is_timeout(), "{error:?}");
-    }
-
-    #[tokio::test]
-    async fn logout_wake_closes_established_stream_and_reauthenticates_without_cookie() {
-        tokio::time::pause();
-        let mut subscription = Subscription::new().await;
-        let mut stream = subscription.open().await;
-        subscription.activity(&mut stream).await;
-        let api = subscription.api.clone();
-        let logout = tokio::spawn(async move { api.logout().await });
-        let (mut logout_stream, headers) = subscription.request("post /api/auth/logout ").await;
-        assert!(headers.contains("x-csrf-token: test-csrf"));
-        assert!(headers.contains("openfrost_session=test-session"));
-        io(logout_stream.write_all(
-            b"HTTP/1.1 204 No Content\r\nSet-Cookie: openfrost_session=; Max-Age=0; Path=/\r\nConnection: close\r\n\r\n",
-        )).await.unwrap();
-        io(logout).await.unwrap().unwrap();
-        assert_eq!(subscription.api.csrf_token(), None);
-        // The app supplies this wake after applying the logout result.
-        let before_wake = tokio::time::Instant::now();
-        subscription.wake.notify_one();
-        subscription.connected(false).await;
-        closed(&mut stream).await;
-        let (mut rejected, headers) = subscription.request("get /api/events/stream ").await;
-        assert!(!headers.contains("openfrost_session=test-session"));
-        refuse(&mut rejected).await;
-        subscription.connected(false).await;
-        assert_eq!(before_wake.elapsed(), Duration::ZERO);
-        assert!(subscription.rx.try_recv().is_err());
     }
 }

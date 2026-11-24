@@ -52,18 +52,6 @@ fn kind_label(kind: &TaskKind) -> &'static str {
 pub(crate) fn render(app: &mut App, frame: &mut Frame) {
     match app.screen {
         Screen::Connecting => render_connecting(app, frame),
-        Screen::Login => render_auth(
-            app,
-            frame,
-            "Sign in to OpenFrost",
-            "Owner password (Enter to sign in)",
-        ),
-        Screen::Onboarding => render_auth(
-            app,
-            frame,
-            "Welcome to OpenFrost",
-            "Choose an owner password (min 8 chars; Enter to create the account)",
-        ),
         Screen::Main => render_main(app, frame),
     }
     if let Some(dialog) = &app.dialog {
@@ -115,47 +103,6 @@ fn block(title: &str) -> Block<'static> {
     Block::default()
         .borders(Borders::ALL)
         .title(Span::styled(title.to_string(), accent()))
-}
-
-fn render_auth(app: &mut App, frame: &mut Frame, title: &str, hint: &str) {
-    let area = frame.area();
-    let vertical =
-        Layout::vertical([Constraint::Percentage(35), Constraint::Length(7)]).split(area);
-    frame.render_widget(
-        Paragraph::new(vec![
-            Line::from(Span::styled(
-                "OpenFrost",
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD),
-            )),
-            Line::from(
-                "A local AI assistant for research briefs, project updates, and weekly planning.",
-            ),
-        ]),
-        vertical[0],
-    );
-    let chunks = Layout::vertical([
-        Constraint::Length(3),
-        Constraint::Length(1),
-        Constraint::Length(1),
-    ])
-    .split(vertical[1]);
-    app.auth.set_block(block(title));
-    frame.render_widget(&app.auth, chunks[0]);
-    frame.render_widget(
-        Paragraph::new(Line::styled(hint.to_string(), muted())),
-        chunks[1],
-    );
-    if app.auth_busy {
-        frame.render_widget(
-            Paragraph::new(Line::styled(
-                "Checking with the API\u{2026}".to_string(),
-                muted(),
-            )),
-            chunks[2],
-        );
-    }
 }
 
 fn render_main(app: &mut App, frame: &mut Frame) {

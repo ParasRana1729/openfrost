@@ -22,7 +22,7 @@ use std::sync::Arc;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use tokio::sync::{mpsc, Notify};
-use tui_textarea::TextArea;
+pub(crate) use tui_textarea::TextArea;
 
 use crate::api::ApiClient;
 use crate::contracts::*;
@@ -38,12 +38,8 @@ use crate::refresh::{
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Screen {
-    /// Waiting for the initial session check.
+    /// Waiting for the API health check.
     Connecting,
-    /// First run: create the owner account.
-    Onboarding,
-    /// Owner exists; sign in.
-    Login,
     Main,
 }
 
@@ -93,7 +89,6 @@ pub(crate) struct Notice {
 // event protocol. A refresh is applied atomically once its done event arrives.
 struct PendingRead {
     rx: crate::event::AppRx,
-    session: u64,
     detail_generation: u64,
     routine_detail_generation: u64,
     refresh: Option<(Tab, u64)>,
@@ -106,13 +101,11 @@ pub(crate) struct App {
     pub(crate) api: ApiClient,
     /// Refresh scheduling: SSE state, activity debounce, in-flight tabs.
     pub(crate) sync: SyncState,
-    /// Wakes the SSE loop out of its reconnect backoff (login, onboarding).
+    /// Wakes the SSE loop out of its reconnect backoff.
     pub(crate) sse_wake: Arc<Notify>,
     pub(crate) screen: Screen,
     pub(crate) tab: Tab,
     pub(crate) quit: bool,
-    pub(crate) auth: TextArea<'static>,
-    pub(crate) auth_busy: bool,
     pub(crate) assistant: AssistantState,
     pub(crate) tasks: TasksState,
     pub(crate) projects: ProjectsState,
@@ -124,7 +117,6 @@ pub(crate) struct App {
     pub(crate) tab_picker: Option<usize>,
     pub(crate) notice: Option<Notice>,
     pub(crate) ticks: u64,
-    session_generation: u64,
     detail_generation: u64,
     routine_detail_generation: u64,
     detail_target: Option<String>,
@@ -133,8 +125,6 @@ pub(crate) struct App {
 
 impl App {
     pub(crate) fn new(tx: AppTx, api: ApiClient) -> Self {
-        let mut auth = TextArea::default();
-        auth.set_mask_char('\u{2022}');
         Self {
             tx,
             api,
@@ -143,8 +133,6 @@ impl App {
             screen: Screen::Connecting,
             tab: Tab::Assistant,
             quit: false,
-            auth,
-            auth_busy: false,
             assistant: AssistantState::default(),
             tasks: TasksState::default(),
             projects: ProjectsState::default(),
@@ -155,7 +143,6 @@ impl App {
             tab_picker: None,
             notice: None,
             ticks: 0,
-            session_generation: 0,
             detail_generation: 0,
             routine_detail_generation: 0,
             detail_target: None,
@@ -294,7 +281,6 @@ impl App {
         let (tx, rx) = mpsc::unbounded_channel();
         self.pending_reads.push(PendingRead {
             rx,
-            session: self.session_generation,
             detail_generation: self.detail_generation,
             routine_detail_generation: self.routine_detail_generation,
             refresh,
@@ -325,7 +311,7 @@ impl App {
                 self.pending_reads.push(read);
                 continue;
             }
-            if read.session != self.session_generation || self.screen != Screen::Main {
+            if self.screen != Screen::Main {
                 continue;
             }
             if read
@@ -357,10 +343,8 @@ impl App {
         }
     }
 
-    /// Invalidate old-session reads and retry timers before starting a new
-    /// session's refreshes, or when the current session ends.
-    pub(crate) fn reset_read_session(&mut self) {
-        self.session_generation += 1;
+    /// Invalidate pending reads and retry timers before starting refreshes.
+    pub(crate) fn reset_reads(&mut self) {
         self.detail_generation += 1;
         self.routine_detail_generation += 1;
         self.pending_reads.clear();
@@ -410,21 +394,7 @@ impl App {
             }
             return;
         }
-        // Alt+X signs out; the session stays server-side until TTL.
-        if self.screen == Screen::Main
-            && key.modifiers.contains(KeyModifiers::ALT)
-            && key.code == KeyCode::Char('x')
-        {
-            let api = self.api.clone();
-            let tx = self.tx.clone();
-            tokio::spawn(async move {
-                let result = api.logout().await.map_err(|e| e.message());
-                let _ = tx.send(AppEvent::Api(Box::new(Payload::LoggedOut(result))));
-            });
-            return;
-        }
         if self.screen != Screen::Main {
-            self.handle_auth_key(key);
             return;
         }
         if let Some(selected) = self.tab_picker {
@@ -588,40 +558,6 @@ impl App {
         self.tab = tab;
         self.refresh(tab);
     }
-
-    fn handle_auth_key(&mut self, key: KeyEvent) {
-        match key.code {
-            KeyCode::Enter if !self.auth_busy && !self.auth.is_empty() => {
-                let password = self.auth.lines().join("\n");
-                self.auth_busy = true;
-                self.auth = {
-                    let mut area = TextArea::default();
-                    area.set_mask_char('\u{2022}');
-                    area
-                };
-                let api = self.api.clone();
-                let tx = self.tx.clone();
-                let onboarding = self.screen == Screen::Onboarding;
-                tokio::spawn(async move {
-                    let result = if onboarding {
-                        api.setup(&password)
-                            .await
-                            .map(|_| ())
-                            .map_err(|e| e.message())
-                    } else {
-                        api.login(&password)
-                            .await
-                            .map(|_| ())
-                            .map_err(|e| e.message())
-                    };
-                    let _ = tx.send(AppEvent::Api(Box::new(Payload::Auth(result))));
-                });
-            }
-            _ => {
-                let _ = self.auth.input(key);
-            }
-        }
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -746,28 +682,6 @@ mod tests {
         assert!(
             app.sync.refreshes_started() > 1,
             "fallback polling never resumed"
-        );
-    }
-
-    #[tokio::test]
-    async fn login_and_onboarding_wake_the_sse_loop_but_failures_do_not() {
-        let mut app = main_app();
-        let wake = app.sse_wake.clone();
-
-        crate::apply::apply_payload(&mut app, Payload::Auth(Err("bad password".into())));
-        assert!(
-            tokio::time::timeout(Duration::from_millis(50), wake.notified())
-                .await
-                .is_err(),
-            "a failed login must not wake the stream"
-        );
-
-        crate::apply::apply_payload(&mut app, Payload::Auth(Ok(())));
-        assert!(
-            tokio::time::timeout(Duration::from_millis(500), wake.notified())
-                .await
-                .is_ok(),
-            "a successful login must wake the stream immediately"
         );
     }
 
@@ -941,40 +855,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn logout_clears_open_routine_and_discards_old_session_success_and_error() {
-        let mut app = main_app();
-        app.tab = Tab::Routines;
-        let opened = pending_routine_detail(&mut app, "a");
-        send_routine_detail(opened, "a");
-        app.drain_reads();
-        app.routines.occurrence_selected = 1;
-        let pending = pending_routine_detail(&mut app, "b");
-        let error = pending_routine_detail(&mut app, "c");
-        // Already queued results must also be discarded by the session reset.
-        send_routine_detail(pending, "b");
-        error
-            .send(AppEvent::Api(Box::new(Payload::RoutineDetail(Err(
-                "old session".into(),
-            )))))
-            .unwrap();
-        crate::apply::apply_payload(&mut app, Payload::LoggedOut(Ok(())));
-        assert!(!app.routines.detail_open);
-        assert!(app.routines.detail.is_none());
-        assert_eq!(app.routines.occurrence_selected, 0);
-        crate::apply::apply_payload(&mut app, Payload::Auth(Ok(())));
-        assert!(error
-            .send(AppEvent::Api(Box::new(Payload::RoutineDetail(Ok(
-                sample_routine("c")
-            )))))
-            .is_err());
-        drop(error);
-        app.drain_reads();
-        assert!(!app.routines.detail_open);
-        assert!(app.routines.detail.is_none());
-        assert!(app.notice.is_none());
-    }
-
-    #[tokio::test]
     async fn latest_detail_request_wins_even_when_responses_arrive_in_reverse() {
         let mut app = main_app();
         app.tab = Tab::Tasks;
@@ -1059,24 +939,6 @@ mod tests {
         send_detail(pending, "a");
         app.drain_reads();
         assert!(!app.tasks.detail_open);
-    }
-
-    #[tokio::test]
-    async fn logout_and_relogin_discard_old_reads_and_retry_state() {
-        let mut app = main_app();
-        app.tab = Tab::Tasks;
-        let pending = pending_detail(&mut app, "a");
-        app.sync.record_outcome(Tab::Tasks, true, 0);
-        crate::apply::apply_payload(&mut app, Payload::LoggedOut(Ok(())));
-        let sent = pending.send(AppEvent::Api(Box::new(Payload::TaskDetail(Ok(
-            sample_task(false),
-        )))));
-        assert!(sent.is_err());
-        crate::apply::apply_payload(&mut app, Payload::Auth(Ok(())));
-        app.drain_reads();
-        assert!(!app.tasks.detail_open);
-        assert!(app.tasks.detail.is_none());
-        assert!(!app.sync.take_due_retry(Tab::Tasks, 10_000));
     }
 
     #[tokio::test]
