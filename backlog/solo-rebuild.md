@@ -1594,3 +1594,16 @@ does not close S07's one-working-week owner-use gate.
   Rust fmt, Clippy with warnings denied, all 117 tests, and build passed.
 - No paid-provider or interactive visual TUI workflow run. S07 remains open.
   Next: Windows PR CI, then authorized merge before integrating Priority 5B.
+
+### Integration — Priority 5B (2026-11-24)
+
+- Priority 4 landed via PR #42, merge c6b8ad9. Merged updated origin/main into
+  `refactor/tui-split-app-and-ui` without rewriting history (`8cbb5b8`).
+  Priority 4's nested `sample_routine()` fixture correction is present at
+  `apps/tui/src/app/mod.rs` after the move; both backlog handoffs retained.
+- Re-verification after the interrupted Zed audit (2026-11-24): inside
+  `apps/tui`, `cargo fmt --all -- --check`, `cargo clippy --all-targets -- -D warnings`,
+  `cargo test` (**117 passed**, 0 failed, 0 ignored), and `cargo build` all passed.
+- Not run: interactive visual TUI, paid-provider calls, or TypeScript suite
+  (no TS changes in this slice). S07 owner-use gate remains open.
+  Next: push branch, open PR, Windows CI, then authorized merge.
