@@ -3,6 +3,77 @@ use crate::contracts::{
     ApprovalView, CreateTaskRequest, Event, Project, RoutineView, TaskDetail, TaskKind,
 };
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct SlashCommandSpec {
+    pub(crate) name: &'static str,
+    pub(crate) args_hint: &'static str,
+    pub(crate) description: &'static str,
+    pub(crate) takes_args: bool,
+}
+
+pub(crate) const SLASH_COMMANDS: &[SlashCommandSpec] = &[
+    SlashCommandSpec {
+        name: "/project",
+        args_hint: "[name|none]",
+        description: "Switch active project scope or cycle",
+        takes_args: true,
+    },
+    SlashCommandSpec {
+        name: "/mode",
+        args_hint: "[brief|update]",
+        description: "Toggle research brief or project update mode",
+        takes_args: true,
+    },
+    SlashCommandSpec {
+        name: "/tasks",
+        args_hint: "",
+        description: "Open tasks list & run history",
+        takes_args: false,
+    },
+    SlashCommandSpec {
+        name: "/projects",
+        args_hint: "",
+        description: "Manage projects & folder grants",
+        takes_args: false,
+    },
+    SlashCommandSpec {
+        name: "/memory",
+        args_hint: "",
+        description: "Review memory proposals & Markdown entries",
+        takes_args: false,
+    },
+    SlashCommandSpec {
+        name: "/routines",
+        args_hint: "",
+        description: "Manage weekly planning routines",
+        takes_args: false,
+    },
+    SlashCommandSpec {
+        name: "/settings",
+        args_hint: "",
+        description: "Configure provider, DPAPI key & export folders",
+        takes_args: false,
+    },
+    SlashCommandSpec {
+        name: "/clear",
+        args_hint: "",
+        description: "Clear session stream & scroll offset",
+        takes_args: false,
+    },
+    SlashCommandSpec {
+        name: "/cancel",
+        args_hint: "",
+        description: "Cancel the currently running task",
+        takes_args: false,
+    },
+    SlashCommandSpec {
+        name: "/help",
+        args_hint: "",
+        description: "Toggle inline command & shortcut reference",
+        takes_args: false,
+    },
+];
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) enum ComposerField {
     #[default]
@@ -35,6 +106,40 @@ pub(crate) struct AssistantState {
     pub(crate) history_idx: Option<usize>,
     pub(crate) active_task_detail: Option<TaskDetail>,
     pub(crate) slash_help_open: bool,
+    pub(crate) slash_selected: usize,
+    pub(crate) slash_dismissed: bool,
+}
+
+impl AssistantState {
+    /// Returns matching slash commands when the composer holds a single-line
+    /// `/` token without spaces and the popup has not been dismissed with Esc.
+    pub(crate) fn matching_slash_commands(&self) -> Vec<&'static SlashCommandSpec> {
+        if self.slash_dismissed || self.advanced_open || self.focus != ComposerField::Request {
+            return Vec::new();
+        }
+        let lines = self.request.lines();
+        if lines.len() != 1 {
+            return Vec::new();
+        }
+        let raw = lines[0].trim_start();
+        if !raw.starts_with('/') || raw.contains(char::is_whitespace) {
+            return Vec::new();
+        }
+        let needle = raw.to_lowercase();
+        SLASH_COMMANDS
+            .iter()
+            .filter(|spec| spec.name.starts_with(&needle))
+            .collect()
+    }
+
+    pub(crate) fn sync_slash_selection(&mut self) {
+        let count = self.matching_slash_commands().len();
+        if count == 0 {
+            self.slash_selected = 0;
+        } else if self.slash_selected >= count {
+            self.slash_selected = count - 1;
+        }
+    }
 }
 
 impl App {
@@ -47,6 +152,65 @@ impl App {
             self.assistant.advanced_open = !self.assistant.advanced_open;
             return;
         }
+
+        // Handle live slash-command autocomplete popup navigation when active.
+        let slash_matches = self.assistant.matching_slash_commands();
+        if !slash_matches.is_empty() {
+            match key.code {
+                KeyCode::Esc => {
+                    self.assistant.slash_dismissed = true;
+                    return;
+                }
+                KeyCode::Up => {
+                    let count = slash_matches.len();
+                    self.assistant.slash_selected = if self.assistant.slash_selected == 0 {
+                        count.saturating_sub(1)
+                    } else {
+                        self.assistant.slash_selected - 1
+                    };
+                    return;
+                }
+                KeyCode::Down => {
+                    let count = slash_matches.len();
+                    self.assistant.slash_selected = (self.assistant.slash_selected + 1) % count;
+                    return;
+                }
+                KeyCode::Tab => {
+                    let idx = self
+                        .assistant
+                        .slash_selected
+                        .min(slash_matches.len().saturating_sub(1));
+                    let chosen = slash_matches[idx];
+                    let completed = if chosen.takes_args {
+                        format!("{} ", chosen.name)
+                    } else {
+                        chosen.name.to_string()
+                    };
+                    self.assistant.request = TextArea::new(vec![completed]);
+                    self.assistant
+                        .request
+                        .move_cursor(tui_textarea::CursorMove::End);
+                    self.assistant.slash_selected = 0;
+                    return;
+                }
+                KeyCode::Enter
+                    if !key.modifiers.contains(KeyModifiers::SHIFT)
+                        && !key.modifiers.contains(KeyModifiers::ALT) =>
+                {
+                    let idx = self
+                        .assistant
+                        .slash_selected
+                        .min(slash_matches.len().saturating_sub(1));
+                    let chosen_name = slash_matches[idx].name;
+                    self.assistant.slash_selected = 0;
+                    self.assistant.slash_dismissed = false;
+                    self.execute_slash_command(chosen_name);
+                    return;
+                }
+                _ => {}
+            }
+        }
+
         match key.code {
             KeyCode::PageUp => {
                 self.scroll_up(10);
@@ -108,6 +272,8 @@ impl App {
                         self.history_next();
                     } else {
                         let _ = self.assistant.request.input(key);
+                        self.assistant.slash_dismissed = false;
+                        self.assistant.sync_slash_selection();
                     }
                 }
                 ComposerField::Constraints => {
@@ -146,7 +312,7 @@ impl App {
         self.submit_task();
     }
 
-    fn execute_slash_command(&mut self, text: &str) {
+    pub(crate) fn execute_slash_command(&mut self, text: &str) {
         let parts: Vec<&str> = text.split_whitespace().collect();
         let cmd = parts.first().copied().unwrap_or("");
         let arg = if parts.len() > 1 {
@@ -156,10 +322,31 @@ impl App {
         };
 
         self.assistant.request = TextArea::default();
+        self.assistant.slash_selected = 0;
+        self.assistant.slash_dismissed = false;
 
         match cmd {
             "/help" | "/?" => {
                 self.assistant.slash_help_open = !self.assistant.slash_help_open;
+            }
+            "/mode" => {
+                let lower = arg.to_lowercase();
+                if lower.is_empty() {
+                    self.assistant.kind_project_update = !self.assistant.kind_project_update;
+                } else if lower.starts_with("update") || lower.starts_with("proj") {
+                    self.assistant.kind_project_update = true;
+                } else if lower.starts_with("brief") || lower.starts_with("res") {
+                    self.assistant.kind_project_update = false;
+                } else {
+                    self.set_notice("Usage: /mode [brief|update]", true);
+                    return;
+                }
+                let label = if self.assistant.kind_project_update {
+                    "project update"
+                } else {
+                    "research brief"
+                };
+                self.set_notice(format!("Mode: {label}"), false);
             }
             "/project" | "/p" => {
                 if arg.is_empty() {
@@ -189,6 +376,9 @@ impl App {
                         self.set_notice(format!("Project matching '{arg}' not found"), true);
                     }
                 }
+            }
+            "/projects" => {
+                self.switch_tab(Tab::Projects);
             }
             "/tasks" | "/t" => {
                 self.switch_tab(Tab::Tasks);

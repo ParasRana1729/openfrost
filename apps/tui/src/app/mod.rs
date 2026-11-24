@@ -117,6 +117,8 @@ pub(crate) struct App {
     pub(crate) tab_picker: Option<usize>,
     pub(crate) notice: Option<Notice>,
     pub(crate) ticks: u64,
+    pub(crate) api_origin: String,
+    pub(crate) auto_spawning: bool,
     detail_generation: u64,
     routine_detail_generation: u64,
     detail_target: Option<String>,
@@ -143,6 +145,8 @@ impl App {
             tab_picker: None,
             notice: None,
             ticks: 0,
+            api_origin: "http://127.0.0.1:8787".to_string(),
+            auto_spawning: false,
             detail_generation: 0,
             routine_detail_generation: 0,
             detail_target: None,
@@ -1269,5 +1273,91 @@ mod tests {
                 crate::ui::render(&mut app, frame);
             })
             .unwrap();
+    }
+
+    #[test]
+    fn test_render_connecting_and_assistant_welcome_across_sizes() {
+        use ratatui::backend::TestBackend;
+        use ratatui::Terminal;
+
+        let mut app = dummy_app();
+        app.auto_spawning = true;
+        app.ticks = 14;
+
+        // Connecting splash screen on wide and narrow viewports.
+        for (w, h) in [(120, 32), (60, 18), (30, 10)] {
+            let backend = TestBackend::new(w, h);
+            let mut terminal = Terminal::new(backend).unwrap();
+            terminal
+                .draw(|frame| {
+                    crate::ui::render(&mut app, frame);
+                })
+                .unwrap();
+        }
+
+        // Welcome hero card and live slash-command autocomplete popup.
+        app.screen = Screen::Main;
+        app.tab = Tab::Assistant;
+        app.assistant.request = TextArea::new(vec!["/m".to_string()]);
+        let backend = TestBackend::new(110, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| {
+                crate::ui::render(&mut app, frame);
+            })
+            .unwrap();
+        let content: String = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|c| c.symbol())
+            .collect();
+        assert!(content.contains("OpenFrost"));
+        assert!(content.contains("Commands"));
+        assert!(content.contains("/mode"));
+        assert!(content.contains("/memory"));
+    }
+
+    #[test]
+    fn test_slash_autocomplete_navigation_completion_and_mode_command() {
+        let mut app = main_app();
+        app.tab = Tab::Assistant;
+
+        // Typing '/' shows all commands; typing 'm' narrows to /mode and /memory.
+        app.on_key(key(KeyCode::Char('/')));
+        assert!(!app.assistant.matching_slash_commands().is_empty());
+        app.on_key(key(KeyCode::Char('m')));
+        let matches: Vec<&str> = app
+            .assistant
+            .matching_slash_commands()
+            .iter()
+            .map(|c| c.name)
+            .collect();
+        assert_eq!(matches, vec!["/mode", "/memory"]);
+
+        // Down selects /memory, Up wraps back to /mode.
+        app.on_key(key(KeyCode::Down));
+        assert_eq!(app.assistant.slash_selected, 1);
+        app.on_key(key(KeyCode::Up));
+        assert_eq!(app.assistant.slash_selected, 0);
+
+        // Tab completes `/mode ` (takes_args = true), closing the popup.
+        app.on_key(key(KeyCode::Tab));
+        assert_eq!(app.assistant.request.lines().join(""), "/mode ");
+        assert!(app.assistant.matching_slash_commands().is_empty());
+
+        // Executing `/mode update` switches task kind to project update.
+        app.execute_slash_command("/mode update");
+        assert!(app.assistant.kind_project_update);
+        app.execute_slash_command("/mode brief");
+        assert!(!app.assistant.kind_project_update);
+
+        // Esc dismisses the popup without clearing input.
+        app.assistant.request = TextArea::new(vec!["/p".to_string()]);
+        assert!(!app.assistant.matching_slash_commands().is_empty());
+        app.on_key(key(KeyCode::Esc));
+        assert!(app.assistant.matching_slash_commands().is_empty());
+        assert_eq!(app.assistant.request.lines().join(""), "/p");
     }
 }

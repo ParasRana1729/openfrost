@@ -227,16 +227,18 @@ fn setup_terminal() -> Result<Terminal<CrosstermBackend<Stdout>>> {
 
 async fn run_tui(api_origin: Option<String>, no_spawn: bool) -> Result<()> {
     let base_url = resolve_api_origin(api_origin);
-    if !no_spawn {
-        let home = runtime::resolve_home_dir()?;
-        if !runtime::probe_health(&base_url).await {
-            let (is_loopback, _) = runtime::parse_origin(&base_url)?;
-            if is_loopback {
-                eprintln!("Starting local OpenFrost API...");
-            }
-            runtime::ensure_api_running(&base_url, &home, false).await?;
-        }
-    }
+    let home = if !no_spawn {
+        Some(runtime::resolve_home_dir()?)
+    } else {
+        None
+    };
+    let should_auto_spawn = if !no_spawn {
+        let (is_loopback, _) = runtime::parse_origin(&base_url)?;
+        is_loopback
+    } else {
+        false
+    };
+
     // `ApiClient` is a cheap clone (shared connection pool); no lock is held
     // across any HTTP round-trip.
     let api = ApiClient::new(&base_url).context("Invalid API origin")?;
@@ -244,29 +246,64 @@ async fn run_tui(api_origin: Option<String>, no_spawn: bool) -> Result<()> {
 
     let (tx, mut rx): (AppTx, AppRx) = mpsc::unbounded_channel();
     let mut app = App::new(tx.clone(), api.clone());
+    app.api_origin = base_url.clone();
+    app.auto_spawning = should_auto_spawn;
 
-    // Check GET /health on startup and drop straight into Screen::Main
-    // (automatic retry on Screen::Connecting when --no-spawn is used before the API is up).
+    // Enter the TUI immediately so Screen::Connecting renders the animated
+    // Frost Owl splash whenever the local API is still booting up. If the API
+    // is already warm, the first health check succeeds in milliseconds and
+    // transitions straight into Screen::Main.
     {
         let api = api.clone();
         let tx = tx.clone();
+        let spawn_url = base_url.clone();
         tokio::spawn(async move {
+            // Fast initial probe: if the API is already running, skip spawning.
+            if matches!(api.health().await, Ok(true)) {
+                let _ = tx.send(AppEvent::Api(Box::new(Payload::Health(Ok(())))));
+                return;
+            }
+
+            // Kick off background API auto-spawn if enabled on loopback.
+            if should_auto_spawn {
+                if let Some(home_dir) = home {
+                    let tx_spawn = tx.clone();
+                    tokio::spawn(async move {
+                        if let Err(err) =
+                            runtime::ensure_api_running(&spawn_url, &home_dir, false).await
+                        {
+                            let _ = tx_spawn.send(AppEvent::Api(Box::new(Payload::Health(Err(
+                                format!("{err:#}"),
+                            )))));
+                        }
+                    });
+                }
+            }
+
             loop {
                 let result = api.health().await.map_err(|error| error.message());
                 let is_ok = matches!(&result, Ok(true));
-                let payload = match result {
-                    Ok(true) => Ok(()),
-                    Ok(false) => Err("API reported unhealthy (/health ok: false)".into()),
-                    Err(e) => Err(e),
-                };
-                if tx
-                    .send(AppEvent::Api(Box::new(Payload::Health(payload))))
-                    .is_err()
-                    || is_ok
-                {
+                if is_ok {
+                    let _ = tx.send(AppEvent::Api(Box::new(Payload::Health(Ok(())))));
                     break;
                 }
-                tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+                // Only surface connection errors immediately when not auto-spawning
+                // (while auto-spawning, let the Connecting screen animate cleanly
+                // unless spawn itself fails or after ~4 seconds).
+                if !should_auto_spawn {
+                    let payload = match result {
+                        Ok(false) => Err("API reported unhealthy (/health ok: false)".into()),
+                        Err(e) => Err(e),
+                        Ok(true) => Ok(()),
+                    };
+                    if tx
+                        .send(AppEvent::Api(Box::new(Payload::Health(payload))))
+                        .is_err()
+                    {
+                        break;
+                    }
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(350)).await;
             }
         });
     }

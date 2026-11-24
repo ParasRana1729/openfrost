@@ -1,11 +1,15 @@
-use super::assistant::format_stream_event;
-use super::{accent, block, kind_label, muted, selected_style};
+use super::assistant::format_stream_event_branch;
+use super::kind_label;
+use super::theme::{
+    accent, accent_bold, approval, danger, frost_glow, ice_mid, muted, primary_bold, rounded_block,
+    rounded_block_focused, selected_style, success, warn,
+};
 use crate::app::{truncate, App, TaskDetailFocus, TaskDetailView, TaskFilter};
 use crate::contracts::{ApprovalState, RunState, TaskDetail, TaskState};
 use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap};
+use ratatui::widgets::{List, ListItem, ListState, Paragraph, Wrap};
 use ratatui::Frame;
 
 pub(super) fn render_tasks(app: &mut App, frame: &mut Frame, area: Rect) {
@@ -13,7 +17,7 @@ pub(super) fn render_tasks(app: &mut App, frame: &mut Frame, area: Rect) {
         let chunks = Layout::vertical([Constraint::Length(3), Constraint::Min(3)]).split(area);
         app.tasks
             .search
-            .set_block(block("Search (/ to focus, Enter apply, Esc clear)"));
+            .set_block(rounded_block("Search (/ to focus, Enter apply, Esc clear)"));
         frame.render_widget(&app.tasks.search, chunks[0]);
         render_task_list(app, frame, chunks[1]);
         return;
@@ -31,21 +35,26 @@ fn render_task_list(app: &mut App, frame: &mut Frame, area: Rect) {
         .iter()
         .enumerate()
         .map(|(index, task)| {
+            let is_sel = index == app.tasks.selected;
             let mut spans = vec![
                 Span::styled(
-                    format!(" {:<9} ", task_state_short(&task.state)),
+                    if is_sel { " ▸ " } else { "   " },
+                    if is_sel { accent_bold() } else { muted() },
+                ),
+                Span::styled(
+                    format!("{:<9} ", task_state_short(&task.state)),
                     task_state_style(&task.state),
                 ),
-                Span::raw(truncate(&task.title, 44)),
-                Span::styled(format!("  {}", kind_label(&task.kind)), muted()),
+                Span::styled(truncate(&task.title, 48), frost_glow()),
+                Span::styled(format!("  •  {}", kind_label(&task.kind)), ice_mid()),
             ];
             if let Some(error) = &task.error {
                 spans.push(Span::styled(
-                    format!("  {}", truncate(error, 40)),
-                    Style::default().fg(Color::Red),
+                    format!("  ✖ {}", truncate(error, 40)),
+                    danger(),
                 ));
             }
-            if index == app.tasks.selected {
+            if is_sel {
                 return ListItem::new(Line::from(spans)).style(selected_style());
             }
             ListItem::new(Line::from(spans))
@@ -59,7 +68,7 @@ fn render_task_list(app: &mut App, frame: &mut Frame, area: Rect) {
             .count()
     };
     let title = format!(
-        "Tasks \u{2014} {} (f filter, / search, Enter detail, c cancel, r retry) [{} all / {} active / {} done / {} failed]",
+        "Tasks — {}  •  f filter • / search • Enter detail • c cancel • r retry [{} all / {} active / {} done / {} failed]",
         app.tasks.filter.label(),
         filter_counts(TaskFilter::All),
         filter_counts(TaskFilter::Active),
@@ -70,28 +79,32 @@ fn render_task_list(app: &mut App, frame: &mut Frame, area: Rect) {
     list_state.select(Some(
         app.tasks.selected.min(visible.len().saturating_sub(1)),
     ));
-    frame.render_stateful_widget(List::new(items).block(block(&title)), area, &mut list_state);
+    frame.render_stateful_widget(
+        List::new(items).block(rounded_block(&title)),
+        area,
+        &mut list_state,
+    );
 }
 
 fn task_state_short(state: &TaskState) -> &'static str {
     match state {
-        TaskState::Queued => "queued",
-        TaskState::Running => "running",
-        TaskState::AwaitingApproval => "approval",
-        TaskState::Completed => "done",
-        TaskState::Failed => "failed",
-        TaskState::Canceled => "canceled",
-        TaskState::Interrupted => "intrpt",
+        TaskState::Queued => "◌ queued",
+        TaskState::Running => "✶ running",
+        TaskState::AwaitingApproval => "◈ approval",
+        TaskState::Completed => "✔ done",
+        TaskState::Failed => "✖ failed",
+        TaskState::Canceled => "⊘ canceled",
+        TaskState::Interrupted => "⏸ intrpt",
     }
 }
 
 fn task_state_style(state: &TaskState) -> Style {
     match state {
-        TaskState::Queued => Style::default().fg(Color::Yellow),
-        TaskState::Running => Style::default().fg(Color::Cyan),
-        TaskState::AwaitingApproval => Style::default().fg(Color::Magenta),
-        TaskState::Completed => Style::default().fg(Color::Green),
-        TaskState::Failed => Style::default().fg(Color::Red),
+        TaskState::Queued => warn(),
+        TaskState::Running => accent_bold(),
+        TaskState::AwaitingApproval => approval().add_modifier(Modifier::BOLD),
+        TaskState::Completed => success(),
+        TaskState::Failed => danger(),
         TaskState::Canceled | TaskState::Interrupted => muted(),
     }
 }
@@ -99,7 +112,9 @@ fn task_state_style(state: &TaskState) -> Style {
 fn render_task_detail(app: &mut App, frame: &mut Frame, area: Rect) {
     let Some(detail) = &app.tasks.detail else {
         frame.render_widget(
-            Paragraph::new("Loading\u{2026}").block(block("Task detail")),
+            Paragraph::new(" Loading…")
+                .style(muted())
+                .block(rounded_block("Task detail")),
             area,
         );
         return;
@@ -110,9 +125,9 @@ fn render_task_detail(app: &mut App, frame: &mut Frame, area: Rect) {
     let (content_area, footer_area) = (vertical[0], vertical[1]);
 
     let footer_text = if has_artifact {
-        " b/Esc back | Tab switch focus | v toggle view (split/report/log) | c cancel | r retry | e export | j/k, PgUp/Dn scroll"
+        " b/Esc back • Tab switch focus • v toggle view (split/report/log) • c cancel • r retry • e export • j/k, PgUp/Dn scroll"
     } else {
-        " b/Esc back | c cancel | r retry | e export | j/k, PgUp/Dn scroll"
+        " b/Esc back • c cancel • r retry • e export • j/k, PgUp/Dn scroll"
     };
     frame.render_widget(Line::styled(footer_text, muted()), footer_area);
 
@@ -188,19 +203,7 @@ fn render_task_saved_report(
     };
 
     let title = format!("Saved Report{scroll_info}{view_hint}");
-    let block_style = if is_focused { accent() } else { muted() };
-
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(block_style)
-        .title(Span::styled(
-            title,
-            if is_focused {
-                accent().add_modifier(Modifier::BOLD)
-            } else {
-                muted()
-            },
-        ));
+    let block = rounded_block_focused(&title, is_focused);
 
     frame.render_widget(
         Paragraph::new(report_lines)
@@ -214,7 +217,9 @@ fn render_task_saved_report(
 fn render_task_detail_log(app: &mut App, frame: &mut Frame, area: Rect, is_focused: bool) {
     let Some(detail) = &app.tasks.detail else {
         frame.render_widget(
-            Paragraph::new("Loading\u{2026}").block(block("Task detail")),
+            Paragraph::new(" Loading…")
+                .style(muted())
+                .block(rounded_block("Task detail")),
             area,
         );
         return;
@@ -230,11 +235,11 @@ fn render_task_detail_log(app: &mut App, frame: &mut Frame, area: Rect, is_focus
         Span::raw(" "),
         Span::styled(
             task.title.clone(),
-            Style::default().add_modifier(Modifier::BOLD),
+            frost_glow().add_modifier(Modifier::BOLD),
         ),
         Span::styled(
             format!(
-                "  {}  attempts: {}",
+                "  •  {}  •  attempts: {}",
                 kind_label(&task.kind),
                 task.attemptCount
             ),
@@ -242,21 +247,18 @@ fn render_task_detail_log(app: &mut App, frame: &mut Frame, area: Rect, is_focus
         ),
     ]));
     lines.push(Line::styled(
-        format!("Request: {}", truncate(&task.request, 160)),
+        format!(" Request: {}", truncate(&task.request, 160)),
         Style::default(),
     ));
     if let Some(error) = &task.error {
-        lines.push(Line::styled(
-            format!("Error: {error}"),
-            Style::default().fg(Color::Red),
-        ));
+        lines.push(Line::styled(format!(" ✖ Error: {error}"), danger()));
     }
     if let Some(project) = task.projectId.as_deref() {
-        lines.push(Line::styled(format!("Project: {project}"), muted()));
+        lines.push(Line::styled(format!(" Project: {project}"), muted()));
     }
     lines.push(Line::from(""));
 
-    lines.push(Line::styled("Runs", accent().add_modifier(Modifier::BOLD)));
+    lines.push(Line::styled(" Runs", accent_bold()));
     for run in &detail.runs {
         let usage = run
             .usage
@@ -271,62 +273,57 @@ fn render_task_detail_log(app: &mut App, frame: &mut Frame, area: Rect, is_focus
         let failure = run
             .failure
             .as_ref()
-            .map(|failure| format!(" \u{2013} {} ({})", failure.code, failure.message))
+            .map(|failure| format!(" – {} ({})", failure.code, failure.message))
             .unwrap_or_default();
         lines.push(Line::from(vec![
-            Span::styled(format!(" attempt {} ", run.attempt), muted()),
+            Span::styled(format!("   attempt {} ", run.attempt), muted()),
             Span::styled(run_state_label(&run.state), run_state_style(&run.state)),
             Span::raw(usage),
-            Span::styled(failure, Style::default().fg(Color::Red)),
+            Span::styled(failure, danger()),
         ]));
     }
     lines.push(Line::from(""));
 
-    if let Some(approval) = &detail.approval {
-        lines.push(Line::styled(
-            "Export approval",
-            accent().add_modifier(Modifier::BOLD),
-        ));
+    if let Some(approval_item) = &detail.approval {
+        lines.push(Line::styled(" Export approval", accent_bold()));
         lines.push(Line::from(vec![
             Span::styled(
-                format!(" {} ", approval_state_label(&approval.state)),
-                approval_state_style(&approval.state),
+                format!("   {} ", approval_state_label(&approval_item.state)),
+                approval_state_style(&approval_item.state),
             ),
             Span::raw(format!(
                 "write \"{}\" into {} (risk: {:?})",
-                approval.filename, approval.destinationPath, approval.riskTier
+                approval_item.filename, approval_item.destinationPath, approval_item.riskTier
             )),
         ]));
-        if approval.state == ApprovalState::Pending {
+        if approval_item.state == ApprovalState::Pending {
             lines.push(Line::styled(
-                " g grant (approves exact content/dest) | d reject".to_string(),
+                "   g grant (approves exact content/dest) • d reject".to_string(),
                 muted(),
             ));
         }
-        if let Some(outcome) = &approval.outcome {
+        if let Some(outcome) = &approval_item.outcome {
             lines.push(Line::styled(
                 format!(
-                    " wrote {} bytes in {} ms \u{2192} {}",
+                    "   ✔ wrote {} bytes in {} ms → {}",
                     outcome.bytes, outcome.ms, outcome.file
                 ),
-                Style::default().fg(Color::Green),
+                success(),
             ));
         }
-        if let Some(reason) = &approval.refusalReason {
-            lines.push(Line::styled(
-                format!(" refused: {reason}"),
-                Style::default().fg(Color::Red),
-            ));
+        if let Some(reason) = &approval_item.refusalReason {
+            lines.push(Line::styled(format!("   ✖ refused: {reason}"), danger()));
         }
         lines.push(Line::from(""));
     }
 
     lines.push(Line::styled(
-        format!("Events ({})", detail.events.len()),
-        accent().add_modifier(Modifier::BOLD),
+        format!(" Events ({})", detail.events.len()),
+        accent_bold(),
     ));
-    for event in &detail.events {
-        lines.push(format_stream_event(event));
+    let last_idx = detail.events.len().saturating_sub(1);
+    for (idx, event) in detail.events.iter().enumerate() {
+        lines.push(format_stream_event_branch(event, idx == last_idx));
     }
 
     if detail.artifact.is_none()
@@ -334,7 +331,7 @@ fn render_task_detail_log(app: &mut App, frame: &mut Frame, area: Rect, is_focus
         && task.state == TaskState::Completed
     {
         lines.push(Line::from(""));
-        lines.push(Line::styled("(no saved artifact)", muted()));
+        lines.push(Line::styled(" (no saved artifact)", muted()));
     }
 
     let total_lines = lines.len();
@@ -359,19 +356,7 @@ fn render_task_detail_log(app: &mut App, frame: &mut Frame, area: Rect, is_focus
         format!("Task detail{scroll_info}")
     };
 
-    let block_style = if is_focused { accent() } else { muted() };
-
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(block_style)
-        .title(Span::styled(
-            title,
-            if is_focused {
-                accent().add_modifier(Modifier::BOLD)
-            } else {
-                muted()
-            },
-        ));
+    let block = rounded_block_focused(&title, is_focused);
 
     frame.render_widget(
         Paragraph::new(lines)
@@ -391,10 +376,7 @@ fn render_task_compact_summary(frame: &mut Frame, area: Rect, detail: &TaskDetai
             task_state_style(&task.state),
         ),
         Span::raw(" "),
-        Span::styled(
-            task.title.clone(),
-            Style::default().add_modifier(Modifier::BOLD),
-        ),
+        Span::styled(task.title.clone(), primary_bold()),
         Span::styled(
             format!(
                 "  {}  attempts: {}  events: {}",
@@ -407,30 +389,24 @@ fn render_task_compact_summary(frame: &mut Frame, area: Rect, detail: &TaskDetai
     ]));
     if !task.request.is_empty() {
         lines.push(Line::styled(
-            format!("Request: {}", truncate(&task.request, 120)),
+            format!(" Request: {}", truncate(&task.request, 120)),
             Style::default(),
         ));
     }
     if let Some(error) = &task.error {
-        lines.push(Line::styled(
-            format!("Error: {error}"),
-            Style::default().fg(Color::Red),
-        ));
+        lines.push(Line::styled(format!(" ✖ Error: {error}"), danger()));
     }
-    if let Some(approval) = &detail.approval {
+    if let Some(approval_item) = &detail.approval {
         lines.push(Line::from(vec![
-            Span::styled("Approval: ", muted()),
+            Span::styled(" Approval: ", muted()),
             Span::styled(
-                approval_state_label(&approval.state),
-                approval_state_style(&approval.state),
+                approval_state_label(&approval_item.state),
+                approval_state_style(&approval_item.state),
             ),
-            Span::raw(format!(" write \"{}\"", approval.filename)),
+            Span::raw(format!(" write \"{}\"", approval_item.filename)),
         ]));
     }
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(muted())
-        .title(Span::styled("Task info (Tab/v: view log)", muted()));
+    let block = rounded_block_focused("Task info (Tab/v: view log)", false);
     frame.render_widget(
         Paragraph::new(lines)
             .wrap(Wrap { trim: false })
@@ -451,9 +427,9 @@ fn run_state_label(state: &RunState) -> &'static str {
 
 fn run_state_style(state: &RunState) -> Style {
     match state {
-        RunState::Running => Style::default().fg(Color::Cyan),
-        RunState::Completed => Style::default().fg(Color::Green),
-        RunState::Failed => Style::default().fg(Color::Red),
+        RunState::Running => accent(),
+        RunState::Completed => success(),
+        RunState::Failed => danger(),
         RunState::Canceled | RunState::Interrupted => muted(),
     }
 }
@@ -471,13 +447,9 @@ fn approval_state_label(state: &ApprovalState) -> &'static str {
 
 fn approval_state_style(state: &ApprovalState) -> Style {
     match state {
-        ApprovalState::Pending => Style::default().fg(Color::Magenta),
-        ApprovalState::Granted => Style::default().fg(Color::Cyan),
-        ApprovalState::Executed => Style::default().fg(Color::Green),
+        ApprovalState::Pending => approval(),
+        ApprovalState::Granted => accent(),
+        ApprovalState::Executed => success(),
         ApprovalState::Rejected | ApprovalState::Canceled | ApprovalState::Expired => muted(),
     }
 }
-
-// ---------------------------------------------------------------------------
-// Projects
-// ---------------------------------------------------------------------------

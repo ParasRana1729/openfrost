@@ -2,9 +2,13 @@
 //!
 //! Parses Markdown syntax (headers, code blocks, bullet/numbered lists,
 //! blockquotes, horizontal rules, bold, italic, inline code) into styled
-//! Ratatui `Line`s and `Span`s for clean terminal presentation.
+//! Ratatui `Line`s and `Span`s with the Frost palette.
 
-use ratatui::style::{Color, Modifier, Style};
+use crate::ui::theme::{
+    accent_bold, frost_glow, hairline_style, ice_mid, muted, warn, AMBER, FROST_GLOW, ICE_BRIGHT,
+    ICE_DIM,
+};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 
 /// Converts raw Markdown text into styled Ratatui `Line`s.
@@ -20,29 +24,26 @@ pub fn render_markdown(input: &str) -> Vec<Line<'static>> {
             if in_code_block {
                 in_code_block = false;
                 lines.push(Line::styled(
-                    "  └────────────────────────────────────────────────────────",
-                    Style::default().fg(Color::DarkGray),
+                    "  ╰────────────────────────────────────────────────────────",
+                    hairline_style(),
                 ));
             } else {
                 in_code_block = true;
                 let code_lang = trimmed.trim_start_matches('`').trim();
                 let header = if code_lang.is_empty() {
-                    "  ┌── [code] ──────────────────────────────────────────────".to_string()
+                    "  ╭── [code] ──────────────────────────────────────────────".to_string()
                 } else {
-                    format!("  ┌── [{code_lang}] ──────────────────────────────────────────────")
+                    format!("  ╭── [{code_lang}] ──────────────────────────────────────────────")
                 };
-                lines.push(Line::styled(header, Style::default().fg(Color::Cyan)));
+                lines.push(Line::styled(header, ice_mid()));
             }
             continue;
         }
 
         if in_code_block {
             lines.push(Line::from(vec![
-                Span::styled("  │ ", Style::default().fg(Color::DarkGray)),
-                Span::styled(
-                    raw_line.to_string(),
-                    Style::default().fg(Color::LightYellow),
-                ),
+                Span::styled("  │ ", hairline_style()),
+                Span::styled(raw_line.to_string(), Style::default().fg(AMBER)),
             ]));
             continue;
         }
@@ -51,7 +52,7 @@ pub fn render_markdown(input: &str) -> Vec<Line<'static>> {
         if trimmed == "---" || trimmed == "***" || trimmed == "___" {
             lines.push(Line::styled(
                 "  ────────────────────────────────────────────────────────",
-                Style::default().fg(Color::DarkGray),
+                hairline_style(),
             ));
             continue;
         }
@@ -63,10 +64,7 @@ pub fn render_markdown(input: &str) -> Vec<Line<'static>> {
             }
             lines.push(Line::from(Span::styled(
                 format!("  # {rest}"),
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD)
-                    .add_modifier(Modifier::UNDERLINED),
+                accent_bold().add_modifier(Modifier::UNDERLINED),
             )));
             lines.push(Line::from(""));
             continue;
@@ -79,9 +77,7 @@ pub fn render_markdown(input: &str) -> Vec<Line<'static>> {
             }
             lines.push(Line::from(Span::styled(
                 format!("  ## {rest}"),
-                Style::default()
-                    .fg(Color::LightCyan)
-                    .add_modifier(Modifier::BOLD),
+                frost_glow().add_modifier(Modifier::BOLD),
             )));
             continue;
         }
@@ -90,9 +86,7 @@ pub fn render_markdown(input: &str) -> Vec<Line<'static>> {
         if let Some(rest) = trimmed.strip_prefix("### ") {
             lines.push(Line::from(Span::styled(
                 format!("  ### {rest}"),
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
+                ice_mid().add_modifier(Modifier::BOLD),
             )));
             continue;
         }
@@ -101,21 +95,17 @@ pub fn render_markdown(input: &str) -> Vec<Line<'static>> {
         if let Some(rest) = trimmed.strip_prefix("#### ") {
             lines.push(Line::from(Span::styled(
                 format!("  #### {rest}"),
-                Style::default()
-                    .fg(Color::LightYellow)
-                    .add_modifier(Modifier::BOLD),
+                warn().add_modifier(Modifier::BOLD),
             )));
             continue;
         }
 
         // Blockquotes (> quote)
         if let Some(rest) = trimmed.strip_prefix("> ") {
-            let mut spans = vec![Span::styled("  │ ", Style::default().fg(Color::Cyan))];
+            let mut spans = vec![Span::styled("  │ ", ice_mid())];
             spans.extend(parse_inline_spans(
                 rest,
-                Style::default()
-                    .fg(Color::Gray)
-                    .add_modifier(Modifier::ITALIC),
+                muted().add_modifier(Modifier::ITALIC),
             ));
             lines.push(Line::from(spans));
             continue;
@@ -126,12 +116,7 @@ pub fn render_markdown(input: &str) -> Vec<Line<'static>> {
         let mut is_bullet = false;
         for bp in bullet_prefixes {
             if let Some(rest) = trimmed.strip_prefix(bp) {
-                let mut spans = vec![Span::styled(
-                    "  • ",
-                    Style::default()
-                        .fg(Color::Cyan)
-                        .add_modifier(Modifier::BOLD),
-                )];
+                let mut spans = vec![Span::styled("  • ", accent_bold())];
                 spans.extend(parse_inline_spans(rest, Style::default()));
                 lines.push(Line::from(spans));
                 is_bullet = true;
@@ -149,9 +134,7 @@ pub fn render_markdown(input: &str) -> Vec<Line<'static>> {
                 let rest = &trimmed[pos + 2..];
                 let mut spans = vec![Span::styled(
                     format!("  {num} "),
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::BOLD),
+                    Style::default().fg(ICE_DIM).add_modifier(Modifier::BOLD),
                 )];
                 spans.extend(parse_inline_spans(rest, Style::default()));
                 lines.push(Line::from(spans));
@@ -174,8 +157,8 @@ pub fn render_markdown(input: &str) -> Vec<Line<'static>> {
     // Close dangling code block if input ended inside one
     if in_code_block {
         lines.push(Line::styled(
-            "  └────────────────────────────────────────────────────────",
-            Style::default().fg(Color::DarkGray),
+            "  ╰────────────────────────────────────────────────────────",
+            hairline_style(),
         ));
     }
 
@@ -204,9 +187,7 @@ pub fn parse_inline_spans(text: &str, base_style: Style) -> Vec<Span<'static>> {
             }
             spans.push(Span::styled(
                 format!(" {code_buf} "),
-                Style::default()
-                    .fg(Color::LightYellow)
-                    .add_modifier(Modifier::BOLD),
+                Style::default().fg(ICE_BRIGHT).add_modifier(Modifier::BOLD),
             ));
             continue;
         }
@@ -228,7 +209,7 @@ pub fn parse_inline_spans(text: &str, base_style: Style) -> Vec<Span<'static>> {
             }
             spans.push(Span::styled(
                 bold_buf,
-                base_style.add_modifier(Modifier::BOLD).fg(Color::White),
+                base_style.add_modifier(Modifier::BOLD).fg(FROST_GLOW),
             ));
             continue;
         }

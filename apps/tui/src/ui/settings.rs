@@ -1,7 +1,6 @@
-use super::{accent, block, muted};
+use super::theme::{accent_bold, frost_glow, muted, rounded_block, success, warn};
 use crate::app::App;
 use ratatui::layout::Rect;
-use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Wrap};
 use ratatui::Frame;
@@ -14,26 +13,28 @@ pub(super) fn render_settings(app: &mut App, frame: &mut Frame, area: Rect) {
     let provider = settings.map(|s| s.provider.clone()).unwrap_or_default();
     let model = settings
         .and_then(|s| s.model.clone())
-        .unwrap_or_else(|| "\u{2014}".to_string());
+        .unwrap_or_else(|| "—".to_string());
     let has_key = settings.map(|s| s.hasProviderKey).unwrap_or(false);
 
     lines.push(row_line(
         0 == selected,
         "Provider",
         &format!("{provider}  (model: {model})"),
+        warn(),
     ));
     lines.push(Line::styled(
-        "     Enter/l to cycle openai \u{2192} gemini \u{2192} openrouter".to_string(),
+        "     Enter/l to cycle openai → gemini → openrouter".to_string(),
         muted(),
     ));
     lines.push(row_line(
         1 == selected,
         "Provider key",
-        &if has_key {
-            "configured (stored with Windows DPAPI)".to_string()
+        if has_key {
+            "configured (stored with Windows DPAPI)"
         } else {
-            "not set".to_string()
+            "not set"
         },
+        if has_key { success() } else { warn() },
     ));
     lines.push(Line::styled(
         "     Enter to set a key (masked input); the key is never shown again".to_string(),
@@ -41,53 +42,51 @@ pub(super) fn render_settings(app: &mut App, frame: &mut Frame, area: Rect) {
     ));
     lines.push(Line::from(""));
 
-    lines.push(Line::styled(
-        "Export destinations",
-        accent().add_modifier(Modifier::BOLD),
-    ));
+    lines.push(Line::styled(" Export destinations", accent_bold()));
     for (index, destination) in app.settings.destinations.iter().enumerate() {
         let row = 2 + index;
-        let marker = if row == selected { " > " } else { "   " };
+        let is_sel = row == selected;
+        let marker = if is_sel { " ▸ " } else { "   " };
         lines.push(Line::from(vec![
-            Span::raw(marker),
-            Span::raw(destination.path.clone()),
+            Span::styled(marker, if is_sel { accent_bold() } else { muted() }),
+            Span::styled(destination.path.clone(), frost_glow()),
             Span::styled("  (x remove)", muted()),
         ]));
     }
     if app.settings.destinations.is_empty() {
         lines.push(Line::styled(
-            "   (none \u{2014} press a to add a folder exports may write into)".to_string(),
+            "   (none — press a to add a folder exports may write into)".to_string(),
             muted(),
         ));
     }
     lines.push(Line::from(""));
     lines.push(Line::styled(
-        " j/k move | Enter activate | a add destination | x remove destination".to_string(),
+        " j/k move • Enter activate • a add destination • x remove destination".to_string(),
         muted(),
     ));
     frame.render_widget(
         Paragraph::new(lines)
             .wrap(Wrap { trim: false })
-            .block(block("Settings")),
+            .block(rounded_block("Settings")),
         area,
     );
 }
 
-fn row_line(active: bool, label: &str, value: &str) -> Line<'static> {
+fn row_line(
+    active: bool,
+    label: &str,
+    value: &str,
+    value_style: ratatui::style::Style,
+) -> Line<'static> {
     Line::from(vec![
-        Span::raw(if active { " > " } else { "   " }),
+        Span::styled(
+            if active { " ▸ " } else { "   " },
+            if active { accent_bold() } else { muted() },
+        ),
         Span::styled(
             format!("{label}: "),
-            if active {
-                accent().add_modifier(Modifier::BOLD)
-            } else {
-                Style::default().add_modifier(Modifier::BOLD)
-            },
+            if active { accent_bold() } else { frost_glow() },
         ),
-        Span::raw(value.to_string()),
+        Span::styled(value.to_string(), value_style),
     ])
 }
-
-// ---------------------------------------------------------------------------
-// Tab picker (Ctrl+P)
-// ---------------------------------------------------------------------------
