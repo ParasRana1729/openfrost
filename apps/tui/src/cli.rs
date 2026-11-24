@@ -26,6 +26,10 @@ pub enum CliCommand {
     Logs {
         lines: usize,
     },
+    Update {
+        api_origin: Option<String>,
+        check: bool,
+    },
     Help,
     Version,
 }
@@ -64,10 +68,12 @@ pub fn help_text() -> &'static str {
         "  stop             Stop the managed background API\n",
         "  status           Show local API status, PID, and paths\n",
         "  logs             Print recent local API logs\n",
+        "  update           Pull the latest source, rebuild, and reinstall openfrost\n",
         "\n",
         "OPTIONS:\n",
         "  --api <URL>      Override API origin (default: OPENFROST_API_ORIGIN or 127.0.0.1:8787)\n",
         "  --no-spawn       Attach to an existing API without auto-starting one (TUI mode)\n",
+        "  --check          With `update`: only report whether a newer version is available\n",
         "  -n, --lines <N>  Number of log lines to print for `logs` (default: 50)\n",
         "  -h, --help       Show this help message\n",
         "  -V, --version    Show version\n",
@@ -95,6 +101,7 @@ where
     let mut subcommand: Option<String> = None;
     let mut api_origin: Option<String> = None;
     let mut no_spawn = false;
+    let mut check = false;
     let mut lines: Option<usize> = None;
 
     let mut idx = 0;
@@ -105,6 +112,9 @@ where
             "-V" | "--version" => return Ok(CliCommand::Version),
             "--no-spawn" => {
                 no_spawn = true;
+            }
+            "--check" => {
+                check = true;
             }
             "--api" => {
                 idx += 1;
@@ -146,6 +156,12 @@ where
             }
         }
         idx += 1;
+    }
+
+    if check && subcommand.as_deref() != Some("update") {
+        return Err(CliError::new(
+            "--check is only valid with `openfrost update`",
+        ));
     }
 
     match subcommand.as_deref() {
@@ -203,6 +219,17 @@ where
             Ok(CliCommand::Logs {
                 lines: lines.unwrap_or(DEFAULT_LOG_LINES),
             })
+        }
+        Some("update") => {
+            if no_spawn {
+                return Err(CliError::new(
+                    "--no-spawn is only valid when launching the TUI",
+                ));
+            }
+            if lines.is_some() {
+                return Err(CliError::new("--lines is only valid with `openfrost logs`"));
+            }
+            Ok(CliCommand::Update { api_origin, check })
         }
         Some("help") => Ok(CliCommand::Help),
         Some("version") => Ok(CliCommand::Version),
@@ -291,6 +318,28 @@ mod tests {
             parse_args(["logs", "--lines=25"]).unwrap(),
             CliCommand::Logs { lines: 25 }
         );
+    }
+
+    #[test]
+    fn update_subcommand_parses_with_optional_check() {
+        assert_eq!(
+            parse_args(["update"]).unwrap(),
+            CliCommand::Update {
+                api_origin: None,
+                check: false,
+            }
+        );
+        assert_eq!(
+            parse_args(["update", "--check"]).unwrap(),
+            CliCommand::Update {
+                api_origin: None,
+                check: true,
+            }
+        );
+        assert!(parse_args(["--check"]).is_err());
+        assert!(parse_args(["status", "--check"]).is_err());
+        assert!(parse_args(["update", "--no-spawn"]).is_err());
+        assert!(parse_args(["update", "-n", "5"]).is_err());
     }
 
     #[test]
