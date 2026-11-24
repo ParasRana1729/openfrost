@@ -13,6 +13,7 @@ mod markdown;
 mod refresh;
 mod runtime;
 mod ui;
+mod update;
 
 #[cfg(test)]
 mod api_tests;
@@ -92,6 +93,20 @@ async fn main() -> ExitCode {
                 ExitCode::from(1)
             }
         },
+        CliCommand::Update { api_origin, check } => {
+            let result = if check {
+                update::run_check().map(|_| ())
+            } else {
+                update::run_update(&resolve_api_origin(api_origin)).await
+            };
+            match result {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(error) => {
+                    eprintln!("openfrost update failed: {error:#}");
+                    ExitCode::from(1)
+                }
+            }
+        }
         CliCommand::Tui {
             api_origin,
             no_spawn,

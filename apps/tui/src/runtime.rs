@@ -208,7 +208,7 @@ fn resolve_runtime_from(
     })
 }
 
-fn read_runtime_config(home: &Path) -> Option<RuntimeConfig> {
+pub(crate) fn read_runtime_config(home: &Path) -> Option<RuntimeConfig> {
     let path = runtime_config_path(home);
     let raw = fs::read_to_string(path).ok()?;
     let trimmed = raw.trim_start_matches('\u{feff}');

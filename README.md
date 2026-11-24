@@ -100,7 +100,14 @@ openfrost status        # check local API health, PID, and log path
 openfrost stop          # stop the background API started by openfrost
 openfrost logs -n 100   # print recent background API logs
 openfrost --no-spawn    # attach to an already-running API (e.g. `pnpm dev`)
+openfrost update --check  # report whether a newer version is available
+openfrost update        # pull, rebuild, and reinstall (Windows; restarts the API if it was running)
 ```
+
+`openfrost update` fast-forwards the source checkout the CLI was installed from
+(recorded in `~/.openfrost/runtime.json`), runs `pnpm install --frozen-lockfile`
+and `scripts/install.ps1`, and restarts the background API if it was running.
+It refuses to run with uncommitted changes in the checkout.
 
 ### Run from source (development)
 
