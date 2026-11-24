@@ -1146,3 +1146,67 @@ does not close S07's one-working-week owner-use gate.
 - Next: open the performance PR and merge only after Windows CI passes,
   verify remote main, then remove the clean performance worktree. S07
   owner-use evaluation and the interactive workflow check remain open.
+
+### Handoff — Priority 5A (refactor/agent-split-executor)
+
+- **Commits:** `fe922d96615ed5d3f2dbae7aede57dcd2bc31e64` —
+  `refactor(agent): Split executor internals (S07)` (implementation checkpoint).
+  Based on verified `origin/main` `a52e85c5a022ccec4710fe633b6fe2af3cfe087e`,
+  which includes prerequisite PR #38. Local review only; not pushed or merged.
+- **What changed:**
+  - `packages/agent/src/executor/workflows.ts`: workflow policies and first-user
+    context builders for research briefs, project updates, and weekly plans,
+    including starting-URL prefetch and bounded recent-update formatting.
+  - `packages/agent/src/executor/exportPipeline.ts`: immutable proposal creation,
+    approval waiting, granted-export revalidation, create-only artifact-file
+    writing, and export refusal/abandonment errors. Approval decisions still
+    enter through `TaskExecutor` and resolve its shared waiter map.
+  - `packages/agent/src/executor/appendices.ts`: report Markdown formatting and
+    runtime-owned retrieved-source, project-file, and saved-update appendices.
+  - `packages/agent/src/executor/records.ts` and `errors.ts`: internal run records
+    and shared internal-error/abort helpers, avoiding circular imports.
+  - `packages/agent/src/executor.ts`: reduced from 1,781 to 1,001 lines; retains
+    queue draining, the global run lock, limits, tool dispatch, cancellation,
+    recovery, failure classification, and internal report persistence. Public
+    exports are preserved through re-exports; `index.ts` is byte-identical,
+    including the existing fake-provider inventory-heading export. Relative
+    imports retain `.js`; no dependencies, tests, assertions, limits, event
+    payloads, messages, or security checks were changed.
+  - Extraction review compared moved method bodies/policy text with the baseline
+    after only member-reference and indentation normalization. A TypeScript AST
+    comparison confirmed 25 retained orchestration methods are byte-identical;
+    constructor wiring and the two delegating methods were reviewed separately.
+- **Verification run** (all commands from this worktree, Windows):
+  - `pnpm install --offline --frozen-lockfile`: first attempt timed out at
+    120 seconds (279/281 added); a separate second 120-second attempt passed,
+    281 packages reused, zero downloaded. pnpm warned that dependency build
+    scripts were ignored; subsequent builds and real SQLite/DPAPI tests passed.
+  - `pnpm exec tsc -p packages/agent/tsconfig.json --noEmit`: failed before
+    installation completed (`tsc` not found); superseded by the full build.
+  - `pnpm lint`: passed (120-second command bound).
+  - `pnpm build`: passed all five workspace builds (180-second command bound).
+    Landing emitted an unset-`metadataBase` warning; not changed in this slice.
+  - `pnpm --filter @openfrost/agent test`: initial focused attempt timed out at
+    the 120-second command bound; not counted as a pass.
+  - `pnpm test`: completed with failure (600-second bound): API 68 passed,
+    2 failed; the real-DPAPI provider-key test exceeded its existing 20-second
+    timeout and the following key-presence assertion failed.
+  - `CI=true pnpm --filter @openfrost/api exec vitest run test/settings.test.ts`:
+    9 passed, 1 failed (same existing 20-second DPAPI test timeout;
+    180-second command bound). No assertions or test timeouts were changed.
+  - `CI=true pnpm --filter @openfrost/agent test`: passed, 121 tests across
+    13 files (300-second command bound).
+  - `CI=true pnpm test`: passed, all 328 tests across 34 files: domain 83,
+    db 54 (including real Windows DPAPI round-trips), agent 121, API 70
+    (including all settings tests), with no skipped tests (600-second bound).
+    `CI=true` selects non-interactive output; tests were not weakened.
+  - `git --no-pager diff --check`: passed before implementation commit and
+    after appending this handoff.
+- **Not run / Limitations:**
+  - No Rust checks (no Rust changes), remote CI, paid-provider calls, or manual
+    live API/TUI workflow. Existing fake-provider/tool and API integration tests
+    cover the refactored workflows; real-provider execution was not exercised.
+  - Earlier dependency/test timing failures are recorded above; the complete
+    final workspace suite passed unchanged. No unrelated timeout fixes added.
+  - No push, PR, merge, or other priority implemented. S07's owner-use gate
+    remains open. Next: owner review of this implementation and handoff branch.
