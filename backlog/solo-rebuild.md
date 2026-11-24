@@ -1244,6 +1244,77 @@ does not close S07's one-working-week owner-use gate.
   verify remote main, then remove the clean performance worktree. S07
   owner-use evaluation and the interactive workflow check remain open.
 
+### Handoff — Priority 5B (refactor/tui-split-app-and-ui)
+
+- **Commits:**
+  - `1ca92965ac6f100a1949df8fb37984db97e0395c` — split application state and
+    input handlers into tab/dialog modules (S09 checkpoint).
+  - `6492352fa327101b5271758de3486fab4580aa0a` — split tab/dialog rendering
+    (S09 checkpoint; complete implementation SHA verified below).
+- **What changed:**
+  - Priority 5B only, based on `a52e85c` (main/origin/main at worktree start,
+    with Priority 1 PR #38 and Priority 2 PR #39 merged). All work and
+    commands stayed in `.worktrees/priority-5b`, on the existing assigned
+    branch; no other worktree was edited.
+  - `apps/tui/src/app.rs` became `app/mod.rs`, `assistant.rs`, `tasks.rs`,
+    `projects.rs`, `memory.rs`, `routines.rs`, `settings.rs`, and `dialogs.rs`.
+    `mod.rs` owns global App/Screen/Tab/Notice state, auth, shortcuts,
+    navigation/mouse dispatch, refresh/mutation helpers, and the original
+    25 application tests. Tab modules own their state/input handlers;
+    dialogs owns modal types, confirmation handling, and form submission.
+  - `apps/tui/src/ui.rs` became the same eight-module layout under `ui/`.
+    `mod.rs` retains rendering dispatch, palette/helpers, auth/onboarding,
+    tab chrome, status and notice rendering. Tab modules own their renderers;
+    `dialogs.rs` owns the tab picker, confirmation/form overlays and geometry.
+    Existing inline slash-help content stays within the Assistant stream.
+  - Narrowed formerly public declarations to `pub(crate)` and exposed
+    internal handler/renderer entry points only as `pub(super)` where needed;
+    retained existing `crate::app` imports through re-exports. No dependencies,
+    API calls, payloads, keybindings, layout, colors, or concurrency logic changed.
+  - Baseline extraction comparison: all 87 app functions (including all 25
+    tests), all 40 UI functions, and all 19 app struct/enum declarations match
+    `a52e85c` after ignoring whitespace and visibility changes. All 88 Rust
+    tests remain; no assertions were weakened or tests removed/ignored.
+    `refresh.rs`, `event.rs`, `apply.rs`, and `contracts.rs` are unchanged.
+- **Verification run:**
+  - Final complete rerun on implementation
+    `6492352fa327101b5271758de3486fab4580aa0a`, Windows, 2026-11-24,
+    from `.worktrees/priority-5b/apps/tui`. Every Cargo command used
+    `CARGO_TARGET_DIR=C:/Users/paras/Documents/openfrost/.worktrees/priority-5b/apps/tui/target`;
+    this ignored target directory is private to this worktree, not shared
+    with main or another worktree. Each subprocess had the finite timeout
+    listed below (the final sequential wrapper also had a 900-second bound).
+  - `cargo fmt --all -- --check`: PASS (60-second bound).
+  - `cargo clippy --all-targets -- -D warnings`: PASS, no warnings
+    (180-second bound).
+  - `cargo test`: PASS, **88 passed, 0 failed, 0 ignored, 0 measured,
+    0 filtered out**; test execution 0.82 s (600-second bound).
+  - `cargo build`: PASS (300-second bound).
+  - Preliminary `cargo check --manifest-path apps/tui/Cargo.toml --all-targets`
+    from the worktree root: PASS after import cleanup. Its first cold-cache
+    invocation hit the 240-second bound while building dependencies; a
+    180-second retry completed. Initial `cargo test` likewise timed out after
+    600 seconds compiling dependencies before any tests ran, then passed all
+    88 tests on a same-bound retry. Initial `cargo build` timed out at its
+    300-second bound while building the final binary, then passed on a
+    same-bound retry. These were recovered build-time timeouts, not test
+    assertion failures; the final full rerun above had no timeouts.
+  - `git diff --check` and staged diff whitespace checks: PASS. Scope review
+    found only the app/ui module conversion and this appended backlog handoff.
+- **Not run / Limitations:**
+  - No interactive TUI/live API or manual visual sweep; visual preservation
+    is supported by unchanged rendering bodies and existing wide/narrow
+    Ratatui TestBackend tests, not a new all-screen screenshot comparison.
+    Auth/SSE/concurrency regressions use the retained mocks, paused clocks,
+    and loopback socket tests, not real owner sessions or paid providers.
+  - `pnpm lint`, `pnpm test`, and `pnpm build` were not run: no TypeScript,
+    workspace configuration, dependencies, or shared contracts changed.
+  - No CI, push, PR, or merge performed, as instructed. S07's one-working-week
+    owner-use gate remains open. No known implementation blockers remain.
+  - Next: owner review of these local commits; optional interactive smoke
+    check, then separately authorize publishing/CI/landing. Priority 4's
+    contracts work remains separate; do not overwrite its files on integration.
+
 
 ### Checkpoint — S09 Priority 4 contract parity (2026-11-24)
 
@@ -1523,3 +1594,16 @@ does not close S07's one-working-week owner-use gate.
   Rust fmt, Clippy with warnings denied, all 117 tests, and build passed.
 - No paid-provider or interactive visual TUI workflow run. S07 remains open.
   Next: Windows PR CI, then authorized merge before integrating Priority 5B.
+
+### Integration — Priority 5B (2026-11-24)
+
+- Priority 4 landed via PR #42, merge c6b8ad9. Merged updated origin/main into
+  `refactor/tui-split-app-and-ui` without rewriting history (`8cbb5b8`).
+  Priority 4's nested `sample_routine()` fixture correction is present at
+  `apps/tui/src/app/mod.rs` after the move; both backlog handoffs retained.
+- Re-verification after the interrupted Zed audit (2026-11-24): inside
+  `apps/tui`, `cargo fmt --all -- --check`, `cargo clippy --all-targets -- -D warnings`,
+  `cargo test` (**117 passed**, 0 failed, 0 ignored), and `cargo build` all passed.
+- Not run: interactive visual TUI, paid-provider calls, or TypeScript suite
+  (no TS changes in this slice). S07 owner-use gate remains open.
+  Next: push branch, open PR, Windows CI, then authorized merge.
