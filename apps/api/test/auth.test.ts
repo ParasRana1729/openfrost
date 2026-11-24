@@ -1,5 +1,5 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { jarHeaders, login, setupOwner, startApp, type TestApp } from './helpers.js';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { jarHeaders, login, PASSWORD, setupOwner, startApp, type TestApp } from './helpers.js';
 
 let app: TestApp;
 
@@ -174,5 +174,135 @@ describe('input validation', () => {
       headers: { cookie: app.cookie! },
     });
     expect(res.statusCode).toBe(404);
+  });
+});
+
+
+describe('concurrent owner setup', () => {
+  it('returns one 201 and one 409 even for different usernames', async () => {
+    const isolated = await startApp();
+    try {
+      const responses = await Promise.all(['first-owner', 'second-owner'].map((username) =>
+        isolated.built.app.inject({
+          method: 'POST',
+          url: '/api/auth/setup',
+          payload: { username, password: PASSWORD },
+        })));
+      expect(responses.map(({ statusCode }) => statusCode).sort()).toEqual([201, 409]);
+      expect(isolated.store.users.count()).toBe(1);
+    } finally {
+      await isolated.close();
+    }
+  });
+});
+
+describe('login backoff (injected clock)', () => {
+  const T0 = Date.parse('2026-10-23T12:00:00.000Z');
+  let now: number;
+  let isolated: TestApp;
+
+  beforeEach(async () => {
+    now = T0;
+    isolated = await startApp({ now: () => new Date(now).toISOString() });
+    await setupOwner(isolated);
+  });
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    await isolated.close();
+  });
+
+  function attempt(password = 'wrong-password', username = 'owner') {
+    return isolated.built.app.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: { username, password },
+    });
+  }
+
+  async function fail(count: number): Promise<void> {
+    for (let i = 0; i < count; i++) {
+      expect((await attempt()).statusCode).toBe(401);
+    }
+  }
+
+  it('locks after five failures, even for a correct password, without issuing a session', async () => {
+    await fail(5);
+    const verify = vi.spyOn(isolated.store.users, 'verifyOwnerCredentials');
+    const response = await attempt(PASSWORD);
+    expect(response.statusCode).toBe(429);
+    expect(response.headers['retry-after']).toBe('30');
+    expect(response.json()).toEqual({
+      error: 'Too many failed login attempts. Please try again later.',
+    });
+    expect(response.headers['set-cookie']).toBeUndefined();
+    expect(verify).not.toHaveBeenCalled();
+  });
+
+  it('ceil-rounds Retry-After using ctx.now; blocked attempts do not extend the window', async () => {
+    await fail(5);
+    for (const [elapsed, seconds] of [[1, '30'], [1000, '29'], [29_999, '1']] as const) {
+      now = T0 + elapsed;
+      const response = await attempt();
+      expect(response.statusCode).toBe(429);
+      expect(response.headers['retry-after']).toBe(seconds);
+    }
+    now = T0 + 30_000;
+    const response = await attempt(PASSWORD);
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['retry-after']).toBeUndefined();
+    expect(response.json()).toMatchObject({ authenticated: true, csrfToken: expect.any(String) });
+    expect(response.headers['set-cookie']).toBeDefined();
+  });
+
+  it('starts a new five-failure budget at expiry, not another immediate lockout', async () => {
+    await fail(5);
+    now += 30_000;
+    await fail(5);
+    expect((await attempt()).statusCode).toBe(429);
+  });
+
+  it('resets consecutive failures after successful authentication', async () => {
+    await fail(4);
+    expect((await attempt(PASSWORD)).statusCode).toBe(200);
+    await fail(4);
+    expect((await attempt(PASSWORD)).statusCode).toBe(200);
+    await fail(5);
+    expect((await attempt()).statusCode).toBe(429);
+  });
+
+  it('cannot bypass backoff by changing the username or client address', async () => {
+    await fail(4);
+    expect((await attempt(PASSWORD, 'unknown-owner')).statusCode).toBe(401);
+    const response = await isolated.built.app.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      remoteAddress: '127.0.0.2',
+      payload: { username: 'owner', password: PASSWORD },
+    });
+    expect(response.statusCode).toBe(429);
+  });
+
+  it('serializes simultaneous attempts: only five verifications run before lockout', async () => {
+    const verify = vi.spyOn(isolated.store.users, 'verifyOwnerCredentials');
+    const responses = await Promise.all(Array.from({ length: 8 }, () => attempt()));
+    expect(responses.map(({ statusCode }) => statusCode))
+      .toEqual([401, 401, 401, 401, 401, 429, 429, 429]);
+    expect(verify).toHaveBeenCalledTimes(5);
+  });
+
+  it('does not count malformed requests or requests rejected by the origin guard', async () => {
+    await fail(4);
+    const malformed = await isolated.built.app.inject({
+      method: 'POST', url: '/api/auth/login', payload: { password: '' },
+    });
+    expect(malformed.statusCode).toBe(400);
+    const foreign = await isolated.built.app.inject({
+      method: 'POST', url: '/api/auth/login',
+      headers: { origin: 'https://evil.example' },
+      payload: { username: 'owner', password: 'wrong-password' },
+    });
+    expect(foreign.statusCode).toBe(403);
+    expect((await attempt(PASSWORD)).statusCode).toBe(200);
   });
 });

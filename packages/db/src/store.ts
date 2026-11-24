@@ -140,11 +140,11 @@ export class RoutineOccurrenceExistsError extends Error {
 export interface Store {
   users: {
     count(): number;
-    createOwner(username: string, password: string, now: string): OwnerUser;
+    createOwner(username: string, password: string, now: string): Promise<OwnerUser>;
     verifyOwnerCredentials(
       username: string,
       password: string,
-    ): OwnerUser | null;
+    ): Promise<OwnerUser | null>;
   };
   sessions: {
     create(input: {
@@ -374,35 +374,33 @@ export function createStore(db: Db, options: StoreOptions): Store {
     count(): number {
       return db.select().from(schema.users).all().length;
     },
-    createOwner(username: string, password: string, now: string): OwnerUser {
+    async createOwner(username: string, password: string, now: string): Promise<OwnerUser> {
       if (users.count() > 0) {
         throw new OwnerExistsError();
       }
       const row = {
         id: randomUUID(),
         username,
-        passwordHash: hashPassword(password),
+        passwordHash: await hashPassword(password),
         createdAt: now,
       };
-      try {
-        db.insert(schema.users).values(row).run();
-      } catch (err) {
-        // Two concurrent setups can both pass the count check; the unique
-        // username constraint is the arbiter, and it maps to the same 409.
-        if (err instanceof Error && err.message.includes('UNIQUE constraint failed')) {
+      return db.transaction((tx) => {
+        // Hashing yields: recheck inside the write transaction so concurrent
+        // setups cannot create two owners, even with different usernames.
+        if (tx.select().from(schema.users).get()) {
           throw new OwnerExistsError();
         }
-        throw err;
-      }
-      return { id: row.id, username: row.username, createdAt: row.createdAt };
+        tx.insert(schema.users).values(row).run();
+        return { id: row.id, username: row.username, createdAt: row.createdAt };
+      }, { behavior: 'immediate' });
     },
-    verifyOwnerCredentials(username: string, password: string): OwnerUser | null {
+    async verifyOwnerCredentials(username: string, password: string): Promise<OwnerUser | null> {
       const row = db
         .select()
         .from(schema.users)
         .where(eq(schema.users.username, username))
         .get();
-      if (!row || !verifyPassword(row.passwordHash, password)) {
+      if (!row || !(await verifyPassword(row.passwordHash, password))) {
         return null;
       }
       return { id: row.id, username: row.username, createdAt: row.createdAt };

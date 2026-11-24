@@ -914,6 +914,103 @@ gate; findings marked WEEK carry into this log.
   Local Rust formatting, Clippy, all 32 tests, and build passed again on Rust
   1.99.1; the updated head requires passing Windows CI before merge.
 
+### Priority 3 checkpoint — secondary indexes
+
+- On `perf/s07-db-indexes-and-async-auth`, generated additive
+  `0006_indexes.sql`, its journal entry and snapshot from the eight matching
+  schema declarations. Fresh-install and populated-0005 upgrade tests verify
+  index columns/non-uniqueness, unchanged rows, restart idempotence, foreign
+  keys, and database integrity.
+- Verification: `pnpm --filter @openfrost/db test -- test/migrations.test.ts`
+  passed (the script ran all 56 DB tests, including real Windows DPAPI);
+  `pnpm exec eslint packages/db/src/schema.ts packages/db/test/migrations.test.ts`
+  and `git diff --check` passed.
+- Remaining: async password hashing/callers and deterministic login backoff;
+  full workspace checks and final handoff. No push/merge; S07 remains open.
+
+### Priority 3 checkpoint — async auth and deterministic backoff
+
+- Replaced production synchronous scrypt with a typed promisified crypto
+  adapter, preserving hash format/parameters and timing-safe comparison;
+  owner creation/verification and all direct callers now await completion.
+  The owner's approved scope exception changes only the affected async test
+  in `packages/agent/test/failures.test.ts`.
+- Owner insertion rechecks existence in an immediate transaction after
+  hashing, preserving exactly one owner under overlapping different-name
+  setups. Login verification is serialized per app so overlapping attempts
+  cannot race through the five-failure threshold. The fifth failure returns
+  401; subsequent attempts return 429 for 30 seconds, with ceil-rounded
+  `Retry-After` from `ctx.now()`. Success and window expiry reset failures.
+- Final verification: `pnpm lint` passed; `pnpm test` passed all 346 tests
+  (83 domain, 64 DB including real Windows DPAPI, 121 agent, 78 API);
+  `pnpm build` passed all five workspace packages/apps. Initial build caught
+  Node's overloaded-scrypt promisify typing (TS2554/TS18046/TS2345); fixed
+  with a typed callback adapter, then reran full lint/test/build successfully.
+  Commands used bounded timeouts (120 seconds lint, 180 seconds test/build),
+  with no timeouts reached. `git diff --check` passed.
+- Targeted verification: DB password/persistence suites passed 15 tests;
+  API auth suite passed 23 tests. Regenerating Drizzle reported no schema
+  changes. Built-API real loopback HTTP smoke passed in a throwaway home:
+  setup 201, CSRF logout 200, five wrong logins 401, valid login blocked
+  with 429/Retry-After 30, injected-clock expiry login 200, tasks 200.
+- Limitations: throttle state is process-local and resets at restart; no
+  interactive TUI/owner-week or paid-provider evaluation, Rust checks, CI,
+  push, or merge. Existing landing `metadataBase` build warning remains
+  outside scope. Final handoff below will record the implementation SHA.
+
+### Handoff — Priority 3 (perf/s07-db-indexes-and-async-auth)
+
+- **Commits:**
+  - `1594cb64fccc83c596da077fe25ea18d03a9f3c7` — additive indexed schema,
+    generated 0006 migration/journal/snapshot, fresh and populated-upgrade tests.
+  - `b8cdf9e0f702a52c006da89922b6a22089378e89` — final implementation:
+    async-compatible owner hashing/auth, awaited callers, deterministic backoff.
+- **What changed:**
+  - `packages/db/src/schema.ts`, `packages/db/drizzle/0006_indexes.sql`,
+    `packages/db/drizzle/meta/{_journal,0006_snapshot}.json`: eight non-unique
+    indexes on events/task, runs/task, artifacts/task, tasks/state,
+    approvals/task and state, grants/project, routines/state; no table rebuilds.
+  - `packages/db/src/{passwords,store}.ts`: async scrypt with unchanged
+    `scrypt$N$r$p$salt$hash` format and timing-safe verification; transactional
+    post-hash single-owner check. Legacy credentials are not rehashed.
+  - `apps/api/src/routes/auth.ts`: awaited setup/login; per-app serialized
+    login checks; five failed authentications trigger a 30-second in-memory
+    window, 429 plus ceil-rounded Retry-After, reset on success/expiry. All
+    throttle timing uses injected `ctx.now()`; trust guards remain unchanged.
+  - DB migration/password/persistence tests, API auth tests, and the approved
+    direct caller in `packages/agent/test/failures.test.ts`: fresh/0005 upgrade
+    preservation and restart, old-hash compatibility, setup races, threshold,
+    Retry-After rounding, exact expiry, reset, simultaneous attempts, and guards.
+- **Verification run:**
+  - `pnpm install --offline --frozen-lockfile`: passed; worktree-local
+    node_modules and build outputs, no lockfile/dependency changes.
+  - `pnpm --filter @openfrost/db exec vitest run test/passwords.test.ts test/persistence.test.ts`:
+    passed, 15 tests; `pnpm --filter @openfrost/api exec vitest run test/auth.test.ts`:
+    passed, 23 tests.
+  - `pnpm lint`: passed (120-second bound).
+  - `pnpm test`: passed twice, 346 tests / 36 files, zero skips or failures
+    (83 domain, 64 DB, 121 agent, 78 API; 180-second bound). Real Windows
+    CryptProtectData/CryptUnprotectData, purpose rejection, provider-key
+    storage and API key-redaction tests passed, not mocked or skipped.
+  - `pnpm build`: final run passed all five workspace builds (180-second
+    bound). Initial scrypt overload typing failure was corrected; full
+    lint/test were rerun after the typed adapter fix. No command timed out.
+  - `pnpm --filter @openfrost/db exec drizzle-kit generate --name indexes`:
+    passed; no schema changes after generation, snapshot links to 0005.
+  - `node` built-API loopback HTTP smoke (30-second bound): passed in a
+    disposable home, setup/logout/401 threshold/429+Retry-After/expiry/login/
+    authenticated tasks; server closed and home removed. Clock was injected.
+  - `git diff --check`: passed; backlog relative links checked before handoff.
+- **Not run / Limitations:**
+  - Backoff is single-owner, app-instance memory, not persisted; restarting
+    clears it. Verification is serialized, not other API traffic. No broad
+    load/latency benchmark or interactive TUI run was performed.
+  - Migration upgrade fixture uses real migrations 0000–0005 and populated
+    SQLite data, not the owner's live database. No owner data was touched.
+  - Existing unrelated landing `metadataBase` warning remains. No Rust checks
+    (no Rust edits), CI, real-provider calls, push, or merge; owner review is
+    next. S07's one-working-week owner-use evaluation remains open.
+
 ## S08 — Improve Control Center clarity and feedback (Phase 1)
 
 - **Status:** Complete (merged on `main`; unfinished Phase 2 web work checkpointed on `feat/ui-phase2-task-lifecycle` and superseded by S09)
@@ -1242,3 +1339,13 @@ does not close S07's one-working-week owner-use gate.
   with a ten-minute bound. Rust was unchanged and will be checked by CI.
 - Not run: interactive visual TUI and live-provider workflows. Primary
   checkout retains the owner-provided untracked execution brief untouched.
+
+### Integration — Priority 3 (2026-11-24)
+
+- Priority 5A landed via PR #40, merge c06ecce50d5f54b479f785ff1ffe92e18297955e.
+- Merged origin/main into the Priority 3 branch without rewriting history;
+  backlog auto-merged, preserving both complete handoffs and audit evidence.
+- Re-verification on the integrated code: pnpm lint, CI=true pnpm test, and
+  pnpm build all passed, including real Windows DPAPI tests. No code
+  conflict or test/assertion change was needed.
+- S07 owner-use gate remains open; next is Windows PR CI and authorized merge.

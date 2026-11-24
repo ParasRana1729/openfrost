@@ -109,18 +109,18 @@ describe('persistence across restart', () => {
 });
 
 describe('owner accounts', () => {
-  it('creates exactly one owner and verifies credentials', () => {
-    const owner = store.users.createOwner('owner', 'correct horse battery staple', NOW);
+  it('creates exactly one owner and verifies credentials', async () => {
+    const owner = await store.users.createOwner('owner', 'correct horse battery staple', NOW);
     expect(owner.username).toBe('owner');
 
-    expect(() => store.users.createOwner('owner', 'another', NOW)).toThrowError();
+    await expect(store.users.createOwner('owner', 'another', NOW)).rejects.toThrowError();
 
     expect(
-      store.users.verifyOwnerCredentials('owner', 'correct horse battery staple'),
+      await store.users.verifyOwnerCredentials('owner', 'correct horse battery staple'),
     ).toBeTruthy();
-    expect(store.users.verifyOwnerCredentials('owner', 'wrong')).toBeNull();
+    expect(await store.users.verifyOwnerCredentials('owner', 'wrong')).toBeNull();
     expect(
-      store.users.verifyOwnerCredentials('intruder', 'correct horse battery staple'),
+      await store.users.verifyOwnerCredentials('intruder', 'correct horse battery staple'),
     ).toBeNull();
   });
 
@@ -134,8 +134,8 @@ describe('owner accounts', () => {
 });
 
 describe('sessions', () => {
-  it('creates, touches, and removes sessions', () => {
-    const owner = store.users.verifyOwnerCredentials('owner', 'correct horse battery staple');
+  it('creates, touches, and removes sessions', async () => {
+    const owner = await store.users.verifyOwnerCredentials('owner', 'correct horse battery staple');
     expect(owner).not.toBeNull();
     const session = store.sessions.create({
       userId: owner!.id,
@@ -149,8 +149,8 @@ describe('sessions', () => {
     expect(store.sessions.get(session.id)).toBeNull();
   });
 
-  it('purges expired sessions only', () => {
-    const owner = store.users.verifyOwnerCredentials('owner', 'correct horse battery staple');
+  it('purges expired sessions only', async () => {
+    const owner = await store.users.verifyOwnerCredentials('owner', 'correct horse battery staple');
     const expired = store.sessions.create({
       userId: owner!.id,
       csrfToken: 'expired',
