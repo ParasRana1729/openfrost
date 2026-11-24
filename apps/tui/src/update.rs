@@ -113,10 +113,17 @@ pub fn run_check() -> Result<bool> {
     let repo = resolve_repo_root(&home)?;
     let state = inspect_repo(&repo)?;
     println!("Checkout: {}", repo.display());
-    if state.behind == 0 {
+    if state.behind == 0 && state.ahead == 0 {
         println!(
             "OpenFrost is up to date ({} @ {}).",
             state.branch, state.upstream
+        );
+        Ok(false)
+    } else if state.behind == 0 {
+        println!(
+            "No upstream update available; checkout is {} commit(s) ahead of {}. \
+             Run `openfrost update` to rebuild from it.",
+            state.ahead, state.upstream
         );
         Ok(false)
     } else {
@@ -147,15 +154,16 @@ pub async fn run_update(origin: &str) -> Result<()> {
     let state = inspect_repo(&repo)?;
     if state.behind == 0 {
         println!(
-            "Already up to date ({} @ {}). To force a rebuild, run `pnpm install:cli` in the repo.",
-            state.branch, state.upstream
+            "No new upstream commits for {} ({} commit(s) ahead of {}). \
+             Rebuilding from the current checkout.",
+            state.branch, state.ahead, state.upstream
         );
-        return Ok(());
+    } else {
+        println!(
+            "Updating {}: {} new commit(s) from {}.",
+            state.branch, state.behind, state.upstream
+        );
     }
-    println!(
-        "Updating {}: {} new commit(s) from {}.",
-        state.branch, state.behind, state.upstream
-    );
 
     cleanup_stale_binary();
     let was_running = matches!(

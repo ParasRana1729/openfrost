@@ -116,12 +116,14 @@ openfrost update           # pull, rebuild, and reinstall
 (recorded as `repoRoot` in `%USERPROFILE%\.openfrost\runtime.json`) on whatever
 branch it has checked out (use `main` for releases), then runs
 `pnpm install --frozen-lockfile` and `scripts/install.ps1`. If the background API
-was running, it is stopped for the rebuild and restarted afterwards. Notes:
+was running, it is stopped for the rebuild and restarted afterwards. It rebuilds
+from the current checkout even when there are no new upstream commits, so
+committed local changes are installed too. Notes:
 
 - It refuses to run if the checkout has uncommitted changes to tracked files, or
   if the branch has no upstream.
-- If already up to date it does nothing; run `pnpm run install:cli` to force a
-  rebuild.
+- `--check` reports whether the checkout is behind its upstream; local commits
+  ahead of the upstream are reported separately.
 - The apply step is Windows-only for now (`--check` works anywhere). On Windows
   the running `openfrost.exe` is renamed to `openfrost.exe.old` so Cargo can
   replace it; the leftover is deleted on the next update.

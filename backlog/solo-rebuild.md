@@ -1651,6 +1651,16 @@ does not close S07's one-working-week owner-use gate.
   and `cargo test` (**134 passed**, including new CLI parsing, repo-root
   resolution, and dirty-tree tests) passed. `openfrost update --check` was
   smoke-tested against a real install.
+- Follow-up (2026-11-24): reproduced that the installed CLI resolves the current
+  checkout on `feat/tui-redesign`, reports it up to date, and then `update`
+  would skip rebuilding whenever the checkout had no commits behind upstream.
+  `update` now always rebuilds/reinstalls from the current clean checkout after
+  its fast-forward attempt; `--check` distinguishes local commits ahead of the
+  upstream. The README now documents that behavior.
+- Follow-up verification: `cargo fmt --all -- --check`,
+  `cargo clippy --all-targets -- -D warnings`, `cargo test` (**123 passed**),
+  and `cargo build` passed in `apps/tui`; `git diff --check` passed. The
+  installed `openfrost update --check` reproduced the no-new-commits state.
 - Not run: a full `openfrost update` apply against a live install (pull,
   rebuild, exe swap, API restart), non-Windows apply (intentionally
   unsupported), paid-provider calls. S07 owner-use gate remains open.
