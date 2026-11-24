@@ -1,0 +1,20 @@
+[
+  {
+    "name": "empty",
+    "value": {
+      "destinations": []
+    }
+  },
+  {
+    "name": "populated",
+    "value": {
+      "destinations": [
+        {
+          "id": "d1",
+          "path": "C:/exports",
+          "createdAt": "2026-11-24T09:00:00.000Z"
+        }
+      ]
+    }
+  }
+]

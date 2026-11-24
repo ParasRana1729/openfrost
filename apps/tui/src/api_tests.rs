@@ -112,7 +112,7 @@ async fn create_task_sends_only_declared_fields() {
             .path("/api/tasks")
             // strictObject on the API rejects unknown keys; the request must
             // carry exactly the declared, set fields.
-            .body(r#"{"request":"Compare A and B","kind":"research_brief"}"#);
+            .body(r#"{"title":"Compare options","request":"Compare A and B","kind":"research_brief"}"#);
         then.status(202).body(format!(
             r#"{{ "task": {} }}"#,
             TASK_JSON.replace("t1", "t9")
@@ -120,7 +120,7 @@ async fn create_task_sends_only_declared_fields() {
     });
     let client = client(&server);
     let input = CreateTaskRequest {
-        title: None,
+        title: Some("Compare options".into()),
         request: "Compare A and B".into(),
         constraints: None,
         startingUrls: None,

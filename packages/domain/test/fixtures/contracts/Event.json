@@ -1,0 +1,813 @@
+[
+  {
+    "name": "auth.owner_created",
+    "value": {
+      "id": 1,
+      "type": "auth.owner_created",
+      "taskId": null,
+      "runId": null,
+      "payload": {},
+      "createdAt": "2026-11-24T09:00:00.000Z"
+    }
+  },
+  {
+    "name": "auth.logged_in",
+    "value": {
+      "id": 2,
+      "type": "auth.logged_in",
+      "taskId": "t1",
+      "runId": "r1",
+      "payload": {
+        "riskTier": "telegram",
+        "nested": {
+          "ok": true,
+          "list": [
+            null,
+            1,
+            "text"
+          ]
+        }
+      },
+      "createdAt": "2026-11-24T09:00:00.000Z"
+    }
+  },
+  {
+    "name": "auth.logged_out",
+    "value": {
+      "id": 3,
+      "type": "auth.logged_out",
+      "taskId": null,
+      "runId": null,
+      "payload": {},
+      "createdAt": "2026-11-24T09:00:00.000Z"
+    }
+  },
+  {
+    "name": "auth.login_failed",
+    "value": {
+      "id": 4,
+      "type": "auth.login_failed",
+      "taskId": "t1",
+      "runId": "r1",
+      "payload": {
+        "riskTier": "auto",
+        "nested": {
+          "ok": true,
+          "list": [
+            null,
+            1,
+            "text"
+          ]
+        }
+      },
+      "createdAt": "2026-11-24T09:00:00.000Z"
+    }
+  },
+  {
+    "name": "settings.provider_key_set",
+    "value": {
+      "id": 5,
+      "type": "settings.provider_key_set",
+      "taskId": null,
+      "runId": null,
+      "payload": {},
+      "createdAt": "2026-11-24T09:00:00.000Z"
+    }
+  },
+  {
+    "name": "settings.provider_key_removed",
+    "value": {
+      "id": 6,
+      "type": "settings.provider_key_removed",
+      "taskId": "t1",
+      "runId": "r1",
+      "payload": {
+        "riskTier": "local",
+        "nested": {
+          "ok": true,
+          "list": [
+            null,
+            1,
+            "text"
+          ]
+        }
+      },
+      "createdAt": "2026-11-24T09:00:00.000Z"
+    }
+  },
+  {
+    "name": "settings.provider_changed",
+    "value": {
+      "id": 7,
+      "type": "settings.provider_changed",
+      "taskId": null,
+      "runId": null,
+      "payload": {},
+      "createdAt": "2026-11-24T09:00:00.000Z"
+    }
+  },
+  {
+    "name": "project.created",
+    "value": {
+      "id": 8,
+      "type": "project.created",
+      "taskId": "t1",
+      "runId": "r1",
+      "payload": {
+        "riskTier": "telegram",
+        "nested": {
+          "ok": true,
+          "list": [
+            null,
+            1,
+            "text"
+          ]
+        }
+      },
+      "createdAt": "2026-11-24T09:00:00.000Z"
+    }
+  },
+  {
+    "name": "project.updated",
+    "value": {
+      "id": 9,
+      "type": "project.updated",
+      "taskId": null,
+      "runId": null,
+      "payload": {},
+      "createdAt": "2026-11-24T09:00:00.000Z"
+    }
+  },
+  {
+    "name": "project.grant_added",
+    "value": {
+      "id": 10,
+      "type": "project.grant_added",
+      "taskId": "t1",
+      "runId": "r1",
+      "payload": {
+        "riskTier": "auto",
+        "nested": {
+          "ok": true,
+          "list": [
+            null,
+            1,
+            "text"
+          ]
+        }
+      },
+      "createdAt": "2026-11-24T09:00:00.000Z"
+    }
+  },
+  {
+    "name": "project.grant_removed",
+    "value": {
+      "id": 11,
+      "type": "project.grant_removed",
+      "taskId": null,
+      "runId": null,
+      "payload": {},
+      "createdAt": "2026-11-24T09:00:00.000Z"
+    }
+  },
+  {
+    "name": "approval.requested",
+    "value": {
+      "id": 12,
+      "type": "approval.requested",
+      "taskId": "t1",
+      "runId": "r1",
+      "payload": {
+        "riskTier": "local",
+        "nested": {
+          "ok": true,
+          "list": [
+            null,
+            1,
+            "text"
+          ]
+        }
+      },
+      "createdAt": "2026-11-24T09:00:00.000Z"
+    }
+  },
+  {
+    "name": "approval.granted",
+    "value": {
+      "id": 13,
+      "type": "approval.granted",
+      "taskId": null,
+      "runId": null,
+      "payload": {},
+      "createdAt": "2026-11-24T09:00:00.000Z"
+    }
+  },
+  {
+    "name": "approval.rejected",
+    "value": {
+      "id": 14,
+      "type": "approval.rejected",
+      "taskId": "t1",
+      "runId": "r1",
+      "payload": {
+        "riskTier": "telegram",
+        "nested": {
+          "ok": true,
+          "list": [
+            null,
+            1,
+            "text"
+          ]
+        }
+      },
+      "createdAt": "2026-11-24T09:00:00.000Z"
+    }
+  },
+  {
+    "name": "approval.canceled",
+    "value": {
+      "id": 15,
+      "type": "approval.canceled",
+      "taskId": null,
+      "runId": null,
+      "payload": {},
+      "createdAt": "2026-11-24T09:00:00.000Z"
+    }
+  },
+  {
+    "name": "approval.expired",
+    "value": {
+      "id": 16,
+      "type": "approval.expired",
+      "taskId": "t1",
+      "runId": "r1",
+      "payload": {
+        "riskTier": "auto",
+        "nested": {
+          "ok": true,
+          "list": [
+            null,
+            1,
+            "text"
+          ]
+        }
+      },
+      "createdAt": "2026-11-24T09:00:00.000Z"
+    }
+  },
+  {
+    "name": "export.destination_added",
+    "value": {
+      "id": 17,
+      "type": "export.destination_added",
+      "taskId": null,
+      "runId": null,
+      "payload": {},
+      "createdAt": "2026-11-24T09:00:00.000Z"
+    }
+  },
+  {
+    "name": "export.destination_removed",
+    "value": {
+      "id": 18,
+      "type": "export.destination_removed",
+      "taskId": "t1",
+      "runId": "r1",
+      "payload": {
+        "riskTier": "local",
+        "nested": {
+          "ok": true,
+          "list": [
+            null,
+            1,
+            "text"
+          ]
+        }
+      },
+      "createdAt": "2026-11-24T09:00:00.000Z"
+    }
+  },
+  {
+    "name": "export.written",
+    "value": {
+      "id": 19,
+      "type": "export.written",
+      "taskId": null,
+      "runId": null,
+      "payload": {},
+      "createdAt": "2026-11-24T09:00:00.000Z"
+    }
+  },
+  {
+    "name": "memory.proposed",
+    "value": {
+      "id": 20,
+      "type": "memory.proposed",
+      "taskId": "t1",
+      "runId": "r1",
+      "payload": {
+        "riskTier": "telegram",
+        "nested": {
+          "ok": true,
+          "list": [
+            null,
+            1,
+            "text"
+          ]
+        }
+      },
+      "createdAt": "2026-11-24T09:00:00.000Z"
+    }
+  },
+  {
+    "name": "memory.proposal_blocked",
+    "value": {
+      "id": 21,
+      "type": "memory.proposal_blocked",
+      "taskId": null,
+      "runId": null,
+      "payload": {},
+      "createdAt": "2026-11-24T09:00:00.000Z"
+    }
+  },
+  {
+    "name": "memory.approved",
+    "value": {
+      "id": 22,
+      "type": "memory.approved",
+      "taskId": "t1",
+      "runId": "r1",
+      "payload": {
+        "riskTier": "auto",
+        "nested": {
+          "ok": true,
+          "list": [
+            null,
+            1,
+            "text"
+          ]
+        }
+      },
+      "createdAt": "2026-11-24T09:00:00.000Z"
+    }
+  },
+  {
+    "name": "memory.rejected",
+    "value": {
+      "id": 23,
+      "type": "memory.rejected",
+      "taskId": null,
+      "runId": null,
+      "payload": {},
+      "createdAt": "2026-11-24T09:00:00.000Z"
+    }
+  },
+  {
+    "name": "memory.updated",
+    "value": {
+      "id": 24,
+      "type": "memory.updated",
+      "taskId": "t1",
+      "runId": "r1",
+      "payload": {
+        "riskTier": "local",
+        "nested": {
+          "ok": true,
+          "list": [
+            null,
+            1,
+            "text"
+          ]
+        }
+      },
+      "createdAt": "2026-11-24T09:00:00.000Z"
+    }
+  },
+  {
+    "name": "memory.deleted",
+    "value": {
+      "id": 25,
+      "type": "memory.deleted",
+      "taskId": null,
+      "runId": null,
+      "payload": {},
+      "createdAt": "2026-11-24T09:00:00.000Z"
+    }
+  },
+  {
+    "name": "memory.reloaded",
+    "value": {
+      "id": 26,
+      "type": "memory.reloaded",
+      "taskId": "t1",
+      "runId": "r1",
+      "payload": {
+        "riskTier": "telegram",
+        "nested": {
+          "ok": true,
+          "list": [
+            null,
+            1,
+            "text"
+          ]
+        }
+      },
+      "createdAt": "2026-11-24T09:00:00.000Z"
+    }
+  },
+  {
+    "name": "memory.used",
+    "value": {
+      "id": 27,
+      "type": "memory.used",
+      "taskId": null,
+      "runId": null,
+      "payload": {},
+      "createdAt": "2026-11-24T09:00:00.000Z"
+    }
+  },
+  {
+    "name": "routine.created",
+    "value": {
+      "id": 28,
+      "type": "routine.created",
+      "taskId": "t1",
+      "runId": "r1",
+      "payload": {
+        "riskTier": "auto",
+        "nested": {
+          "ok": true,
+          "list": [
+            null,
+            1,
+            "text"
+          ]
+        }
+      },
+      "createdAt": "2026-11-24T09:00:00.000Z"
+    }
+  },
+  {
+    "name": "routine.updated",
+    "value": {
+      "id": 29,
+      "type": "routine.updated",
+      "taskId": null,
+      "runId": null,
+      "payload": {},
+      "createdAt": "2026-11-24T09:00:00.000Z"
+    }
+  },
+  {
+    "name": "routine.enabled",
+    "value": {
+      "id": 30,
+      "type": "routine.enabled",
+      "taskId": "t1",
+      "runId": "r1",
+      "payload": {
+        "riskTier": "local",
+        "nested": {
+          "ok": true,
+          "list": [
+            null,
+            1,
+            "text"
+          ]
+        }
+      },
+      "createdAt": "2026-11-24T09:00:00.000Z"
+    }
+  },
+  {
+    "name": "routine.paused",
+    "value": {
+      "id": 31,
+      "type": "routine.paused",
+      "taskId": null,
+      "runId": null,
+      "payload": {},
+      "createdAt": "2026-11-24T09:00:00.000Z"
+    }
+  },
+  {
+    "name": "routine.removed",
+    "value": {
+      "id": 32,
+      "type": "routine.removed",
+      "taskId": "t1",
+      "runId": "r1",
+      "payload": {
+        "riskTier": "telegram",
+        "nested": {
+          "ok": true,
+          "list": [
+            null,
+            1,
+            "text"
+          ]
+        }
+      },
+      "createdAt": "2026-11-24T09:00:00.000Z"
+    }
+  },
+  {
+    "name": "routine.occurrence_scheduled",
+    "value": {
+      "id": 33,
+      "type": "routine.occurrence_scheduled",
+      "taskId": null,
+      "runId": null,
+      "payload": {},
+      "createdAt": "2026-11-24T09:00:00.000Z"
+    }
+  },
+  {
+    "name": "routine.occurrence_missed",
+    "value": {
+      "id": 34,
+      "type": "routine.occurrence_missed",
+      "taskId": "t1",
+      "runId": "r1",
+      "payload": {
+        "riskTier": "auto",
+        "nested": {
+          "ok": true,
+          "list": [
+            null,
+            1,
+            "text"
+          ]
+        }
+      },
+      "createdAt": "2026-11-24T09:00:00.000Z"
+    }
+  },
+  {
+    "name": "routine.occurrence_run_now",
+    "value": {
+      "id": 35,
+      "type": "routine.occurrence_run_now",
+      "taskId": null,
+      "runId": null,
+      "payload": {},
+      "createdAt": "2026-11-24T09:00:00.000Z"
+    }
+  },
+  {
+    "name": "routine.occurrence_skipped",
+    "value": {
+      "id": 36,
+      "type": "routine.occurrence_skipped",
+      "taskId": "t1",
+      "runId": "r1",
+      "payload": {
+        "riskTier": "local",
+        "nested": {
+          "ok": true,
+          "list": [
+            null,
+            1,
+            "text"
+          ]
+        }
+      },
+      "createdAt": "2026-11-24T09:00:00.000Z"
+    }
+  },
+  {
+    "name": "dispatch.paused",
+    "value": {
+      "id": 37,
+      "type": "dispatch.paused",
+      "taskId": null,
+      "runId": null,
+      "payload": {},
+      "createdAt": "2026-11-24T09:00:00.000Z"
+    }
+  },
+  {
+    "name": "dispatch.resumed",
+    "value": {
+      "id": 38,
+      "type": "dispatch.resumed",
+      "taskId": "t1",
+      "runId": "r1",
+      "payload": {
+        "riskTier": "telegram",
+        "nested": {
+          "ok": true,
+          "list": [
+            null,
+            1,
+            "text"
+          ]
+        }
+      },
+      "createdAt": "2026-11-24T09:00:00.000Z"
+    }
+  },
+  {
+    "name": "task.created",
+    "value": {
+      "id": 39,
+      "type": "task.created",
+      "taskId": null,
+      "runId": null,
+      "payload": {},
+      "createdAt": "2026-11-24T09:00:00.000Z"
+    }
+  },
+  {
+    "name": "task.completed",
+    "value": {
+      "id": 40,
+      "type": "task.completed",
+      "taskId": "t1",
+      "runId": "r1",
+      "payload": {
+        "riskTier": "auto",
+        "nested": {
+          "ok": true,
+          "list": [
+            null,
+            1,
+            "text"
+          ]
+        }
+      },
+      "createdAt": "2026-11-24T09:00:00.000Z"
+    }
+  },
+  {
+    "name": "task.failed",
+    "value": {
+      "id": 41,
+      "type": "task.failed",
+      "taskId": null,
+      "runId": null,
+      "payload": {},
+      "createdAt": "2026-11-24T09:00:00.000Z"
+    }
+  },
+  {
+    "name": "task.canceled",
+    "value": {
+      "id": 42,
+      "type": "task.canceled",
+      "taskId": "t1",
+      "runId": "r1",
+      "payload": {
+        "riskTier": "local",
+        "nested": {
+          "ok": true,
+          "list": [
+            null,
+            1,
+            "text"
+          ]
+        }
+      },
+      "createdAt": "2026-11-24T09:00:00.000Z"
+    }
+  },
+  {
+    "name": "task.interrupted",
+    "value": {
+      "id": 43,
+      "type": "task.interrupted",
+      "taskId": null,
+      "runId": null,
+      "payload": {},
+      "createdAt": "2026-11-24T09:00:00.000Z"
+    }
+  },
+  {
+    "name": "task.requeued",
+    "value": {
+      "id": 44,
+      "type": "task.requeued",
+      "taskId": "t1",
+      "runId": "r1",
+      "payload": {
+        "riskTier": "telegram",
+        "nested": {
+          "ok": true,
+          "list": [
+            null,
+            1,
+            "text"
+          ]
+        }
+      },
+      "createdAt": "2026-11-24T09:00:00.000Z"
+    }
+  },
+  {
+    "name": "run.started",
+    "value": {
+      "id": 45,
+      "type": "run.started",
+      "taskId": null,
+      "runId": null,
+      "payload": {},
+      "createdAt": "2026-11-24T09:00:00.000Z"
+    }
+  },
+  {
+    "name": "run.completed",
+    "value": {
+      "id": 46,
+      "type": "run.completed",
+      "taskId": "t1",
+      "runId": "r1",
+      "payload": {
+        "riskTier": "auto",
+        "nested": {
+          "ok": true,
+          "list": [
+            null,
+            1,
+            "text"
+          ]
+        }
+      },
+      "createdAt": "2026-11-24T09:00:00.000Z"
+    }
+  },
+  {
+    "name": "run.failed",
+    "value": {
+      "id": 47,
+      "type": "run.failed",
+      "taskId": null,
+      "runId": null,
+      "payload": {},
+      "createdAt": "2026-11-24T09:00:00.000Z"
+    }
+  },
+  {
+    "name": "run.canceled",
+    "value": {
+      "id": 48,
+      "type": "run.canceled",
+      "taskId": "t1",
+      "runId": "r1",
+      "payload": {
+        "riskTier": "local",
+        "nested": {
+          "ok": true,
+          "list": [
+            null,
+            1,
+            "text"
+          ]
+        }
+      },
+      "createdAt": "2026-11-24T09:00:00.000Z"
+    }
+  },
+  {
+    "name": "run.interrupted",
+    "value": {
+      "id": 49,
+      "type": "run.interrupted",
+      "taskId": null,
+      "runId": null,
+      "payload": {},
+      "createdAt": "2026-11-24T09:00:00.000Z"
+    }
+  },
+  {
+    "name": "run.limit_reached",
+    "value": {
+      "id": 50,
+      "type": "run.limit_reached",
+      "taskId": "t1",
+      "runId": "r1",
+      "payload": {
+        "riskTier": "telegram",
+        "nested": {
+          "ok": true,
+          "list": [
+            null,
+            1,
+            "text"
+          ]
+        }
+      },
+      "createdAt": "2026-11-24T09:00:00.000Z"
+    }
+  },
+  {
+    "name": "tool.executed",
+    "value": {
+      "id": 51,
+      "type": "tool.executed",
+      "taskId": null,
+      "runId": null,
+      "payload": {},
+      "createdAt": "2026-11-24T09:00:00.000Z"
+    }
+  }
+]

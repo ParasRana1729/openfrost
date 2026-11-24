@@ -1,4 +1,4 @@
-import { integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 /**
  * SQLite schema (spec §7 storage ownership). Structured state lives here;
@@ -56,38 +56,50 @@ export const projects = sqliteTable('projects', {
  * Folder roots the owner explicitly granted to a project. `path` stores the
  * canonical absolute path recorded at grant time; tool execution re-checks it.
  */
-export const projectFolderGrants = sqliteTable('project_folder_grants', {
-  id: text('id').primaryKey(),
-  projectId: text('project_id')
-    .notNull()
-    .references(() => projects.id),
-  path: text('path').notNull(),
-  createdAt: text('created_at').notNull(),
-});
+export const projectFolderGrants = sqliteTable(
+  'project_folder_grants',
+  {
+    id: text('id').primaryKey(),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id),
+    path: text('path').notNull(),
+    createdAt: text('created_at').notNull(),
+  },
+  (table) => [
+    index('project_folder_grants_project_id_idx').on(table.projectId),
+  ],
+);
 
-export const tasks = sqliteTable('tasks', {
-  id: text('id').primaryKey(),
-  title: text('title').notNull(),
-  request: text('request').notNull(),
-  constraints: text('constraints'),
-  /** JSON array of http(s) URLs, or null. */
-  startingUrls: text('starting_urls'),
-  projectId: text('project_id'),
-  /** 'research_brief' | 'project_update' | 'export_report' | 'weekly_plan'. */
-  kind: text('kind').notNull().default('research_brief'),
-  /** JSON export arguments (artifactId, destinationId, filename); export tasks only. */
-  exportArgs: text('export_args'),
-  /** Dispatching routine; weekly_plan tasks only. Informational — a task
-   * survives routine removal, so there is no foreign key. */
-  routineId: text('routine_id'),
-  state: text('state').notNull(),
-  attemptCount: integer('attempt_count').notNull().default(0),
-  lastRunId: text('last_run_id'),
-  resultArtifactId: text('result_artifact_id'),
-  error: text('error'),
-  createdAt: text('created_at').notNull(),
-  updatedAt: text('updated_at').notNull(),
-});
+export const tasks = sqliteTable(
+  'tasks',
+  {
+    id: text('id').primaryKey(),
+    title: text('title').notNull(),
+    request: text('request').notNull(),
+    constraints: text('constraints'),
+    /** JSON array of http(s) URLs, or null. */
+    startingUrls: text('starting_urls'),
+    projectId: text('project_id'),
+    /** 'research_brief' | 'project_update' | 'export_report' | 'weekly_plan'. */
+    kind: text('kind').notNull().default('research_brief'),
+    /** JSON export arguments (artifactId, destinationId, filename); export tasks only. */
+    exportArgs: text('export_args'),
+    /** Dispatching routine; weekly_plan tasks only. Informational — a task
+     * survives routine removal, so there is no foreign key. */
+    routineId: text('routine_id'),
+    state: text('state').notNull(),
+    attemptCount: integer('attempt_count').notNull().default(0),
+    lastRunId: text('last_run_id'),
+    resultArtifactId: text('result_artifact_id'),
+    error: text('error'),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => [
+    index('tasks_state_idx').on(table.state),
+  ],
+);
 
 /**
  * Owner-granted canonical folder roots that approved exports may write
@@ -105,56 +117,81 @@ export const exportDestinations = sqliteTable('export_destinations', {
  * is snapshotted immutably; rows are never deleted — decisions, expiries,
  * and refusals remain auditable.
  */
-export const approvals = sqliteTable('approvals', {
-  id: text('id').primaryKey(),
-  taskId: text('task_id').notNull(),
-  runId: text('run_id').notNull(),
-  action: text('action').notNull(),
-  artifactId: text('artifact_id').notNull(),
-  destinationId: text('destination_id').notNull(),
-  destinationPath: text('destination_path').notNull(),
-  filename: text('filename').notNull(),
-  contentSha256: text('content_sha256').notNull(),
-  riskTier: text('risk_tier').notNull(),
-  state: text('state').notNull(),
-  requestedAt: text('requested_at').notNull(),
-  expiresAt: text('expires_at').notNull(),
-  decidedAt: text('decided_at'),
-  executedAt: text('executed_at'),
-  outcomeJson: text('outcome_json'),
-  refusalReason: text('refusal_reason'),
-});
+export const approvals = sqliteTable(
+  'approvals',
+  {
+    id: text('id').primaryKey(),
+    taskId: text('task_id').notNull(),
+    runId: text('run_id').notNull(),
+    action: text('action').notNull(),
+    artifactId: text('artifact_id').notNull(),
+    destinationId: text('destination_id').notNull(),
+    destinationPath: text('destination_path').notNull(),
+    filename: text('filename').notNull(),
+    contentSha256: text('content_sha256').notNull(),
+    riskTier: text('risk_tier').notNull(),
+    state: text('state').notNull(),
+    requestedAt: text('requested_at').notNull(),
+    expiresAt: text('expires_at').notNull(),
+    decidedAt: text('decided_at'),
+    executedAt: text('executed_at'),
+    outcomeJson: text('outcome_json'),
+    refusalReason: text('refusal_reason'),
+  },
+  (table) => [
+    index('approvals_task_id_idx').on(table.taskId),
+    index('approvals_state_idx').on(table.state),
+  ],
+);
 
-export const agentRuns = sqliteTable('agent_runs', {
-  id: text('id').primaryKey(),
-  taskId: text('task_id')
-    .notNull()
-    .references(() => tasks.id),
-  attempt: integer('attempt').notNull(),
-  state: text('state').notNull(),
-  startedAt: text('started_at').notNull(),
-  endedAt: text('ended_at'),
-  usageJson: text('usage_json'),
-  failureJson: text('failure_json'),
-});
+export const agentRuns = sqliteTable(
+  'agent_runs',
+  {
+    id: text('id').primaryKey(),
+    taskId: text('task_id')
+      .notNull()
+      .references(() => tasks.id),
+    attempt: integer('attempt').notNull(),
+    state: text('state').notNull(),
+    startedAt: text('started_at').notNull(),
+    endedAt: text('ended_at'),
+    usageJson: text('usage_json'),
+    failureJson: text('failure_json'),
+  },
+  (table) => [
+    index('agent_runs_task_id_idx').on(table.taskId),
+  ],
+);
 
-export const artifacts = sqliteTable('artifacts', {
-  id: text('id').primaryKey(),
-  taskId: text('task_id'),
-  kind: text('kind').notNull(),
-  markdown: text('markdown').notNull(),
-  createdAt: text('created_at').notNull(),
-});
+export const artifacts = sqliteTable(
+  'artifacts',
+  {
+    id: text('id').primaryKey(),
+    taskId: text('task_id'),
+    kind: text('kind').notNull(),
+    markdown: text('markdown').notNull(),
+    createdAt: text('created_at').notNull(),
+  },
+  (table) => [
+    index('artifacts_task_id_idx').on(table.taskId),
+  ],
+);
 
 /** Append-only activity log; rows are never updated or deleted. */
-export const events = sqliteTable('events', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
-  type: text('type').notNull(),
-  taskId: text('task_id'),
-  runId: text('run_id'),
-  payloadJson: text('payload_json').notNull(),
-  createdAt: text('created_at').notNull(),
-});
+export const events = sqliteTable(
+  'events',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    type: text('type').notNull(),
+    taskId: text('task_id'),
+    runId: text('run_id'),
+    payloadJson: text('payload_json').notNull(),
+    createdAt: text('created_at').notNull(),
+  },
+  (table) => [
+    index('events_task_id_idx').on(table.taskId),
+  ],
+);
 
 /**
  * Pending memory proposals and decisions (S05). Proposed text is cleared after
@@ -197,23 +234,29 @@ export const memoryEntries = sqliteTable('memory_entries', {
  * templates are JSON columns validated by the domain schemas on read/write;
  * structured queryable fields (state, project, window start) are columns.
  */
-export const routines = sqliteTable('routines', {
-  id: text('id').primaryKey(),
-  name: text('name').notNull(),
-  projectId: text('project_id')
-    .notNull()
-    .references(() => projects.id),
-  timezone: text('timezone').notNull(),
-  scheduleJson: text('schedule_json').notNull(),
-  templateJson: text('template_json').notNull(),
-  state: text('state').notNull(),
-  /** Occurrences scheduled before this instant are ignored (no back-fill). */
-  windowStartAt: text('window_start_at').notNull(),
-  lastOccurrenceKey: text('last_occurrence_key'),
-  lastOccurrenceAt: text('last_occurrence_at'),
-  createdAt: text('created_at').notNull(),
-  updatedAt: text('updated_at').notNull(),
-});
+export const routines = sqliteTable(
+  'routines',
+  {
+    id: text('id').primaryKey(),
+    name: text('name').notNull(),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id),
+    timezone: text('timezone').notNull(),
+    scheduleJson: text('schedule_json').notNull(),
+    templateJson: text('template_json').notNull(),
+    state: text('state').notNull(),
+    /** Occurrences scheduled before this instant are ignored (no back-fill). */
+    windowStartAt: text('window_start_at').notNull(),
+    lastOccurrenceKey: text('last_occurrence_key'),
+    lastOccurrenceAt: text('last_occurrence_at'),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => [
+    index('routines_state_idx').on(table.state),
+  ],
+);
 
 /**
  * Materialized routine occurrences. (routine_id, occurrence_key) is unique:

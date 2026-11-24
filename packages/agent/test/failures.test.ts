@@ -130,8 +130,8 @@ describe('executor error paths', () => {
     expect(store.tasks.get(task.id)?.state).toBe('failed');
   });
 
-  it('purges expired sessions during recovery', () => {
-    const owner = store.users.createOwner('owner', 'a-long-passphrase', at(0));
+  it('purges expired sessions during recovery', async () => {
+    const owner = await store.users.createOwner('owner', 'a-long-passphrase', at(0));
     store.sessions.create({
       userId: owner.id,
       csrfToken: 't',

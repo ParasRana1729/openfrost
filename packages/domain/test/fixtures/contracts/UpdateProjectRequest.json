@@ -1,0 +1,19 @@
+[
+  {
+    "name": "empty",
+    "value": {}
+  },
+  {
+    "name": "name-only",
+    "value": {
+      "name": "Renamed"
+    }
+  },
+  {
+    "name": "all-fields",
+    "value": {
+      "name": "Demo",
+      "instructions": ""
+    }
+  }
+]

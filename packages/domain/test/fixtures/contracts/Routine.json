@@ -1,0 +1,51 @@
+[
+  {
+    "name": "weekly-paused",
+    "value": {
+      "id": "rt1",
+      "name": "Friday planning",
+      "projectId": "p1",
+      "timezone": "Asia/Kolkata",
+      "schedule": {
+        "kind": "weekly",
+        "weekday": 5,
+        "time": "09:00"
+      },
+      "template": {
+        "title": "Weekly plan",
+        "request": "Draft priorities",
+        "constraints": null
+      },
+      "state": "paused",
+      "windowStartAt": "2026-11-24T09:00:00.000Z",
+      "lastOccurrenceKey": null,
+      "lastOccurrenceAt": null,
+      "createdAt": "2026-11-24T09:00:00.000Z",
+      "updatedAt": "2026-11-24T09:00:00.000Z"
+    }
+  },
+  {
+    "name": "daily-active",
+    "value": {
+      "id": "rt1",
+      "name": "Friday planning",
+      "projectId": "p1",
+      "timezone": "Asia/Kolkata",
+      "schedule": {
+        "kind": "daily",
+        "time": "18:30"
+      },
+      "template": {
+        "title": "Weekly plan",
+        "request": "Draft priorities",
+        "constraints": "Focus on next week"
+      },
+      "state": "active",
+      "windowStartAt": "2026-11-24T09:00:00.000Z",
+      "lastOccurrenceKey": "2026-11-24",
+      "lastOccurrenceAt": "2026-11-24T09:00:00.000Z",
+      "createdAt": "2026-11-24T09:00:00.000Z",
+      "updatedAt": "2026-11-24T09:00:00.000Z"
+    }
+  }
+]

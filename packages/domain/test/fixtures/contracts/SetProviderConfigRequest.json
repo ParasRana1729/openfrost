@@ -1,0 +1,34 @@
+[
+  {
+    "name": "openai-omitted",
+    "value": {
+      "provider": "openai"
+    }
+  },
+  {
+    "name": "gemini-omitted",
+    "value": {
+      "provider": "gemini"
+    }
+  },
+  {
+    "name": "openrouter-omitted",
+    "value": {
+      "provider": "openrouter"
+    }
+  },
+  {
+    "name": "model",
+    "value": {
+      "provider": "openai",
+      "model": "gpt-4o-mini"
+    }
+  },
+  {
+    "name": "reset-model",
+    "value": {
+      "provider": "openai",
+      "model": null
+    }
+  }
+]

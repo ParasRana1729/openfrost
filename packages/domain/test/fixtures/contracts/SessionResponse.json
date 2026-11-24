@@ -1,0 +1,27 @@
+[
+  {
+    "name": "fresh-setup",
+    "value": {
+      "authenticated": false,
+      "ownerCreated": false,
+      "onboardingCompletedAt": null
+    }
+  },
+  {
+    "name": "signed-out",
+    "value": {
+      "authenticated": false,
+      "ownerCreated": true,
+      "onboardingCompletedAt": "2026-11-24T09:00:00.000Z"
+    }
+  },
+  {
+    "name": "signed-in",
+    "value": {
+      "authenticated": true,
+      "ownerCreated": true,
+      "onboardingCompletedAt": "2026-11-24T09:00:00.000Z",
+      "csrfToken": "fixture-csrf-not-a-secret"
+    }
+  }
+]

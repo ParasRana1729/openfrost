@@ -1,0 +1,193 @@
+[
+  {
+    "name": "empty",
+    "value": {
+      "tasks": [],
+      "executor": {
+        "busy": false,
+        "activeTaskId": null,
+        "dispatchPaused": false
+      }
+    }
+  },
+  {
+    "name": "all-task-variants",
+    "value": {
+      "tasks": [
+        {
+          "id": "t1",
+          "title": "Compare options",
+          "request": "Compare A and B",
+          "constraints": "Use evidence",
+          "startingUrls": [
+            "https://example.com"
+          ],
+          "projectId": "p1",
+          "kind": "research_brief",
+          "exportArgs": {
+            "artifactId": "a1",
+            "destinationId": "d1",
+            "filename": "report.md"
+          },
+          "routineId": "rt1",
+          "state": "queued",
+          "attemptCount": 1,
+          "lastRunId": "r1",
+          "resultArtifactId": "a1",
+          "error": "Stopped",
+          "createdAt": "2026-11-24T09:00:00.000Z",
+          "updatedAt": "2026-11-24T09:00:00.000Z"
+        },
+        {
+          "id": "t2",
+          "title": "Compare options",
+          "request": "Compare A and B",
+          "constraints": "Use evidence",
+          "startingUrls": [
+            "https://example.com"
+          ],
+          "projectId": "p1",
+          "kind": "project_update",
+          "exportArgs": {
+            "artifactId": "a1",
+            "destinationId": "d1",
+            "filename": "report.md"
+          },
+          "routineId": "rt1",
+          "state": "running",
+          "attemptCount": 1,
+          "lastRunId": "r1",
+          "resultArtifactId": "a1",
+          "error": "Stopped",
+          "createdAt": "2026-11-24T09:00:00.000Z",
+          "updatedAt": "2026-11-24T09:00:00.000Z"
+        },
+        {
+          "id": "t3",
+          "title": "Compare options",
+          "request": "Compare A and B",
+          "constraints": "Use evidence",
+          "startingUrls": [
+            "https://example.com"
+          ],
+          "projectId": "p1",
+          "kind": "export_report",
+          "exportArgs": {
+            "artifactId": "a1",
+            "destinationId": "d1",
+            "filename": "report.md"
+          },
+          "routineId": "rt1",
+          "state": "awaiting_approval",
+          "attemptCount": 1,
+          "lastRunId": "r1",
+          "resultArtifactId": "a1",
+          "error": "Stopped",
+          "createdAt": "2026-11-24T09:00:00.000Z",
+          "updatedAt": "2026-11-24T09:00:00.000Z"
+        },
+        {
+          "id": "t4",
+          "title": "Compare options",
+          "request": "Compare A and B",
+          "constraints": "Use evidence",
+          "startingUrls": [
+            "https://example.com"
+          ],
+          "projectId": "p1",
+          "kind": "weekly_plan",
+          "exportArgs": {
+            "artifactId": "a1",
+            "destinationId": "d1",
+            "filename": "report.md"
+          },
+          "routineId": "rt1",
+          "state": "completed",
+          "attemptCount": 1,
+          "lastRunId": "r1",
+          "resultArtifactId": "a1",
+          "error": "Stopped",
+          "createdAt": "2026-11-24T09:00:00.000Z",
+          "updatedAt": "2026-11-24T09:00:00.000Z"
+        },
+        {
+          "id": "t5",
+          "title": "Compare options",
+          "request": "Compare A and B",
+          "constraints": "Use evidence",
+          "startingUrls": [
+            "https://example.com"
+          ],
+          "projectId": "p1",
+          "kind": "research_brief",
+          "exportArgs": {
+            "artifactId": "a1",
+            "destinationId": "d1",
+            "filename": "report.md"
+          },
+          "routineId": "rt1",
+          "state": "failed",
+          "attemptCount": 1,
+          "lastRunId": "r1",
+          "resultArtifactId": "a1",
+          "error": "Stopped",
+          "createdAt": "2026-11-24T09:00:00.000Z",
+          "updatedAt": "2026-11-24T09:00:00.000Z"
+        },
+        {
+          "id": "t6",
+          "title": "Compare options",
+          "request": "Compare A and B",
+          "constraints": "Use evidence",
+          "startingUrls": [
+            "https://example.com"
+          ],
+          "projectId": "p1",
+          "kind": "project_update",
+          "exportArgs": {
+            "artifactId": "a1",
+            "destinationId": "d1",
+            "filename": "report.md"
+          },
+          "routineId": "rt1",
+          "state": "canceled",
+          "attemptCount": 1,
+          "lastRunId": "r1",
+          "resultArtifactId": "a1",
+          "error": "Stopped",
+          "createdAt": "2026-11-24T09:00:00.000Z",
+          "updatedAt": "2026-11-24T09:00:00.000Z"
+        },
+        {
+          "id": "t7",
+          "title": "Compare options",
+          "request": "Compare A and B",
+          "constraints": "Use evidence",
+          "startingUrls": [
+            "https://example.com"
+          ],
+          "projectId": "p1",
+          "kind": "export_report",
+          "exportArgs": {
+            "artifactId": "a1",
+            "destinationId": "d1",
+            "filename": "report.md"
+          },
+          "routineId": "rt1",
+          "state": "interrupted",
+          "attemptCount": 1,
+          "lastRunId": "r1",
+          "resultArtifactId": "a1",
+          "error": "Stopped",
+          "createdAt": "2026-11-24T09:00:00.000Z",
+          "updatedAt": "2026-11-24T09:00:00.000Z"
+        }
+      ],
+      "executor": {
+        "busy": true,
+        "activeTaskId": "t1",
+        "dispatchPaused": true
+      }
+    }
+  }
+]

@@ -1,0 +1,94 @@
+[
+  {
+    "name": "fake-null-model",
+    "value": {
+      "provider": "fake",
+      "model": null,
+      "models": {
+        "openai": "gpt-4o-mini",
+        "gemini": "gemini-2.0-flash",
+        "openrouter": "free/model"
+      },
+      "hasProviderKey": false,
+      "hasOpenAIKey": false,
+      "hasGeminiKey": false,
+      "hasOpenRouterKey": false,
+      "executionLimits": {
+        "maxSteps": 12,
+        "maxWallClockMs": 600000,
+        "maxInputChars": 20000,
+        "maxOutputChars": 100000
+      },
+      "onboardingCompletedAt": null
+    }
+  },
+  {
+    "name": "openai",
+    "value": {
+      "provider": "openai",
+      "model": "configured-model",
+      "models": {
+        "openai": "gpt-4o-mini",
+        "gemini": "gemini-2.0-flash",
+        "openrouter": "free/model"
+      },
+      "hasProviderKey": true,
+      "hasOpenAIKey": true,
+      "hasGeminiKey": true,
+      "hasOpenRouterKey": true,
+      "executionLimits": {
+        "maxSteps": 12,
+        "maxWallClockMs": 600000,
+        "maxInputChars": 20000,
+        "maxOutputChars": 100000
+      },
+      "onboardingCompletedAt": "2026-11-24T09:00:00.000Z"
+    }
+  },
+  {
+    "name": "gemini",
+    "value": {
+      "provider": "gemini",
+      "model": "configured-model",
+      "models": {
+        "openai": "gpt-4o-mini",
+        "gemini": "gemini-2.0-flash",
+        "openrouter": "free/model"
+      },
+      "hasProviderKey": true,
+      "hasOpenAIKey": true,
+      "hasGeminiKey": true,
+      "hasOpenRouterKey": true,
+      "executionLimits": {
+        "maxSteps": 12,
+        "maxWallClockMs": 600000,
+        "maxInputChars": 20000,
+        "maxOutputChars": 100000
+      },
+      "onboardingCompletedAt": "2026-11-24T09:00:00.000Z"
+    }
+  },
+  {
+    "name": "openrouter",
+    "value": {
+      "provider": "openrouter",
+      "model": "configured-model",
+      "models": {
+        "openai": "gpt-4o-mini",
+        "gemini": "gemini-2.0-flash",
+        "openrouter": "free/model"
+      },
+      "hasProviderKey": true,
+      "hasOpenAIKey": true,
+      "hasGeminiKey": true,
+      "hasOpenRouterKey": true,
+      "executionLimits": {
+        "maxSteps": 12,
+        "maxWallClockMs": 600000,
+        "maxInputChars": 20000,
+        "maxOutputChars": 100000
+      },
+      "onboardingCompletedAt": "2026-11-24T09:00:00.000Z"
+    }
+  }
+]

@@ -1,7 +1,7 @@
 //! Serde types mirroring `packages/domain` Zod contracts (the source of
 //! truth). Request bodies serialize only declared fields because the API
-//! validates with `z.strictObject`. Fixtures in this file's tests are kept in
-//! sync with the Zod schemas; the API remains the enforcement point.
+//! validates with `z.strictObject`. Shared JSON fixtures are validated by both Rust and
+//! the real Zod schemas; the API remains the enforcement point.
 
 // The structs mirror the full API payloads even where the TUI does not yet
 // render every field; the serde derives consume them regardless.
@@ -105,11 +105,19 @@ pub enum RoutineOccurrenceState {
     Skipped,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderId {
+    Openai,
+    Gemini,
+    Openrouter,
+}
+
 // ---------------------------------------------------------------------------
 // Events (SSE payloads and the recent-activity feed)
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Event {
     pub id: i64,
     #[serde(rename = "type")]
@@ -127,14 +135,14 @@ pub struct Event {
 // Tasks and runs
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExportArgs {
     pub artifactId: String,
     pub destinationId: String,
     pub filename: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Task {
     pub id: String,
     pub title: String,
@@ -154,7 +162,7 @@ pub struct Task {
     pub updatedAt: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RunUsage {
     pub steps: i64,
     pub inputChars: i64,
@@ -163,14 +171,14 @@ pub struct RunUsage {
     pub outputTokens: Option<i64>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RunFailure {
     pub code: String,
     pub message: String,
     pub limitHit: Option<RunLimitKind>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentRun {
     pub id: String,
     pub taskId: String,
@@ -183,20 +191,20 @@ pub struct AgentRun {
 }
 
 /// `GET /api/tasks` response: every task plus the global executor status.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TasksResponse {
     pub tasks: Vec<Task>,
     pub executor: ExecutorStatus,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecutorStatus {
     pub busy: bool,
     pub activeTaskId: Option<String>,
     pub dispatchPaused: bool,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskDetail {
     pub task: Task,
     pub runs: Vec<AgentRun>,
@@ -205,7 +213,7 @@ pub struct TaskDetail {
     pub approval: Option<Approval>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskDetailArtifact {
     pub id: String,
     pub markdown: String,
@@ -213,7 +221,7 @@ pub struct TaskDetailArtifact {
 
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct CreateTaskRequest {
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(serialize_with = "serialize_required_title")]
     pub title: Option<String>,
     pub request: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -226,18 +234,28 @@ pub struct CreateTaskRequest {
     pub kind: Option<TaskKind>,
 }
 
+fn serialize_required_title<S: serde::Serializer>(
+    title: &Option<String>,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    title
+        .as_ref()
+        .ok_or_else(|| serde::ser::Error::custom("task title is required"))?
+        .serialize(serializer)
+}
+
 // ---------------------------------------------------------------------------
 // Approvals and exports
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ApprovalOutcome {
     pub file: String,
     pub bytes: i64,
     pub ms: i64,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Approval {
     pub id: String,
     pub taskId: String,
@@ -260,7 +278,7 @@ pub struct Approval {
 
 /// The review view from `GET /api/approvals` carries the exact proposed
 /// content alongside the approval record (spec §6).
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ApprovalView {
     #[serde(flatten)]
     pub approval: Approval,
@@ -269,7 +287,7 @@ pub struct ApprovalView {
     pub taskTitle: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ApprovalsResponse {
     pub approvals: Vec<ApprovalView>,
 }
@@ -286,14 +304,14 @@ pub struct CreateExportRequest {
     pub filename: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExportDestination {
     pub id: String,
     pub path: String,
     pub createdAt: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DestinationsResponse {
     pub destinations: Vec<ExportDestination>,
 }
@@ -307,7 +325,7 @@ pub struct ExportDestinationRequest {
 // Projects
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProjectFolderGrant {
     pub id: String,
     pub projectId: String,
@@ -315,17 +333,19 @@ pub struct ProjectFolderGrant {
     pub createdAt: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Project {
     pub id: String,
     pub name: String,
     pub instructions: Option<String>,
     pub createdAt: String,
     pub updatedAt: String,
+    // PUT /projects/:id returns the base entity without grants.
+    #[serde(default)]
     pub grants: Vec<ProjectFolderGrant>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProjectsResponse {
     pub projects: Vec<Project>,
 }
@@ -354,7 +374,7 @@ pub struct GrantFolderRequest {
 // Memory
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MemorySource {
     pub kind: String,
     pub taskId: Option<String>,
@@ -362,7 +382,7 @@ pub struct MemorySource {
     pub label: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MemoryEntry {
     pub id: String,
     pub scope: MemoryScope,
@@ -373,7 +393,7 @@ pub struct MemoryEntry {
     pub updatedAt: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MemoryProposal {
     pub id: String,
     pub scope: MemoryScope,
@@ -389,7 +409,7 @@ pub struct MemoryProposal {
     pub decidedContentSha256: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MemoryFileView {
     pub scope: MemoryScope,
     #[serde(default)]
@@ -402,7 +422,7 @@ pub struct MemoryFileView {
     pub externalChange: bool,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProjectMemoryView {
     pub scope: MemoryScope,
     pub projectId: String,
@@ -415,7 +435,7 @@ pub struct ProjectMemoryView {
     pub externalChange: bool,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MemorySnapshot {
     pub global: MemoryFileView,
     pub projects: Vec<ProjectMemoryView>,
@@ -423,7 +443,7 @@ pub struct MemorySnapshot {
     pub limits: MemoryLimits,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MemoryLimits {
     pub contentMaxChars: i64,
     pub entriesPerFile: i64,
@@ -466,7 +486,7 @@ pub struct RoutineTemplate {
     pub constraints: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Routine {
     pub id: String,
     pub name: String,
@@ -483,9 +503,8 @@ pub struct Routine {
 }
 
 /// `GET /api/routines` item: the routine plus computed scheduling views.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RoutineView {
-    #[serde(flatten)]
     pub routine: Routine,
     pub nextOccurrenceAt: Option<String>,
     pub nextOccurrenceKey: Option<String>,
@@ -493,12 +512,12 @@ pub struct RoutineView {
     pub projectName: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RoutinesResponse {
     pub routines: Vec<RoutineView>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RoutineOccurrence {
     pub id: String,
     pub routineId: String,
@@ -542,7 +561,7 @@ pub struct UpdateRoutineRequest {
 // Settings
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecutionLimits {
     pub maxSteps: i64,
     pub maxWallClockMs: i64,
@@ -551,7 +570,7 @@ pub struct ExecutionLimits {
 }
 
 /// Owner-facing settings; never carries a raw provider key.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AssistantSettings {
     pub provider: String,
     pub model: Option<String>,
@@ -564,7 +583,7 @@ pub struct AssistantSettings {
     pub onboardingCompletedAt: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProviderModels {
     pub openai: String,
     pub gemini: String,
@@ -578,17 +597,19 @@ pub struct SetProviderKeyRequest {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct SetProviderConfigRequest {
+// `Some(None)` represents an explicit model reset; the default String keeps
+// existing callers' None = omitted (preserve the configured model) behavior.
+pub struct SetProviderConfigRequest<Model = String> {
     pub provider: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub model: Option<String>,
+    pub model: Option<Model>,
 }
 
 // ---------------------------------------------------------------------------
 // Auth
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionResponse {
     pub authenticated: bool,
     pub ownerCreated: bool,
@@ -603,215 +624,723 @@ pub struct CredentialsRequest {
     pub password: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthSuccess {
     pub authenticated: bool,
     pub csrfToken: String,
 }
 
 // ---------------------------------------------------------------------------
-// Tests: fixtures mirroring the Zod schemas
+// Tests: canonical JSON is shared with packages/domain/test/contracts.test.ts.
+// Requests are constructed as actual Rust structs, never deserialized from
+// their expected JSON: renames, extra fields and null/omission drift must fail.
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde::de::DeserializeOwned;
+    use std::path::PathBuf;
 
-    #[test]
-    fn parses_task_fixture() {
-        let raw = r#"{
-            "id": "t1",
-            "title": "Compare options",
-            "request": "Compare A and B",
-            "constraints": null,
-            "startingUrls": ["https://example.com"],
-            "projectId": null,
-            "kind": "research_brief",
-            "exportArgs": null,
-            "routineId": null,
-            "state": "queued",
-            "attemptCount": 0,
-            "lastRunId": null,
-            "resultArtifactId": null,
-            "error": null,
-            "createdAt": "2026-10-26T00:00:00.000Z",
-            "updatedAt": "2026-10-26T00:00:00.000Z"
-        }"#;
-        let task: Task = serde_json::from_str(raw).unwrap();
-        assert_eq!(task.title, "Compare options");
-        assert_eq!(task.kind, TaskKind::ResearchBrief);
-        assert_eq!(task.state, TaskState::Queued);
-        assert_eq!(
-            task.startingUrls.as_deref(),
-            Some(&["https://example.com".to_string()][..])
-        );
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Fixture {
+        name: String,
+        value: Value,
     }
 
-    #[test]
-    fn parses_tasks_response_with_executor() {
-        let raw = r#"{
-            "tasks": [],
-            "executor": { "busy": true, "activeTaskId": "t1", "dispatchPaused": false }
-        }"#;
-        let response: TasksResponse = serde_json::from_str(raw).unwrap();
-        assert!(response.executor.busy);
-        assert_eq!(response.executor.activeTaskId.as_deref(), Some("t1"));
+    fn fixture_dir() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../packages/domain/test/fixtures/contracts")
     }
 
-    #[test]
-    fn parses_task_detail_fixture() {
-        let raw = r##"{
-            "task": {
-                "id": "t1", "title": "T", "request": "R", "constraints": null,
-                "startingUrls": null, "projectId": null, "kind": "research_brief",
-                "exportArgs": null, "routineId": null, "state": "completed",
-                "attemptCount": 1, "lastRunId": "r1", "resultArtifactId": "a1",
-                "error": null, "createdAt": "2026-10-26T00:00:00.000Z",
-                "updatedAt": "2026-10-26T00:01:00.000Z"
-            },
-            "runs": [{
-                "id": "r1", "taskId": "t1", "attempt": 1, "state": "completed",
-                "startedAt": "2026-10-26T00:00:00.000Z", "endedAt": "2026-10-26T00:01:00.000Z",
-                "usage": { "steps": 3, "inputChars": 100, "outputChars": 200,
-                           "inputTokens": null, "outputTokens": null },
-                "failure": null
-            }],
-            "events": [{
-                "id": 1, "type": "run.started", "taskId": "t1", "runId": "r1",
-                "payload": {}, "createdAt": "2026-10-26T00:00:00.000Z"
-            }],
-            "artifact": { "id": "a1", "markdown": "# Report" },
-            "approval": null
-        }"##;
-        let detail: TaskDetail = serde_json::from_str(raw).unwrap();
-        assert_eq!(detail.runs.len(), 1);
-        assert_eq!(detail.runs[0].usage.as_ref().unwrap().steps, 3);
-        assert_eq!(detail.artifact.as_ref().unwrap().markdown, "# Report");
-        assert_eq!(detail.events[0].kind, "run.started");
+    fn fixtures(name: &str) -> Vec<Fixture> {
+        let path = fixture_dir().join(format!("{name}.json"));
+        let raw =
+            std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+        let cases: Vec<Fixture> = serde_json::from_str(&raw).unwrap();
+        assert!(!cases.is_empty(), "{name}: empty fixture suite");
+        cases
     }
 
-    #[test]
-    fn parses_approval_view_fixture() {
-        let raw = r##"{
-            "id": "ap1", "taskId": "t1", "runId": "r1", "action": "export_file",
-            "artifactId": "a1", "destinationId": "d1",
-            "destinationPath": "C:\\exports", "filename": "report-1.md",
-            "contentSha256": "0000000000000000000000000000000000000000000000000000000000000000",
-            "riskTier": "telegram",
-            "state": "pending", "requestedAt": "2026-10-26T00:00:00.000Z",
-            "expiresAt": "2026-10-27T00:00:00.000Z", "decidedAt": null,
-            "executedAt": null, "outcome": null, "refusalReason": null,
-            "artifactChars": 12, "artifactMarkdown": "# Report\n\nBody",
-            "taskTitle": "Export brief"
-        }"##;
-        let view: ApprovalView = serde_json::from_str(raw).unwrap();
-        assert_eq!(view.approval.state, ApprovalState::Pending);
-        assert_eq!(view.approval.riskTier, RiskTier::Telegram);
-        assert_eq!(view.taskTitle.as_deref(), Some("Export brief"));
-        assert_eq!(view.artifactMarkdown.as_deref(), Some("# Report\n\nBody"));
-    }
-
-    #[test]
-    fn parses_memory_snapshot_fixture() {
-        let raw = r#"{
-            "global": {
-                "scope": "global", "projectId": null, "path": "C:\\mem\\owner.md",
-                "exists": true, "sha256": null, "entries": [{
-                    "id": "m1", "scope": "global", "projectId": null,
-                    "content": "Prefer concise answers.",
-                    "source": { "kind": "owner", "taskId": null, "artifactId": null,
-                                "label": "owner" },
-                    "createdAt": "2026-10-26T00:00:00.000Z",
-                    "updatedAt": "2026-10-26T00:00:00.000Z"
-                }],
-                "problems": [], "externalChange": false
-            },
-            "projects": [{
-                "scope": "project", "projectId": "p1", "projectName": "Demo",
-                "path": "C:\\mem\\p1.md", "exists": false, "sha256": null,
-                "entries": [], "problems": [], "externalChange": false
-            }],
-            "proposals": [],
-            "limits": { "contentMaxChars": 4000, "entriesPerFile": 50,
-                        "contextMaxChars": 6000 }
-        }"#;
-        let snapshot: MemorySnapshot = serde_json::from_str(raw).unwrap();
-        assert_eq!(snapshot.global.entries.len(), 1);
-        assert_eq!(snapshot.projects[0].projectName, "Demo");
-    }
-
-    #[test]
-    fn parses_routine_view_fixture() {
-        let raw = r#"{
-            "id": "rt1", "name": "Friday planning", "projectId": "p1",
-            "timezone": "Asia/Kolkata",
-            "schedule": { "kind": "weekly", "weekday": 5, "time": "09:00" },
-            "template": { "title": "Weekly plan", "request": "Draft priorities",
-                          "constraints": null },
-            "state": "active", "windowStartAt": "2026-10-01T00:00:00.000Z",
-            "lastOccurrenceKey": null, "lastOccurrenceAt": null,
-            "createdAt": "2026-10-01T00:00:00.000Z",
-            "updatedAt": "2026-10-01T00:00:00.000Z",
-            "nextOccurrenceAt": "2026-10-30T03:30:00.000Z",
-            "nextOccurrenceKey": "2026-10-30",
-            "missedCount": 1, "projectName": "Demo"
-        }"#;
-        let view: RoutineView = serde_json::from_str(raw).unwrap();
-        assert_eq!(view.routine.state, RoutineState::Active);
-        assert_eq!(
-            view.routine.schedule,
-            RoutineSchedule::Weekly {
-                weekday: 5,
-                time: "09:00".into()
+    // Serde intentionally tolerates future response fields, but fixtures must
+    // not silently lose known fields through a rename, omission or flatten.
+    fn assert_fields_preserved(actual: &Value, expected: &Value) {
+        match expected {
+            Value::Object(fields) => {
+                for (key, expected) in fields {
+                    let actual = actual
+                        .get(key)
+                        .unwrap_or_else(|| panic!("lost response field: {key}"));
+                    assert_fields_preserved(actual, expected);
+                }
             }
+            Value::Array(values) => {
+                let actual = actual.as_array().unwrap();
+                assert_eq!(actual.len(), values.len());
+                for (actual, expected) in actual.iter().zip(values) {
+                    assert_fields_preserved(actual, expected);
+                }
+            }
+            _ => assert_eq!(actual, expected),
+        }
+    }
+
+    fn assert_response<T: DeserializeOwned + Serialize>(name: &str) {
+        for case in fixtures(name) {
+            let parsed = serde_json::from_value::<T>(case.value.clone())
+                .unwrap_or_else(|e| panic!("{name}/{}: {e}", case.name));
+            assert_fields_preserved(&serde_json::to_value(parsed).unwrap(), &case.value);
+        }
+    }
+
+    fn assert_requests(name: &str, actual: Vec<Value>) {
+        let expected = fixtures(name);
+        assert_eq!(
+            actual.len(),
+            expected.len(),
+            "{name}: all cases must be serialized"
         );
-        assert_eq!(view.missedCount, 1);
+        for (actual, case) in actual.into_iter().zip(expected) {
+            assert_eq!(actual, case.value, "{name}/{}", case.name);
+        }
     }
 
     #[test]
-    fn parses_settings_fixture() {
-        let raw = r#"{
-            "provider": "openrouter", "model": "free/model", 
-            "models": { "openai": "gpt-4o-mini", "gemini": "gemini-2.0-flash",
-                        "openrouter": "free/model" },
-            "hasProviderKey": true, "hasOpenAIKey": false,
-            "hasGeminiKey": false, "hasOpenRouterKey": true,
-            "executionLimits": { "maxSteps": 12, "maxWallClockMs": 600000,
-                                 "maxInputChars": 20000, "maxOutputChars": 100000 },
-            "onboardingCompletedAt": null
-        }"#;
-        let settings: AssistantSettings = serde_json::from_str(raw).unwrap();
-        assert_eq!(settings.provider, "openrouter");
-        assert!(settings.hasProviderKey);
+    fn response_sessionresponse() {
+        assert_response::<SessionResponse>("SessionResponse");
     }
 
     #[test]
-    fn create_task_request_omits_unset_fields() {
-        let request = CreateTaskRequest {
-            title: None,
-            request: "Do the thing".into(),
-            constraints: None,
-            startingUrls: None,
-            projectId: None,
-            kind: Some(TaskKind::ResearchBrief),
+    fn response_authsuccess() {
+        assert_response::<AuthSuccess>("AuthSuccess");
+    }
+
+    #[test]
+    fn response_task() {
+        assert_response::<Task>("Task");
+    }
+
+    #[test]
+    fn response_tasksresponse() {
+        assert_response::<TasksResponse>("TasksResponse");
+    }
+
+    #[test]
+    fn response_taskdetail() {
+        assert_response::<TaskDetail>("TaskDetail");
+    }
+
+    #[test]
+    fn response_approval() {
+        assert_response::<Approval>("Approval");
+    }
+
+    #[test]
+    fn response_approvalsresponse() {
+        assert_response::<ApprovalsResponse>("ApprovalsResponse");
+    }
+
+    #[test]
+    fn response_project() {
+        assert_response::<Project>("Project");
+    }
+
+    #[test]
+    fn response_projectwithgrants() {
+        assert_response::<Project>("ProjectWithGrants");
+    }
+
+    #[test]
+    fn response_projectsresponse() {
+        assert_response::<ProjectsResponse>("ProjectsResponse");
+    }
+
+    #[test]
+    fn response_memorysnapshot() {
+        assert_response::<MemorySnapshot>("MemorySnapshot");
+    }
+
+    #[test]
+    fn response_routine() {
+        assert_response::<Routine>("Routine");
+    }
+
+    #[test]
+    fn response_routineview() {
+        assert_response::<RoutineView>("RoutineView");
+    }
+
+    #[test]
+    fn response_routinesresponse() {
+        assert_response::<RoutinesResponse>("RoutinesResponse");
+    }
+
+    #[test]
+    fn response_routineoccurrence() {
+        assert_response::<RoutineOccurrence>("RoutineOccurrence");
+    }
+
+    #[test]
+    fn response_routinedetail() {
+        for case in fixtures("RoutineDetail") {
+            let detail: crate::api::RoutineDetail =
+                serde_json::from_value(case.value.clone()).unwrap();
+            let mut actual = serde_json::to_value(detail.view).unwrap();
+            actual["occurrences"] = serde_json::to_value(detail.occurrences).unwrap();
+            assert_fields_preserved(&actual, &case.value);
+        }
+    }
+
+    #[test]
+    fn response_assistantsettings() {
+        assert_response::<AssistantSettings>("AssistantSettings");
+    }
+
+    #[test]
+    fn response_destinationsresponse() {
+        assert_response::<DestinationsResponse>("DestinationsResponse");
+    }
+
+    #[test]
+    fn response_event() {
+        assert_response::<Event>("Event");
+    }
+
+    #[test]
+    fn request_createtaskrequest() {
+        assert_requests(
+            "CreateTaskRequest",
+            vec![
+                // required-only
+                serde_json::to_value(CreateTaskRequest {
+                    title: Some("Compare options".into()),
+                    request: "Compare A and B".into(),
+                    constraints: None,
+                    startingUrls: None,
+                    projectId: None,
+                    kind: None,
+                })
+                .unwrap(),
+                // all-optionals
+                serde_json::to_value(CreateTaskRequest {
+                    title: Some("Project update".into()),
+                    request: "Summarize notes".into(),
+                    constraints: Some("Use evidence".into()),
+                    startingUrls: Some(vec!["https://example.com".into()]),
+                    projectId: Some("p1".into()),
+                    kind: Some(TaskKind::ProjectUpdate),
+                })
+                .unwrap(),
+                // empty-optionals
+                serde_json::to_value(CreateTaskRequest {
+                    title: Some("Research".into()),
+                    request: "Compare A and B".into(),
+                    constraints: Some("".into()),
+                    startingUrls: Some(vec![]),
+                    projectId: None,
+                    kind: Some(TaskKind::ResearchBrief),
+                })
+                .unwrap(),
+            ],
+        );
+    }
+
+    #[test]
+    fn request_createprojectrequest() {
+        assert_requests(
+            "CreateProjectRequest",
+            vec![
+                // required-only
+                serde_json::to_value(CreateProjectRequest {
+                    name: "Demo".into(),
+                    instructions: None,
+                })
+                .unwrap(),
+                // instructions
+                serde_json::to_value(CreateProjectRequest {
+                    name: "Demo".into(),
+                    instructions: Some("Use notes".into()),
+                })
+                .unwrap(),
+                // empty-instructions
+                serde_json::to_value(CreateProjectRequest {
+                    name: "Demo".into(),
+                    instructions: Some("".into()),
+                })
+                .unwrap(),
+            ],
+        );
+    }
+
+    #[test]
+    fn request_updateprojectrequest() {
+        assert_requests(
+            "UpdateProjectRequest",
+            vec![
+                // empty
+                serde_json::to_value(UpdateProjectRequest {
+                    name: None,
+                    instructions: None,
+                })
+                .unwrap(),
+                // name-only
+                serde_json::to_value(UpdateProjectRequest {
+                    name: Some("Renamed".into()),
+                    instructions: None,
+                })
+                .unwrap(),
+                // all-fields
+                serde_json::to_value(UpdateProjectRequest {
+                    name: Some("Demo".into()),
+                    instructions: Some("".into()),
+                })
+                .unwrap(),
+            ],
+        );
+    }
+
+    #[test]
+    fn request_grantfolderrequest() {
+        assert_requests(
+            "GrantFolderRequest",
+            vec![
+                // path
+                serde_json::to_value(GrantFolderRequest {
+                    path: "C:/notes".into(),
+                })
+                .unwrap(),
+            ],
+        );
+    }
+
+    #[test]
+    fn request_createexportrequest() {
+        assert_requests(
+            "CreateExportRequest",
+            vec![
+                // export
+                serde_json::to_value(CreateExportRequest {
+                    artifactId: "a1".into(),
+                    destinationId: "d1".into(),
+                    filename: "report.md".into(),
+                })
+                .unwrap(),
+            ],
+        );
+    }
+
+    #[test]
+    fn request_exportdestinationrequest() {
+        assert_requests(
+            "ExportDestinationRequest",
+            vec![
+                // path
+                serde_json::to_value(ExportDestinationRequest {
+                    path: "C:/exports".into(),
+                })
+                .unwrap(),
+            ],
+        );
+    }
+
+    #[test]
+    fn request_grantdecision() {
+        assert_requests(
+            "GrantDecision",
+            vec![
+                // granted
+                serde_json::to_value(GrantDecision {
+                    decision: "granted".into(),
+                })
+                .unwrap(),
+                // rejected
+                serde_json::to_value(GrantDecision {
+                    decision: "rejected".into(),
+                })
+                .unwrap(),
+            ],
+        );
+    }
+
+    #[test]
+    fn request_createroutinerequest() {
+        assert_requests(
+            "CreateRoutineRequest",
+            vec![
+                // weekly-paused
+                serde_json::to_value(CreateRoutineRequest {
+                    name: "Friday planning".into(),
+                    projectId: "p1".into(),
+                    timezone: "Asia/Kolkata".into(),
+                    schedule: RoutineSchedule::Weekly {
+                        weekday: 5,
+                        time: "09:00".into(),
+                    },
+                    template: RoutineTemplate {
+                        title: "Weekly plan".into(),
+                        request: "Draft priorities".into(),
+                        constraints: None,
+                    },
+                })
+                .unwrap(),
+                // daily-active
+                serde_json::to_value(CreateRoutineRequest {
+                    name: "Friday planning".into(),
+                    projectId: "p1".into(),
+                    timezone: "Asia/Kolkata".into(),
+                    schedule: RoutineSchedule::Daily {
+                        time: "18:30".into(),
+                    },
+                    template: RoutineTemplate {
+                        title: "Weekly plan".into(),
+                        request: "Draft priorities".into(),
+                        constraints: Some("Focus on next week".into()),
+                    },
+                })
+                .unwrap(),
+            ],
+        );
+    }
+
+    #[test]
+    fn request_updateroutinerequest() {
+        assert_requests(
+            "UpdateRoutineRequest",
+            vec![
+                // name-only
+                serde_json::to_value(UpdateRoutineRequest {
+                    name: Some("Renamed".into()),
+                    projectId: None,
+                    timezone: None,
+                    schedule: None,
+                    template: None,
+                })
+                .unwrap(),
+                // all-fields
+                serde_json::to_value(UpdateRoutineRequest {
+                    name: Some("Daily planning".into()),
+                    projectId: Some("p1".into()),
+                    timezone: Some("UTC".into()),
+                    schedule: Some(RoutineSchedule::Daily {
+                        time: "18:30".into(),
+                    }),
+                    template: Some(RoutineTemplate {
+                        title: "Weekly plan".into(),
+                        request: "Draft priorities".into(),
+                        constraints: Some("Focus".into()),
+                    }),
+                })
+                .unwrap(),
+                // weekly-schedule
+                serde_json::to_value(UpdateRoutineRequest {
+                    name: None,
+                    projectId: None,
+                    timezone: None,
+                    schedule: Some(RoutineSchedule::Weekly {
+                        weekday: 5,
+                        time: "09:00".into(),
+                    }),
+                    template: None,
+                })
+                .unwrap(),
+            ],
+        );
+    }
+
+    #[test]
+    fn request_setproviderconfigrequest() {
+        assert_requests(
+            "SetProviderConfigRequest",
+            vec![
+                // openai-omitted
+                serde_json::to_value(SetProviderConfigRequest::<String> {
+                    provider: "openai".into(),
+                    model: None,
+                })
+                .unwrap(),
+                // gemini-omitted
+                serde_json::to_value(SetProviderConfigRequest::<String> {
+                    provider: "gemini".into(),
+                    model: None,
+                })
+                .unwrap(),
+                // openrouter-omitted
+                serde_json::to_value(SetProviderConfigRequest::<String> {
+                    provider: "openrouter".into(),
+                    model: None,
+                })
+                .unwrap(),
+                // model
+                serde_json::to_value(SetProviderConfigRequest::<String> {
+                    provider: "openai".into(),
+                    model: Some("gpt-4o-mini".into()),
+                })
+                .unwrap(),
+                // reset-model
+                serde_json::to_value(SetProviderConfigRequest::<Option<String>> {
+                    provider: "openai".into(),
+                    model: Some(None),
+                })
+                .unwrap(),
+            ],
+        );
+    }
+
+    #[test]
+    fn request_setproviderkeyrequest() {
+        assert_requests(
+            "SetProviderKeyRequest",
+            vec![
+                // openai
+                serde_json::to_value(SetProviderKeyRequest {
+                    provider: "openai".into(),
+                    key: "fixture-only-not-a-real-key".into(),
+                })
+                .unwrap(),
+                // gemini
+                serde_json::to_value(SetProviderKeyRequest {
+                    provider: "gemini".into(),
+                    key: "fixture-only-not-a-real-key".into(),
+                })
+                .unwrap(),
+                // openrouter
+                serde_json::to_value(SetProviderKeyRequest {
+                    provider: "openrouter".into(),
+                    key: "fixture-only-not-a-real-key".into(),
+                })
+                .unwrap(),
+            ],
+        );
+    }
+
+    #[test]
+    fn request_approvememoryproposalrequest() {
+        assert_requests(
+            "ApproveMemoryProposalRequest",
+            vec![
+                // new-file
+                serde_json::to_value(ApproveMemoryProposalRequest {
+                    content: None,
+                    fileSha256: None,
+                })
+                .unwrap(),
+                // existing-file
+                serde_json::to_value(ApproveMemoryProposalRequest {
+                    content: None,
+                    fileSha256: Some(
+                        "0000000000000000000000000000000000000000000000000000000000000000".into(),
+                    ),
+                })
+                .unwrap(),
+                // edited
+                serde_json::to_value(ApproveMemoryProposalRequest {
+                    content: Some("Edited preference".into()),
+                    fileSha256: Some(
+                        "0000000000000000000000000000000000000000000000000000000000000000".into(),
+                    ),
+                })
+                .unwrap(),
+                // empty-edit
+                serde_json::to_value(ApproveMemoryProposalRequest {
+                    content: Some("".into()),
+                    fileSha256: None,
+                })
+                .unwrap(),
+            ],
+        );
+    }
+
+    #[test]
+    fn request_updatememoryentryrequest() {
+        assert_requests(
+            "UpdateMemoryEntryRequest",
+            vec![
+                // edit
+                serde_json::to_value(UpdateMemoryEntryRequest {
+                    content: "Edited preference".into(),
+                    fileSha256: "0000000000000000000000000000000000000000000000000000000000000000"
+                        .into(),
+                })
+                .unwrap(),
+            ],
+        );
+    }
+
+    #[test]
+    fn request_deletememoryentryrequest() {
+        assert_requests(
+            "DeleteMemoryEntryRequest",
+            vec![
+                // version
+                serde_json::to_value(DeleteMemoryEntryRequest {
+                    fileSha256: "0000000000000000000000000000000000000000000000000000000000000000"
+                        .into(),
+                })
+                .unwrap(),
+            ],
+        );
+    }
+
+    #[test]
+    fn request_setuprequest() {
+        assert_requests(
+            "SetupRequest",
+            vec![
+                // default-owner
+                serde_json::to_value(CredentialsRequest {
+                    username: None,
+                    password: "fixture-password".into(),
+                })
+                .unwrap(),
+                // named-owner
+                serde_json::to_value(CredentialsRequest {
+                    username: Some("owner".into()),
+                    password: "fixture-password".into(),
+                })
+                .unwrap(),
+            ],
+        );
+    }
+
+    #[test]
+    fn request_loginrequest() {
+        assert_requests(
+            "LoginRequest",
+            vec![
+                // default-owner
+                serde_json::to_value(CredentialsRequest {
+                    username: None,
+                    password: "fixture-password".into(),
+                })
+                .unwrap(),
+                // named-owner
+                serde_json::to_value(CredentialsRequest {
+                    username: Some("owner".into()),
+                    password: "fixture-password".into(),
+                })
+                .unwrap(),
+                // short-existing-password
+                serde_json::to_value(CredentialsRequest {
+                    username: None,
+                    password: "x".into(),
+                })
+                .unwrap(),
+            ],
+        );
+    }
+
+    #[test]
+    fn all_enum_variants_match_shared_fixture() {
+        let raw = std::fs::read_to_string(fixture_dir().join("enums.json")).unwrap();
+        let expected: serde_json::Map<String, Value> = serde_json::from_str(&raw).unwrap();
+        macro_rules! variants {
+            ($ty:ident, [$($variant:ident),+]) => {{
+                let actual = vec![$($ty::$variant),+];
+                let value = serde_json::to_value(&actual).unwrap();
+                assert_eq!(value, expected[stringify!($ty)], stringify!($ty));
+                for variant in value.as_array().unwrap() {
+                    serde_json::from_value::<$ty>(variant.clone()).unwrap();
+                }
+                assert!(serde_json::from_value::<$ty>(Value::String("unknown_variant".into())).is_err());
+            }};
+        }
+        variants!(
+            TaskState,
+            [
+                Queued,
+                Running,
+                AwaitingApproval,
+                Completed,
+                Failed,
+                Canceled,
+                Interrupted
+            ]
+        );
+        variants!(
+            TaskKind,
+            [ResearchBrief, ProjectUpdate, ExportReport, WeeklyPlan]
+        );
+        variants!(
+            RunState,
+            [Running, Completed, Failed, Canceled, Interrupted]
+        );
+        variants!(RunLimitKind, [MaxSteps, WallClock, MaxInput, MaxOutput]);
+        variants!(
+            ApprovalState,
+            [Pending, Granted, Rejected, Canceled, Expired, Executed]
+        );
+        variants!(RiskTier, [Auto, Telegram, Local]);
+        variants!(MemoryScope, [Global, Project]);
+        variants!(ProviderId, [Openai, Gemini, Openrouter]);
+        variants!(RoutineState, [Active, Paused]);
+        variants!(RoutineOccurrenceState, [Scheduled, Missed, Skipped]);
+        variants!(MemoryProposalState, [Pending, Approved, Rejected]);
+        assert_eq!(expected.len(), 11);
+    }
+
+    #[test]
+    fn every_fixture_file_is_registered() {
+        let mut actual: Vec<String> = std::fs::read_dir(fixture_dir())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .filter(|name| name.ends_with(".json"))
+            .collect();
+        let mut expected: Vec<String> = vec![
+            "SessionResponse",
+            "AuthSuccess",
+            "Task",
+            "TasksResponse",
+            "TaskDetail",
+            "Approval",
+            "ApprovalsResponse",
+            "Project",
+            "ProjectWithGrants",
+            "ProjectsResponse",
+            "MemorySnapshot",
+            "Routine",
+            "RoutineView",
+            "RoutinesResponse",
+            "RoutineOccurrence",
+            "RoutineDetail",
+            "AssistantSettings",
+            "DestinationsResponse",
+            "Event",
+            "CreateTaskRequest",
+            "CreateProjectRequest",
+            "UpdateProjectRequest",
+            "GrantFolderRequest",
+            "CreateExportRequest",
+            "ExportDestinationRequest",
+            "GrantDecision",
+            "CreateRoutineRequest",
+            "UpdateRoutineRequest",
+            "SetProviderConfigRequest",
+            "SetProviderKeyRequest",
+            "ApproveMemoryProposalRequest",
+            "UpdateMemoryEntryRequest",
+            "DeleteMemoryEntryRequest",
+            "SetupRequest",
+            "LoginRequest",
+            "enums",
+        ]
+        .into_iter()
+        .map(|name| format!("{name}.json"))
+        .collect();
+        actual.sort();
+        expected.sort();
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn missing_required_task_title_fails_serialization() {
+        let input = CreateTaskRequest {
+            request: "Compare A and B".into(),
+            ..Default::default()
         };
-        let json = serde_json::to_value(&request).unwrap();
-        let obj = json.as_object().unwrap();
-        // strictObject on the API rejects unknown keys; unset optionals must be absent.
-        assert!(!obj.contains_key("title"));
-        assert!(!obj.contains_key("constraints"));
-        assert!(!obj.contains_key("projectId"));
-        assert_eq!(obj["request"], "Do the thing");
-        assert_eq!(obj["kind"], "research_brief");
-    }
-
-    #[test]
-    fn parses_session_fixture() {
-        let raw = r#"{ "authenticated": true, "ownerCreated": true,
-                       "onboardingCompletedAt": "2026-10-26T00:00:00.000Z",
-                       "csrfToken": "tok" }"#;
-        let session: SessionResponse = serde_json::from_str(raw).unwrap();
-        assert!(session.authenticated);
-        assert_eq!(session.csrfToken.as_deref(), Some("tok"));
+        assert!(serde_json::to_value(input)
+            .unwrap_err()
+            .to_string()
+            .contains("title is required"));
     }
 }
