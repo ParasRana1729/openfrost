@@ -1171,3 +1171,91 @@ does not close S07's one-working-week owner-use gate.
   handoff follows in a separate commit referencing this implementation SHA.
 - Not run: remote CI or interactive live API/TUI/provider workflow. S07's
   one-working-week owner-use gate remains open.
+
+
+### Handoff — Priority 4 (`test/s09-contract-parity`)
+
+- **Commits:** `e7b849e9bc53585e50901a51f0f7a4df7ee6f29a` — implementation checkpoint,
+  `test(s09): Enforce shared wire contract parity`. This handoff is committed
+  separately after that implementation. Base: `a52e85c` (PR #38/#39 present).
+- **What changed:**
+  - `packages/domain/src/transport.ts` / `src/index.ts`: exported strict Zod
+    transport/auth envelopes composed from canonical domain entities, plus
+    inferred types. Existing request/entity validators remain authoritative;
+    setup/login definitions match the existing route-local validators without
+    modifying the out-of-scope API route. Setup itself completes onboarding.
+  - `packages/domain/test/fixtures/contracts/`: 36 checked-in JSON files:
+    128 named payload examples (90 response/entity, 38 request) across 19
+    response/entity and 16 request shapes; 42 variants across 11 enums,
+    including every explicitly requested enum and all 51 event types. Includes
+    null/populated fields, omitted optionals/default token counts, empty values,
+    both schedule variants, all memory proposal states, and fake settings.
+    The README documents maintenance, decisions, and limitations.
+  - `packages/domain/test/contracts.test.ts`: 175 new Vitest tests against real
+    exported Zod schemas, strict extra-key rejection, optional-versus-nullable
+    checks, exhaustive enum/event coverage, and fixture inventory registration.
+  - `apps/tui/src/contracts.rs`: 38 contract tests read the exact same JSON files;
+    response round-trips assert every fixture field survives (serde cannot
+    silently ignore a renamed field); independent concrete request constructors
+    serialize to exactly the canonical objects, including absence versus null.
+    Added a ProviderId enum mirror; no codegen or dependency/toolchain additions.
+  - Genuine mismatches fixed, with domain/API shapes as authority: routine views
+    now consume nested `routine` rather than flattened data; base project update
+    responses default absent grants to an empty list; missing required task
+    titles now fail serialization without changing app construction sites;
+    provider config's generic model field can represent an explicit reset null
+    while preserving existing callers' omission semantics.
+  - `apps/tui/src/api_tests.rs`: corrected the existing title-less HTTP request
+    fixture. `apps/tui/src/app.rs`: corrected only two lines in the existing
+    test-only routine fixture to nest the entity. No production app/UI code,
+    behavior, layout, modules, or Priority 5B refactor changed; `ui.rs` untouched.
+  - `.github/workflows/ci.yml`: both existing `windows-latest` test steps name
+    and document parity coverage; `checks` runs root `pnpm test`, `tui` runs
+    `cargo test`. Cargo remains outside the pnpm workspace. No shared build
+    outputs, dependencies, lockfiles, API implementation or other worktree edits.
+- **Verification run (Windows, this worktree):**
+  - `pnpm install --offline --frozen-lockfile`: passed on bounded retry; all
+    281 packages reused with no downloads. pnpm reported ignored build scripts;
+    subsequent native SQLite/DPAPI tests nevertheless passed in this worktree.
+  - `pnpm lint && pnpm test && pnpm build`: passed in full. Lint: no errors;
+    tests: **503 passed, 0 failed** in 35 files (258 domain, 54 db, 121 agent,
+    70 API), including real Windows DPAPI round-trip/provider-key tests; build:
+    all five workspace packages/apps passed, including static landing export.
+  - `pnpm --reporter=append-only test`: additional root run passed with the same
+    exact 503-test/35-file breakdown and real Windows DPAPI coverage.
+  - `cargo fmt --manifest-path apps/tui/Cargo.toml --all -- --check`: passed.
+  - `cargo clippy --manifest-path apps/tui/Cargo.toml --all-targets -- -D warnings`:
+    passed, no warnings.
+  - `cargo test --manifest-path apps/tui/Cargo.toml`: **117 passed, 0 failed,
+    0 ignored**, including 38 contract tests (88 baseline tests minus 9 inline
+    contract tests replaced by these 38). Repeated final run passed again.
+  - `cargo build --manifest-path apps/tui/Cargo.toml`: passed. These manifest-path
+    commands are the crate-local required Rust suite, invoked from the isolated
+    worktree root; default target output stays in this worktree's `apps/tui/target`.
+  - `git --no-pager diff --check`: passed before implementation commit.
+- **Not run / Limitations:**
+  - No push, PR, merge, or remote CI run, as instructed. CI execution is configured,
+    not observed remotely. No paid-provider calls or interactive live API/TUI
+    onboarding/session/task/routine workflow; this is deterministic contract and
+    existing mock/state-machine test coverage. S07 owner-use gate remains open.
+  - Initial bounded attempts timed out: offline install at 120 s, focused Vitest
+    at 120 s, and initial Rust compiles at 300 s / 600 s. Bounded reruns completed;
+    no shared target/node build output was borrowed from another worktree.
+  - First full pnpm attempt passed lint but had one API provider-key DPAPI test
+    exceed its existing 20 s timeout (69/70 API passed); build was short-circuited.
+    The complete rerun and additional test rerun passed without changing timeouts.
+    First full Rust run exposed six tests using the same obsolete routine fixture
+    (111 passed, 6 failed); the test-fixture-only correction resolved all six.
+  - Landing build retains its pre-existing `metadataBase` warning; not changed
+    in this slice. No Rust warnings remain under warnings-denied Clippy.
+  - Fixtures are finite examples, not full equivalence proofs for Rust strings,
+    ranges, every omission, or Zod refinements. The API remains the validation
+    and security boundary. New auth domain schemas match, but are not yet
+    imported by, the existing out-of-scope route-local auth validators.
+  - `SetProviderConfigRequest<Option<String>>` tests null-reset wire encoding;
+    the existing API helper accepts only the default specialization and no new
+    UI reset action was added. Source-compatible optional title storage is
+    retained, but missing titles fail serialization rather than being sent.
+- **Next:** owner review of this branch/implementation and handoff. Push or merge
+  only with explicit authorization; confirm both Windows CI jobs then. No other
+  priority was started.
