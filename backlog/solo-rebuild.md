@@ -928,6 +928,36 @@ gate; findings marked WEEK carry into this log.
 - Remaining: async password hashing/callers and deterministic login backoff;
   full workspace checks and final handoff. No push/merge; S07 remains open.
 
+### Priority 3 checkpoint — async auth and deterministic backoff
+
+- Replaced production synchronous scrypt with a typed promisified crypto
+  adapter, preserving hash format/parameters and timing-safe comparison;
+  owner creation/verification and all direct callers now await completion.
+  The owner's approved scope exception changes only the affected async test
+  in `packages/agent/test/failures.test.ts`.
+- Owner insertion rechecks existence in an immediate transaction after
+  hashing, preserving exactly one owner under overlapping different-name
+  setups. Login verification is serialized per app so overlapping attempts
+  cannot race through the five-failure threshold. The fifth failure returns
+  401; subsequent attempts return 429 for 30 seconds, with ceil-rounded
+  `Retry-After` from `ctx.now()`. Success and window expiry reset failures.
+- Final verification: `pnpm lint` passed; `pnpm test` passed all 346 tests
+  (83 domain, 64 DB including real Windows DPAPI, 121 agent, 78 API);
+  `pnpm build` passed all five workspace packages/apps. Initial build caught
+  Node's overloaded-scrypt promisify typing (TS2554/TS18046/TS2345); fixed
+  with a typed callback adapter, then reran full lint/test/build successfully.
+  Commands used bounded timeouts (120 seconds lint, 180 seconds test/build),
+  with no timeouts reached. `git diff --check` passed.
+- Targeted verification: DB password/persistence suites passed 15 tests;
+  API auth suite passed 23 tests. Regenerating Drizzle reported no schema
+  changes. Built-API real loopback HTTP smoke passed in a throwaway home:
+  setup 201, CSRF logout 200, five wrong logins 401, valid login blocked
+  with 429/Retry-After 30, injected-clock expiry login 200, tasks 200.
+- Limitations: throttle state is process-local and resets at restart; no
+  interactive TUI/owner-week or paid-provider evaluation, Rust checks, CI,
+  push, or merge. Existing landing `metadataBase` build warning remains
+  outside scope. Final handoff below will record the implementation SHA.
+
 ## S08 — Improve Control Center clarity and feedback (Phase 1)
 
 - **Status:** Complete (merged on `main`; unfinished Phase 2 web work checkpointed on `feat/ui-phase2-task-lifecycle` and superseded by S09)
