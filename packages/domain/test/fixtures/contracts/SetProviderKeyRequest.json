@@ -1,0 +1,23 @@
+[
+  {
+    "name": "openai",
+    "value": {
+      "provider": "openai",
+      "key": "fixture-only-not-a-real-key"
+    }
+  },
+  {
+    "name": "gemini",
+    "value": {
+      "provider": "gemini",
+      "key": "fixture-only-not-a-real-key"
+    }
+  },
+  {
+    "name": "openrouter",
+    "value": {
+      "provider": "openrouter",
+      "key": "fixture-only-not-a-real-key"
+    }
+  }
+]

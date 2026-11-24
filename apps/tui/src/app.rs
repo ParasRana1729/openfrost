@@ -2504,12 +2504,12 @@ mod tests {
 
     fn sample_routine(id: &str) -> crate::api::RoutineDetail {
         serde_json::from_value(serde_json::json!({
-            "id": id, "name": id, "projectId": "p1", "timezone": "UTC",
+            "routine": { "id": id, "name": id, "projectId": "p1", "timezone": "UTC",
             "schedule": { "kind": "daily", "time": "09:00" },
             "template": { "title": "Plan", "request": "Draft priorities", "constraints": null },
             "state": "active", "windowStartAt": "2026-11-01T00:00:00Z",
             "lastOccurrenceKey": null, "lastOccurrenceAt": null,
-            "createdAt": "2026-11-01T00:00:00Z", "updatedAt": "2026-11-01T00:00:00Z",
+            "createdAt": "2026-11-01T00:00:00Z", "updatedAt": "2026-11-01T00:00:00Z" },
             "nextOccurrenceAt": null, "nextOccurrenceKey": null,
             "missedCount": 2, "projectName": "Demo",
             "occurrences": (["2026-11-20", "2026-11-21"].map(|key| serde_json::json!({

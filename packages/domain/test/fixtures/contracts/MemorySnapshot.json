@@ -1,0 +1,148 @@
+[
+  {
+    "name": "empty",
+    "value": {
+      "global": {
+        "scope": "global",
+        "projectId": null,
+        "path": "C:/memory/owner.md",
+        "exists": false,
+        "sha256": null,
+        "entries": [],
+        "problems": [],
+        "externalChange": false
+      },
+      "projects": [],
+      "proposals": [],
+      "limits": {
+        "contentMaxChars": 4000,
+        "entriesPerFile": 50,
+        "contextMaxChars": 6000
+      }
+    }
+  },
+  {
+    "name": "populated",
+    "value": {
+      "global": {
+        "scope": "global",
+        "projectId": null,
+        "path": "C:/memory/owner.md",
+        "exists": true,
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "entries": [
+          {
+            "id": "m1",
+            "scope": "global",
+            "projectId": null,
+            "content": "Prefer concise answers.",
+            "source": {
+              "kind": "owner",
+              "taskId": null,
+              "artifactId": null,
+              "label": "Owner"
+            },
+            "createdAt": "2026-11-24T09:00:00.000Z",
+            "updatedAt": "2026-11-24T09:00:00.000Z"
+          }
+        ],
+        "problems": [
+          "External edit needs review"
+        ],
+        "externalChange": true
+      },
+      "projects": [
+        {
+          "scope": "project",
+          "projectId": "p1",
+          "path": "C:/memory/owner.md",
+          "exists": false,
+          "sha256": null,
+          "entries": [
+            {
+              "id": "m2",
+              "scope": "project",
+              "projectId": "p1",
+              "content": "Prefer concise answers.",
+              "source": {
+                "kind": "task",
+                "taskId": "t1",
+                "artifactId": "a1",
+                "label": "Task output"
+              },
+              "createdAt": "2026-11-24T09:00:00.000Z",
+              "updatedAt": "2026-11-24T09:00:00.000Z"
+            }
+          ],
+          "problems": [],
+          "externalChange": false,
+          "projectName": "Demo"
+        }
+      ],
+      "proposals": [
+        {
+          "id": "mp1",
+          "scope": "global",
+          "projectId": null,
+          "content": "Prefer concise answers.",
+          "source": {
+            "kind": "owner",
+            "taskId": null,
+            "artifactId": null,
+            "label": "Owner"
+          },
+          "sourceRunId": null,
+          "state": "pending",
+          "proposedAt": "2026-11-24T09:00:00.000Z",
+          "decidedAt": null,
+          "memoryEntryId": null,
+          "proposedContentSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "decidedContentSha256": null
+        },
+        {
+          "id": "mp2",
+          "scope": "project",
+          "projectId": "p1",
+          "content": null,
+          "source": {
+            "kind": "task",
+            "taskId": "t1",
+            "artifactId": "a1",
+            "label": "Task output"
+          },
+          "sourceRunId": "r1",
+          "state": "approved",
+          "proposedAt": "2026-11-24T09:00:00.000Z",
+          "decidedAt": "2026-11-24T09:00:00.000Z",
+          "memoryEntryId": "m2",
+          "proposedContentSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "decidedContentSha256": "0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        {
+          "id": "mp3",
+          "scope": "global",
+          "projectId": null,
+          "content": null,
+          "source": {
+            "kind": "owner",
+            "taskId": null,
+            "artifactId": null,
+            "label": "Owner"
+          },
+          "sourceRunId": null,
+          "state": "rejected",
+          "proposedAt": "2026-11-24T09:00:00.000Z",
+          "decidedAt": "2026-11-24T09:00:00.000Z",
+          "memoryEntryId": null,
+          "proposedContentSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "decidedContentSha256": "0000000000000000000000000000000000000000000000000000000000000000"
+        }
+      ],
+      "limits": {
+        "contentMaxChars": 4000,
+        "entriesPerFile": 50,
+        "contextMaxChars": 6000
+      }
+    }
+  }
+]

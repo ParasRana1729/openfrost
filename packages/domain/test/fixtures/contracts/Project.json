@@ -1,0 +1,12 @@
+[
+  {
+    "name": "update-response-without-grants",
+    "value": {
+      "id": "p1",
+      "name": "Demo",
+      "instructions": null,
+      "createdAt": "2026-11-24T09:00:00.000Z",
+      "updatedAt": "2026-11-24T09:00:00.000Z"
+    }
+  }
+]

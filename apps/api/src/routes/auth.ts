@@ -1,21 +1,11 @@
 import type { FastifyPluginAsync, FastifyReply } from 'fastify';
-import { z } from 'zod';
+import { loginRequestSchema, setupRequestSchema } from '@openfrost/domain';
 import type { AppContext } from '../types.js';
 import { SESSION_COOKIE, newCsrfToken, tokensMatch } from '../app.js';
 
 function csrfHeaderValid(token: unknown, expected: string): boolean {
   return typeof token === 'string' && tokensMatch(token, expected);
 }
-
-const setupRequestSchema = z.strictObject({
-  username: z.string().min(1).max(60).default('owner'),
-  password: z.string().min(8).max(200),
-});
-
-const loginRequestSchema = z.strictObject({
-  username: z.string().min(1).max(60).default('owner'),
-  password: z.string().min(1).max(200),
-});
 
 function sessionExpiry(now: string, ttlMs: number): string {
   return new Date(Date.parse(now) + ttlMs).toISOString();

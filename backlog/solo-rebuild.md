@@ -1244,6 +1244,165 @@ does not close S07's one-working-week owner-use gate.
   verify remote main, then remove the clean performance worktree. S07
   owner-use evaluation and the interactive workflow check remain open.
 
+
+### Checkpoint — S09 Priority 4 contract parity (2026-11-24)
+
+- Branch `test/s09-contract-parity`, isolated `.worktrees/priority-4`, based on
+  `a52e85c` (includes prerequisites PR #38 and #39). Priority 4 only; no push or
+  merge authorized. No production app/UI refactor or Priority 5B changes.
+- Added canonical shared fixtures and Zod/Rust parity checks, lightweight
+  domain transport envelopes, and explicit Windows CI test-step documentation.
+  Corrected nested routine views, project updates without grants, title-less
+  task serialization, and omitted-versus-null provider model representation.
+  Existing mock fixtures needed only a required task title and nested routine
+  object (the latter is a two-line test-only change in `app.rs`).
+- Verification: root `pnpm lint && pnpm test && pnpm build` passed; all 503 TS
+  tests passed (258 domain including 175 new contract tests, 54 db with real
+  Windows DPAPI, 121 agent, 70 API). Rust fmt, Clippy with warnings denied,
+  all 117 tests (38 contract tests), and build passed using
+  `--manifest-path apps/tui/Cargo.toml` from this worktree root. A subsequent
+  append-only root test run and Rust test run passed with those same counts.
+- Initial install/compilation timeouts and one existing API DPAPI timeout were
+  resolved by bounded reruns; no test timeout settings were weakened. Build
+  still emits the existing landing `metadataBase` warning. Detailed final
+  handoff follows in a separate commit referencing this implementation SHA.
+- Not run: remote CI or interactive live API/TUI/provider workflow. S07's
+  one-working-week owner-use gate remains open.
+
+
+### Handoff — Priority 4 (`test/s09-contract-parity`)
+
+- **Commits:** `e7b849e9bc53585e50901a51f0f7a4df7ee6f29a` — implementation checkpoint,
+  `test(s09): Enforce shared wire contract parity`. This handoff is committed
+  separately after that implementation. Base: `a52e85c` (PR #38/#39 present).
+- **What changed:**
+  - `packages/domain/src/transport.ts` / `src/index.ts`: exported strict Zod
+    transport/auth envelopes composed from canonical domain entities, plus
+    inferred types. Existing request/entity validators remain authoritative;
+    setup/login definitions match the existing route-local validators without
+    modifying the out-of-scope API route. Setup itself completes onboarding.
+  - `packages/domain/test/fixtures/contracts/`: 36 checked-in JSON files:
+    128 named payload examples (90 response/entity, 38 request) across 19
+    response/entity and 16 request shapes; 42 variants across 11 enums,
+    including every explicitly requested enum and all 51 event types. Includes
+    null/populated fields, omitted optionals/default token counts, empty values,
+    both schedule variants, all memory proposal states, and fake settings.
+    The README documents maintenance, decisions, and limitations.
+  - `packages/domain/test/contracts.test.ts`: 175 new Vitest tests against real
+    exported Zod schemas, strict extra-key rejection, optional-versus-nullable
+    checks, exhaustive enum/event coverage, and fixture inventory registration.
+  - `apps/tui/src/contracts.rs`: 38 contract tests read the exact same JSON files;
+    response round-trips assert every fixture field survives (serde cannot
+    silently ignore a renamed field); independent concrete request constructors
+    serialize to exactly the canonical objects, including absence versus null.
+    Added a ProviderId enum mirror; no codegen or dependency/toolchain additions.
+  - Genuine mismatches fixed, with domain/API shapes as authority: routine views
+    now consume nested `routine` rather than flattened data; base project update
+    responses default absent grants to an empty list; missing required task
+    titles now fail serialization without changing app construction sites;
+    provider config's generic model field can represent an explicit reset null
+    while preserving existing callers' omission semantics.
+  - `apps/tui/src/api_tests.rs`: corrected the existing title-less HTTP request
+    fixture. `apps/tui/src/app.rs`: corrected only two lines in the existing
+    test-only routine fixture to nest the entity. No production app/UI code,
+    behavior, layout, modules, or Priority 5B refactor changed; `ui.rs` untouched.
+  - `.github/workflows/ci.yml`: both existing `windows-latest` test steps name
+    and document parity coverage; `checks` runs root `pnpm test`, `tui` runs
+    `cargo test`. Cargo remains outside the pnpm workspace. No shared build
+    outputs, dependencies, lockfiles, API implementation or other worktree edits.
+- **Verification run (Windows, this worktree):**
+  - `pnpm install --offline --frozen-lockfile`: passed on bounded retry; all
+    281 packages reused with no downloads. pnpm reported ignored build scripts;
+    subsequent native SQLite/DPAPI tests nevertheless passed in this worktree.
+  - `pnpm lint && pnpm test && pnpm build`: passed in full. Lint: no errors;
+    tests: **503 passed, 0 failed** in 35 files (258 domain, 54 db, 121 agent,
+    70 API), including real Windows DPAPI round-trip/provider-key tests; build:
+    all five workspace packages/apps passed, including static landing export.
+  - `pnpm --reporter=append-only test`: additional root run passed with the same
+    exact 503-test/35-file breakdown and real Windows DPAPI coverage.
+  - `cargo fmt --manifest-path apps/tui/Cargo.toml --all -- --check`: passed.
+  - `cargo clippy --manifest-path apps/tui/Cargo.toml --all-targets -- -D warnings`:
+    passed, no warnings.
+  - `cargo test --manifest-path apps/tui/Cargo.toml`: **117 passed, 0 failed,
+    0 ignored**, including 38 contract tests (88 baseline tests minus 9 inline
+    contract tests replaced by these 38). Repeated final run passed again.
+  - `cargo build --manifest-path apps/tui/Cargo.toml`: passed. These manifest-path
+    commands are the crate-local required Rust suite, invoked from the isolated
+    worktree root; default target output stays in this worktree's `apps/tui/target`.
+  - `git --no-pager diff --check`: passed before implementation commit.
+- **Not run / Limitations:**
+  - No push, PR, merge, or remote CI run, as instructed. CI execution is configured,
+    not observed remotely. No paid-provider calls or interactive live API/TUI
+    onboarding/session/task/routine workflow; this is deterministic contract and
+    existing mock/state-machine test coverage. S07 owner-use gate remains open.
+  - Initial bounded attempts timed out: offline install at 120 s, focused Vitest
+    at 120 s, and initial Rust compiles at 300 s / 600 s. Bounded reruns completed;
+    no shared target/node build output was borrowed from another worktree.
+  - First full pnpm attempt passed lint but had one API provider-key DPAPI test
+    exceed its existing 20 s timeout (69/70 API passed); build was short-circuited.
+    The complete rerun and additional test rerun passed without changing timeouts.
+    First full Rust run exposed six tests using the same obsolete routine fixture
+    (111 passed, 6 failed); the test-fixture-only correction resolved all six.
+  - Landing build retains its pre-existing `metadataBase` warning; not changed
+    in this slice. No Rust warnings remain under warnings-denied Clippy.
+  - Fixtures are finite examples, not full equivalence proofs for Rust strings,
+    ranges, every omission, or Zod refinements. The API remains the validation
+    and security boundary. New auth domain schemas match, but are not yet
+    imported by, the existing out-of-scope route-local auth validators.
+  - `SetProviderConfigRequest<Option<String>>` tests null-reset wire encoding;
+    the existing API helper accepts only the default specialization and no new
+    UI reset action was added. Source-compatible optional title storage is
+    retained, but missing titles fail serialization rather than being sent.
+- **Next:** owner review of this branch/implementation and handoff. Push or merge
+  only with explicit authorization; confirm both Windows CI jobs then. No other
+  priority was started.
+
+
+### Review follow-up — Priority 4 auth source of truth (2026-11-24)
+
+- **Implementation commit:** `7b7083b597fd38f8346d5211ad4f37ebcd3c3bfb` —
+  `fix(s09): Share production auth validators`. This SHA/verification handoff
+  is committed separately after the tested implementation.
+
+- Addressed the review's P2 coverage gap on `test/s09-contract-parity` in
+  `.worktrees/priority-4`, with the approved scope extension to
+  `apps/api/src/routes/auth.ts`. Setup/login now import `setupRequestSchema`
+  and `loginRequestSchema` from `@openfrost/domain`, so production API routes
+  and parity fixtures exercise the same validators, not equivalent copies.
+  Removed both route-local definitions and the now-unused Zod import.
+- Verified both removed definitions were textually identical to their domain
+  definitions before replacement: strict unknown-key rejection, default owner,
+  username bounds, and distinct setup/login password bounds are unchanged.
+  No session, CSRF, cookie, credential-storage, onboarding, or route behavior
+  changes. Updated the domain comment and fixture README to reflect actual use.
+  This supersedes the earlier handoff's route-local-auth limitation.
+- Verification, all from this isolated worktree, passed on the first attempt:
+  - `pnpm lint`: PASS (exit 0, no lint errors).
+  - `pnpm test`: PASS, **503 passed, 0 failed**, 35 test files: domain
+    **258** (including **175** contract tests), db **54**, agent **121**, API
+    **70**. Real Windows DPAPI round-trip and provider-key tests passed.
+  - `pnpm build`: PASS (exit 0), all five workspace packages/apps, including
+    the static landing build; its pre-existing `metadataBase` warning remains.
+    Commands ran sequentially with bounded subprocess
+    timeouts: lint 180 s, test 300 s, build 300 s; no timeout occurred.
+  - `git --no-pager diff --check`: PASS before committing.
+  - Rust not rerun: no Rust production code, tests, fixtures, dependencies, or
+    Cargo configuration changed in this follow-up; the prior 117-test Rust
+    validation remains recorded above, not claimed as newly rerun.
+- Integration with isolated Priority 5B: its moved test helper
+  `sample_routine()` is at `apps/tui/src/app/mod.rs:790` (reviewed P5B head
+  `e8f7e3f`). Carry Priority 4's two-line nesting correction into that helper:
+  line 792 must open `"routine": {` before the entity fields, and line 797 must
+  close that object after `updatedAt`, before `nextOccurrenceAt`. The original
+  `apps/tui/src/app.rs` is deleted by P5B; do not resurrect it or lose the fix
+  when resolving the move. Retain both branches' appended backlog entries;
+  append conflicts are expected when integrating these isolated branches.
+- Limitations: no remote CI, live API/TUI manual workflow, push, PR, merge, or
+  edits to another worktree. The S07 owner-use gate remains open. Original
+  finite-fixture/model-reset limitations still apply. Next: owner integration
+  review, preserve the moved fixture correction and both backlog handoffs,
+  then rerun affected checks on the integrated branch with authorization.
+
 ### Handoff — Priority 5A (refactor/agent-split-executor)
 
 - **Commits:** `fe922d96615ed5d3f2dbae7aede57dcd2bc31e64` —
@@ -1349,3 +1508,18 @@ does not close S07's one-working-week owner-use gate.
   pnpm build all passed, including real Windows DPAPI tests. No code
   conflict or test/assertion change was needed.
 - S07 owner-use gate remains open; next is Windows PR CI and authorized merge.
+
+### Integration — Priority 4 (2026-11-24)
+
+- Priority 3 landed via PR #41, merge a8797628d717807c34d4bc9fa29d48d433a8c0b0.
+- Merged updated origin/main without rewriting history. auth.ts auto-merged:
+  shared domain setup/login schemas coexist with awaited owner credentials,
+  serialized verifications, five-failure/30-second backoff, 429/Retry-After,
+  session/cookie/origin/CSRF behavior and all Priority 3 tests.
+- The only conflict was appended backlog text; retained both sides in full.
+  A line-subsequence check confirms both pre-merge backlog versions survive.
+- Integrated verification: pnpm lint, CI=true pnpm test (521 passed: domain
+  258, db 64 with real Windows DPAPI, agent 121, API 78), pnpm build passed.
+  Rust fmt, Clippy with warnings denied, all 117 tests, and build passed.
+- No paid-provider or interactive visual TUI workflow run. S07 remains open.
+  Next: Windows PR CI, then authorized merge before integrating Priority 5B.

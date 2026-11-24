@@ -1,0 +1,66 @@
+{
+  "TaskState": [
+    "queued",
+    "running",
+    "awaiting_approval",
+    "completed",
+    "failed",
+    "canceled",
+    "interrupted"
+  ],
+  "TaskKind": [
+    "research_brief",
+    "project_update",
+    "export_report",
+    "weekly_plan"
+  ],
+  "RunState": [
+    "running",
+    "completed",
+    "failed",
+    "canceled",
+    "interrupted"
+  ],
+  "RunLimitKind": [
+    "max_steps",
+    "wall_clock",
+    "max_input",
+    "max_output"
+  ],
+  "ApprovalState": [
+    "pending",
+    "granted",
+    "rejected",
+    "canceled",
+    "expired",
+    "executed"
+  ],
+  "RiskTier": [
+    "auto",
+    "telegram",
+    "local"
+  ],
+  "MemoryScope": [
+    "global",
+    "project"
+  ],
+  "ProviderId": [
+    "openai",
+    "gemini",
+    "openrouter"
+  ],
+  "RoutineState": [
+    "active",
+    "paused"
+  ],
+  "RoutineOccurrenceState": [
+    "scheduled",
+    "missed",
+    "skipped"
+  ],
+  "MemoryProposalState": [
+    "pending",
+    "approved",
+    "rejected"
+  ]
+}

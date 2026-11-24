@@ -1,0 +1,71 @@
+[
+  {
+    "name": "nulls",
+    "value": {
+      "id": "t1",
+      "title": "Compare options",
+      "request": "Compare A and B",
+      "constraints": null,
+      "startingUrls": null,
+      "projectId": null,
+      "kind": "research_brief",
+      "exportArgs": null,
+      "routineId": null,
+      "state": "queued",
+      "attemptCount": 0,
+      "lastRunId": null,
+      "resultArtifactId": null,
+      "error": null,
+      "createdAt": "2026-11-24T09:00:00.000Z",
+      "updatedAt": "2026-11-24T09:00:00.000Z"
+    }
+  },
+  {
+    "name": "populated",
+    "value": {
+      "id": "t1",
+      "title": "Compare options",
+      "request": "Compare A and B",
+      "constraints": "Use evidence",
+      "startingUrls": [
+        "https://example.com"
+      ],
+      "projectId": "p1",
+      "kind": "export_report",
+      "exportArgs": {
+        "artifactId": "a1",
+        "destinationId": "d1",
+        "filename": "report.md"
+      },
+      "routineId": "rt1",
+      "state": "failed",
+      "attemptCount": 1,
+      "lastRunId": "r1",
+      "resultArtifactId": "a1",
+      "error": "Stopped",
+      "createdAt": "2026-11-24T09:00:00.000Z",
+      "updatedAt": "2026-11-24T09:00:00.000Z"
+    }
+  },
+  {
+    "name": "empty-values",
+    "value": {
+      "id": "t1",
+      "title": "Compare options",
+      "request": "Compare A and B",
+      "constraints": "",
+      "startingUrls": [],
+      "projectId": null,
+      "kind": "research_brief",
+      "exportArgs": null,
+      "routineId": null,
+      "state": "queued",
+      "attemptCount": 0,
+      "lastRunId": null,
+      "resultArtifactId": null,
+      "error": "",
+      "createdAt": "2026-11-24T09:00:00.000Z",
+      "updatedAt": "2026-11-24T09:00:00.000Z"
+    }
+  }
+]

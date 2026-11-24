@@ -1,0 +1,14 @@
+[
+  {
+    "name": "granted",
+    "value": {
+      "decision": "granted"
+    }
+  },
+  {
+    "name": "rejected",
+    "value": {
+      "decision": "rejected"
+    }
+  }
+]
