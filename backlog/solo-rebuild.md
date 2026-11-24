@@ -1634,6 +1634,29 @@ does not close S07's one-working-week owner-use gate.
   Next: open PR from `feat/tui-cli-launcher`, verify Windows CI, and merge when
   authorized.
 
+### Handoff - `openfrost update` Command (`feat/openfrost-update`, 2026-11-24)
+
+- Scope (S09 follow-up, cut from `origin/main`): `openfrost update` and
+  `openfrost update --check` in the Rust CLI (`apps/tui/src/update.rs`, wired
+  through `cli.rs` and `main.rs`; `runtime::read_runtime_config` is now
+  `pub(crate)`). Source-based installs only: it resolves the checkout from
+  `repoRoot` (or the `apps/api/dist/main.js` ancestor) in `runtime.json`,
+  refuses on tracked changes or a missing upstream, fast-forwards with
+  `git pull --ff-only`, runs `pnpm install --frozen-lockfile` and
+  `scripts/install.ps1`, and restarts the managed API if it was running. On
+  Windows the running `openfrost.exe` is renamed to `openfrost.exe.old` so
+  `cargo install --force` can replace it (restored on failure, deleted on the
+  next update). `README.md` gained an "Updating" section.
+- Verification: inside `apps/tui`, `cargo fmt`, `cargo clippy --all-targets -- -D warnings`,
+  and `cargo test` (**134 passed**, including new CLI parsing, repo-root
+  resolution, and dirty-tree tests) passed. `openfrost update --check` was
+  smoke-tested against a real install.
+- Not run: a full `openfrost update` apply against a live install (pull,
+  rebuild, exe swap, API restart), non-Windows apply (intentionally
+  unsupported), paid-provider calls. S07 owner-use gate remains open.
+  Merged as PR #46; README "Updating" section and this entry landed in a docs
+  follow-up.
+
 ### Handoff — Local Auth Removal to Loopback-Only Model (`feat/remove-local-auth`, 2026-11-24)
 
 - **Scope & Rationale:**

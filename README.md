@@ -84,6 +84,9 @@ pnpm run install:cli
 `%USERPROFILE%\.openfrost\runtime.json`, and installs `openfrost.exe` to your
 Cargo `bin` directory.)
 
+To update an existing install later, run `openfrost update` (see
+[Updating](#updating) below) instead of repeating these steps.
+
 Then launch the Control Center from any terminal:
 
 ```sh
@@ -100,14 +103,30 @@ openfrost status        # check local API health, PID, and log path
 openfrost stop          # stop the background API started by openfrost
 openfrost logs -n 100   # print recent background API logs
 openfrost --no-spawn    # attach to an already-running API (e.g. `pnpm dev`)
-openfrost update --check  # report whether a newer version is available
-openfrost update        # pull, rebuild, and reinstall (Windows; restarts the API if it was running)
+```
+
+### Updating
+
+```sh
+openfrost update --check   # report whether a newer version is available
+openfrost update           # pull, rebuild, and reinstall
 ```
 
 `openfrost update` fast-forwards the source checkout the CLI was installed from
-(recorded in `~/.openfrost/runtime.json`), runs `pnpm install --frozen-lockfile`
-and `scripts/install.ps1`, and restarts the background API if it was running.
-It refuses to run with uncommitted changes in the checkout.
+(recorded as `repoRoot` in `%USERPROFILE%\.openfrost\runtime.json`) on whatever
+branch it has checked out (use `main` for releases), then runs
+`pnpm install --frozen-lockfile` and `scripts/install.ps1`. If the background API
+was running, it is stopped for the rebuild and restarted afterwards. Notes:
+
+- It refuses to run if the checkout has uncommitted changes to tracked files, or
+  if the branch has no upstream.
+- If already up to date it does nothing; run `pnpm run install:cli` to force a
+  rebuild.
+- The apply step is Windows-only for now (`--check` works anywhere). On Windows
+  the running `openfrost.exe` is renamed to `openfrost.exe.old` so Cargo can
+  replace it; the leftover is deleted on the next update.
+- If the CLI can't find the checkout (stale or missing `runtime.json`), run
+  `.\scripts\install.ps1` once from your repo, then retry.
 
 ### Run from source (development)
 
