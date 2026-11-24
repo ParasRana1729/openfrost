@@ -1263,6 +1263,10 @@ does not close S07's one-working-week owner-use gate.
 
 ### Review follow-up — Priority 4 auth source of truth (2026-11-24)
 
+- **Implementation commit:** `7b7083b597fd38f8346d5211ad4f37ebcd3c3bfb` —
+  `fix(s09): Share production auth validators`. This SHA/verification handoff
+  is committed separately after the tested implementation.
+
 - Addressed the review's P2 coverage gap on `test/s09-contract-parity` in
   `.worktrees/priority-4`, with the approved scope extension to
   `apps/api/src/routes/auth.ts`. Setup/login now import `setupRequestSchema`
@@ -1281,7 +1285,8 @@ does not close S07's one-working-week owner-use gate.
     **258** (including **175** contract tests), db **54**, agent **121**, API
     **70**. Real Windows DPAPI round-trip and provider-key tests passed.
   - `pnpm build`: PASS (exit 0), all five workspace packages/apps, including
-    the static landing build. Commands ran sequentially with bounded subprocess
+    the static landing build; its pre-existing `metadataBase` warning remains.
+    Commands ran sequentially with bounded subprocess
     timeouts: lint 180 s, test 300 s, build 300 s; no timeout occurred.
   - `git --no-pager diff --check`: PASS before committing.
   - Rust not rerun: no Rust production code, tests, fixtures, dependencies, or
