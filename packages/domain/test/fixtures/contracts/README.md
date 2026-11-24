@@ -7,14 +7,12 @@ or pnpm build output is needed by Cargo.
 
 Each payload file is a nonempty array of `{ "name": "case", "value": { ... } }`.
 `enums.json` contains the complete ordered variants of the mirrored enums.
-The fixtures cover 19 response/entity shapes, 16 mutating request shapes,
-including setup/login, and 11 enums. Setup completes onboarding atomically;
-there is no separate onboarding endpoint or body. All credential-like values
-are inert test strings, never usable keys or sessions.
+The fixtures cover 17 response/entity shapes, 14 mutating request shapes,
+and 11 enums. All credential-like values are inert test strings, never usable
+keys.
 
-- Vitest parses payloads through exported production Zod schemas. New transport
-  envelopes compose the existing entity schemas; setup/login API routes import
-  the same domain validators used by these fixture tests (no route-local copies).
+- Vitest parses payloads through exported production Zod schemas. Transport
+  envelopes compose the existing entity schemas.
 - Rust deserializes responses and verifies every fixture field survives
   serialization, catching silently ignored/renamed fields as well as null drift.
   Extra serialized default nulls for omitted response optionals are allowed.

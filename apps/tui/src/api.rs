@@ -1,21 +1,15 @@
 //! Loopback API client. The TUI is a thin client of the existing Fastify
-//! API: it authenticates with owner credentials, keeps the session cookie in
-//! an in-memory store, and sends the session-bound CSRF token on every
-//! mutating request. The API validates and enforces everything.
+//! API on 127.0.0.1. Loopback binding and the API's origin guard are the
+//! local trust boundary; the API validates and enforces everything else.
 
 use anyhow::{Context, Result};
-use reqwest::cookie::Jar;
-use reqwest::header::{HeaderMap, HeaderValue};
 use reqwest::{Client, Method, StatusCode};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::sync::{Arc, PoisonError, RwLock};
 use std::time::Duration;
 
 use crate::contracts::*;
-
-const CSRF_HEADER: &str = "x-csrf-token";
 
 /// Errors surface as messages the TUI can show directly.
 #[derive(Debug, thiserror::Error)]
@@ -33,21 +27,15 @@ impl ApiError {
 }
 
 /// Cheaply cloneable handle to the loopback API. `reqwest::Client` is
-/// `Clone + Send + Sync`, and the only mutable state (the session-bound CSRF
-/// token) lives behind a shared `RwLock`, so concurrent tasks each hold their
-/// own clone and never serialize their HTTP round-trips behind a lock. The
-/// lock is only ever held for the instant it takes to read or swap the token,
-/// never across an `.await`.
+/// `Clone + Send + Sync`, so concurrent tasks each hold their own clone and
+/// never serialize HTTP round-trips behind a lock.
 #[derive(Clone)]
 pub struct ApiClient {
     http: Client,
-    /// Same cookie jar as `http`, but with no total-request timeout so a
+    /// Same pool settings as `http`, but with no total-request timeout so a
     /// long-lived SSE response is not cut off every 30 seconds.
     stream_http: Client,
-    #[allow(dead_code)]
-    cookie_jar: Arc<Jar>,
     base_url: String,
-    csrf_token: Arc<RwLock<Option<String>>>,
 }
 
 /// Extract the API's human-readable error body: `{ "error": "..." }`.
@@ -83,101 +71,32 @@ impl ApiClient {
             matches!(parsed.scheme(), "http" | "https"),
             "API base URL must be http(s)"
         );
-        let cookie_jar = Arc::new(Jar::default());
-        let http = Client::builder()
-            .cookie_provider(cookie_jar.clone())
-            .timeout(Duration::from_secs(30))
-            .build()?;
+        let http = Client::builder().timeout(Duration::from_secs(30)).build()?;
         // The API sends an SSE heartbeat comment every 15 s; a 45 s per-read
         // timeout detects silent half-open connections. event::subscribe_events
-        // separately bounds stream lifetime so heartbeats cannot keep an
-        // expired/revoked session connected indefinitely.
+        // separately rotates healthy streams on a fixed lifetime so heartbeats
+        // cannot keep a half-open connection alive indefinitely.
         let stream_http = Client::builder()
-            .cookie_provider(cookie_jar.clone())
             .connect_timeout(Duration::from_secs(10))
             .read_timeout(Duration::from_secs(45))
             .build()?;
         Ok(Self {
             http,
             stream_http,
-            cookie_jar,
             base_url: base_url.trim_end_matches('/').to_string(),
-            csrf_token: Arc::new(RwLock::new(None)),
         })
     }
 
-    /// Read access to the shared reqwest Client (with shared cookie jar).
-    #[allow(dead_code)]
-    pub fn http(&self) -> Client {
-        self.http.clone()
-    }
-
-    /// Client for the long-lived SSE stream: same cookie jar, no total
-    /// request timeout, and a 45 s per-read timeout (3x the API's 15 s
-    /// heartbeat) so a silent half-open connection drops and reconnects.
-    /// The subscriber also rotates healthy streams on a fixed auth deadline.
+    /// Client for the long-lived SSE stream: no total request timeout, and a
+    /// 45 s per-read timeout (3x the API's 15 s heartbeat) so a silent
+    /// half-open connection drops and reconnects. The subscriber also rotates
+    /// healthy streams on a fixed lifetime.
     pub fn stream_http(&self) -> Client {
         self.stream_http.clone()
     }
 
-    /// Read access to the shared cookie jar.
-    #[allow(dead_code)]
-    pub fn cookie_jar(&self) -> Arc<Jar> {
-        self.cookie_jar.clone()
-    }
-
-    /// Snapshot of the current CSRF token, shared by every clone. The
-    /// login/setup/logout flows update it internally.
-    #[allow(dead_code)]
-    pub fn csrf_token(&self) -> Option<String> {
-        self.csrf_token
-            .read()
-            .unwrap_or_else(PoisonError::into_inner)
-            .clone()
-    }
-
-    /// Used by tests to simulate an authenticated client; visible to every
-    /// clone of this client.
-    #[allow(dead_code)]
-    pub fn set_csrf_token(&self, token: Option<String>) {
-        self.replace_csrf_token(token);
-    }
-
-    fn replace_csrf_token(&self, token: Option<String>) {
-        *self
-            .csrf_token
-            .write()
-            .unwrap_or_else(PoisonError::into_inner) = token;
-    }
-
-    /// Clear the token only if it is still the one the caller observed, so a
-    /// slow logout cannot wipe the token of a newer login on another clone.
-    fn clear_csrf_token_if(&self, observed: &Option<String>) {
-        let mut guard = self
-            .csrf_token
-            .write()
-            .unwrap_or_else(PoisonError::into_inner);
-        if *guard == *observed {
-            *guard = None;
-        }
-    }
-
     fn url(&self, path: &str) -> String {
         format!("{}{}", self.base_url, path)
-    }
-
-    fn csrf_headers(&self) -> Result<HeaderMap, ApiError> {
-        let mut headers = HeaderMap::new();
-        // One read per request: the token cannot change between the check
-        // and the header insertion.
-        if let Some(token) = self.csrf_token() {
-            let value = HeaderValue::from_str(&token).map_err(|error| ApiError::Response {
-                status: 0,
-                message: format!("invalid CSRF token: {error}"),
-            })?;
-            headers.insert(CSRF_HEADER, value);
-        }
-        Ok(headers)
     }
 
     async fn send<T: DeserializeOwned>(
@@ -186,12 +105,9 @@ impl ApiClient {
         path: &str,
         body: Option<&impl Serialize>,
     ) -> Result<T, ApiError> {
-        let mut request = self.http.request(method.clone(), self.url(path));
+        let mut request = self.http.request(method, self.url(path));
         if let Some(payload) = body {
             request = request.json(payload);
-        }
-        if method != Method::GET && method != Method::HEAD {
-            request = request.headers(self.csrf_headers()?);
         }
         let response = request.send().await?;
         let status = response.status();
@@ -214,11 +130,7 @@ impl ApiClient {
     }
 
     async fn send_empty(&self, method: Method, path: &str) -> Result<(), ApiError> {
-        let mut request = self.http.request(method.clone(), self.url(path));
-        if method != Method::GET && method != Method::HEAD {
-            request = request.headers(self.csrf_headers()?);
-        }
-        let response = request.send().await?;
+        let response = self.http.request(method, self.url(path)).send().await?;
         let status = response.status();
         if !status.is_success() {
             let text = response.text().await.unwrap_or_default();
@@ -227,16 +139,9 @@ impl ApiClient {
         Ok(())
     }
 
-    // -- Auth ---------------------------------------------------------------
+    // -- Reachability -------------------------------------------------------
 
-    pub async fn session(&self) -> Result<SessionResponse, ApiError> {
-        self.send(Method::GET, "/api/auth/session", None::<&()>)
-            .await
-    }
-
-    /// Exercised by the mock-server tests; the TUI itself learns
-    /// reachability from the session check.
-    #[allow(dead_code)]
+    /// `GET /health` probe used on startup and while retrying `Connecting`.
     pub async fn health(&self) -> Result<bool, ApiError> {
         let text = self
             .http
@@ -252,37 +157,6 @@ impl ApiClient {
                 message: "unexpected /health response".into(),
             })?;
         Ok(value.get("ok").and_then(Value::as_bool).unwrap_or(false))
-    }
-
-    pub async fn setup(&self, password: &str) -> Result<AuthSuccess, ApiError> {
-        let body = CredentialsRequest {
-            username: None,
-            password: password.to_string(),
-        };
-        let success: AuthSuccess = self
-            .send(Method::POST, "/api/auth/setup", Some(&body))
-            .await?;
-        self.replace_csrf_token(Some(success.csrfToken.clone()));
-        Ok(success)
-    }
-
-    pub async fn login(&self, password: &str) -> Result<AuthSuccess, ApiError> {
-        let body = CredentialsRequest {
-            username: None,
-            password: password.to_string(),
-        };
-        let success: AuthSuccess = self
-            .send(Method::POST, "/api/auth/login", Some(&body))
-            .await?;
-        self.replace_csrf_token(Some(success.csrfToken.clone()));
-        Ok(success)
-    }
-
-    pub async fn logout(&self) -> Result<(), ApiError> {
-        let observed = self.csrf_token();
-        let result = self.send_empty(Method::POST, "/api/auth/logout").await;
-        self.clear_csrf_token_if(&observed);
-        result
     }
 
     // -- Tasks --------------------------------------------------------------

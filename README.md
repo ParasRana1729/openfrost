@@ -39,9 +39,10 @@ in the [backlog](backlog/solo-rebuild.md).
 
 ## Security and privacy
 
-- The API binds to loopback. Sign-in, CSRF protection, and (for browser
-  clients) origin checks guard local state changes; the TUI authenticates like
-  any other client.
+- The API binds strictly to `127.0.0.1` loopback for single-user local access.
+  Local auth (passwords, sessions, CSRF, and login screens) is removed: non-browser
+  clients like the TUI connect directly over loopback, while browser clients are
+  strictly guarded by an Origin check (foreign origins are rejected with 403).
 - Provider keys are protected with Windows DPAPI for the current user. Store
   keys through **Settings**; they are not kept in plaintext configuration files.
 - Folder access requires explicit grants. Reads are bounded and paths are
@@ -117,10 +118,10 @@ Then attach the TUI in another terminal without auto-spawning a second API:
 cargo run --manifest-path apps/tui/Cargo.toml -- --no-spawn
 ```
 
-Create the local account in the TUI on first run, then choose a provider and
-add its key in **Settings**. The API listens on `127.0.0.1:8787`; the TUI talks
-to that API directly. The static landing page (`apps/landing`) runs on port
-3001 during development.
+Launch the TUI, then choose a provider and add its key in **Settings** (no
+local account creation or login is required). The API listens on
+`127.0.0.1:8787`; the TUI talks to that API directly. The static landing page
+(`apps/landing`) runs on port 3001 during development.
 
 OpenRouter's hosted web search can incur charges separately from model tokens,
 including when a free model is selected. Check provider pricing and account

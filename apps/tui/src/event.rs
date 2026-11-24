@@ -37,8 +37,8 @@ pub enum AppEvent {
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug)]
 pub enum Payload {
-    Session(Result<crate::contracts::SessionResponse, String>),
-    Auth(Result<(), String>),
+    /// Startup / Connecting reachability probe (`GET /health`).
+    Health(Result<(), String>),
     Tasks(Result<crate::contracts::TasksResponse, String>),
     TaskDetail(Result<crate::contracts::TaskDetail, String>),
     Projects(Result<Vec<crate::contracts::Project>, String>),
@@ -65,7 +65,6 @@ pub enum Payload {
         label: String,
         result: Result<(), String>,
     },
-    LoggedOut(Result<(), String>),
 }
 
 pub type AppTx = mpsc::UnboundedSender<AppEvent>;
@@ -144,8 +143,8 @@ where
 pub const SSE_INITIAL_BACKOFF_MS: u64 = 1_000;
 pub const SSE_MAX_BACKOFF_MS: u64 = 30_000;
 
-// The server authenticates only when opening a stream. Force a fresh request
-// at least every five minutes, even while heartbeats/activity keep reads alive.
+// Force a fresh request at least every five minutes, even while heartbeats
+// and activity keep reads alive.
 pub(crate) const SSE_MAX_STREAM_LIFETIME: Duration = Duration::from_secs(5 * 60);
 
 /// Exponential reconnect delay: 1 s, 2 s, 4 s ... capped at 30 s.
@@ -183,7 +182,7 @@ impl Default for Backoff {
 pub enum RetryWake {
     /// The full backoff delay elapsed.
     Elapsed,
-    /// `wake` fired (login, onboarding): retry now.
+    /// `wake` fired: retry now.
     Woken,
 }
 
@@ -195,15 +194,11 @@ pub async fn wait_before_retry(delay: Duration, wake: &Notify) -> RetryWake {
     }
 }
 
-/// SSE subscription to the API activity stream. The stream needs an owner
-/// session, so it fails until the owner signs in; `wake` is notified on login
-/// or onboarding so it reconnects at once instead of waiting out the
-/// (up to 30 s) exponential backoff, and also replaces a stream that was
-/// opened under a previous session. Connection state is reported as
-/// `AppEvent::SseConnection`; the app polls only while it is `false`. A fixed
-/// five-minute deadline bounds stale-session access after expiry/revocation;
-/// heartbeats and activity do not extend it. Rotation reconnects immediately
-/// through the authenticated endpoint; failures still use normal backoff.
+/// SSE subscription to the API activity stream. Connection state is reported
+/// as `AppEvent::SseConnection`; the app polls only while it is `false`. A fixed
+/// five-minute deadline bounds stream connection lifetime; heartbeats and
+/// activity do not extend it. Rotation reconnects immediately through the
+/// endpoint; failures use normal backoff.
 pub async fn subscribe_events(
     base_url: String,
     http: reqwest::Client,
@@ -220,7 +215,7 @@ pub async fn subscribe_events(
             loop {
                 tokio::select! {
                     // Neither a busy stream nor a simultaneous message may
-                    // starve logout or the non-renewable session deadline.
+                    // starve rotation or the deadline.
                     biased;
                     _ = wake.notified() => {
                         reconnect_now = true;
@@ -244,7 +239,7 @@ pub async fn subscribe_events(
                                 return;
                             }
                         }
-                        // Error (e.g. 401 before login) or the server ended
+                        // Error (e.g. transient 5xx) or the server ended
                         // the stream: back off and reconnect.
                         Some(Err(_)) | None => break,
                     }
@@ -350,14 +345,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn login_wake_reconnects_without_waiting_out_the_backoff() {
+    async fn wake_reconnects_without_waiting_out_the_backoff() {
         let server = MockServer::start();
-        // Before login the stream is refused.
+        // Initially the stream is refused.
         let mut refused = server.mock(|when, then| {
             when.method(httpmock::Method::GET)
                 .path("/api/events/stream");
-            then.status(401)
-                .body(r#"{ "error": "Authentication required" }"#);
+            then.status(503)
+                .body(r#"{ "error": "Temporarily unavailable" }"#);
         });
         let (tx, mut rx) = mpsc::unbounded_channel();
         let wake = Arc::new(Notify::new());
@@ -383,7 +378,7 @@ mod tests {
                 .body("event: activity\ndata: {}\n\n");
         });
 
-        // Owner signs in: wake. Well under the 1 s backoff, it is connected.
+        // Wake: well under the 1 s backoff, it is connected.
         let woke_at = tokio::time::Instant::now();
         wake.notify_one();
         assert!(matches!(

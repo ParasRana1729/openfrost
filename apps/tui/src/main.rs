@@ -1,6 +1,6 @@
 //! OpenFrost Control Center TUI (S09). A thin client of the local loopback
-//! API: session auth, task workflows, approvals, projects, memory, routines,
-//! and settings. Closing the TUI never stops the runtime.
+//! API: task workflows, approvals, projects, memory, routines, and settings.
+//! Closing the TUI never stops the runtime.
 
 mod api;
 mod app;
@@ -222,27 +222,41 @@ async fn run_tui(api_origin: Option<String>, no_spawn: bool) -> Result<()> {
             runtime::ensure_api_running(&base_url, &home, false).await?;
         }
     }
-    // `ApiClient` is a cheap clone (shared connection pool, cookie jar, and
-    // CSRF token); no lock is held across any HTTP round-trip.
+    // `ApiClient` is a cheap clone (shared connection pool); no lock is held
+    // across any HTTP round-trip.
     let api = ApiClient::new(&base_url).context("Invalid API origin")?;
     let stream_http = api.stream_http();
 
     let (tx, mut rx): (AppTx, AppRx) = mpsc::unbounded_channel();
     let mut app = App::new(tx.clone(), api.clone());
 
-    // Initial session check decides login vs onboarding vs main.
+    // Check GET /health on startup and drop straight into Screen::Main
+    // (automatic retry on Screen::Connecting when --no-spawn is used before the API is up).
     {
         let api = api.clone();
         let tx = tx.clone();
         tokio::spawn(async move {
-            let result = api.session().await.map_err(|error| error.message());
-            let _ = tx.send(AppEvent::Api(Box::new(Payload::Session(result))));
+            loop {
+                let result = api.health().await.map_err(|error| error.message());
+                let is_ok = matches!(&result, Ok(true));
+                let payload = match result {
+                    Ok(true) => Ok(()),
+                    Ok(false) => Err("API reported unhealthy (/health ok: false)".into()),
+                    Err(e) => Err(e),
+                };
+                if tx
+                    .send(AppEvent::Api(Box::new(Payload::Health(payload))))
+                    .is_err()
+                    || is_ok
+                {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+            }
         });
     }
 
-    // Terminal input, periodic ticks, and the SSE activity stream. Signing in
-    // or finishing onboarding notifies `sse_wake` so the stream reconnects
-    // immediately instead of waiting out its backoff.
+    // Terminal input, periodic ticks, and the SSE activity stream.
     tokio::spawn(forward_input(tx.clone()));
     tokio::spawn(forward_ticks(tx.clone(), 80));
     tokio::spawn(subscribe_events(
