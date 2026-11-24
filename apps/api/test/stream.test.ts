@@ -1,12 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { setupOwner, startApp, type TestApp } from './helpers.js';
+import { startApp, type TestApp } from './helpers.js';
 
 let app: TestApp;
 let base: string;
 
 beforeAll(async () => {
   app = await startApp();
-  await setupOwner(app);
   await app.built.app.listen({ port: 0, host: '127.0.0.1' });
   const address = app.built.app.addresses()[0];
   expect(address?.address).toBe('127.0.0.1');
@@ -18,11 +17,13 @@ afterAll(async () => {
   await app.close();
 });
 
-describe('loopback binding and authenticated SSE', () => {
-  it('rejects unauthenticated stream access', async () => {
-    const anonymous = await fetch(`${base}/api/events/stream`);
-    expect(anonymous.status).toBe(401);
-    await anonymous.body?.cancel();
+describe('loopback binding and SSE', () => {
+  it('rejects foreign browser origins on the stream', async () => {
+    const foreign = await fetch(`${base}/api/events/stream`, {
+      headers: { origin: 'https://evil.example' },
+    });
+    expect(foreign.status).toBe(403);
+    await foreign.body?.cancel();
   });
 
   it('sends CORS headers on the hijacked stream for allowlisted browser origins', async () => {
@@ -30,7 +31,7 @@ describe('loopback binding and authenticated SSE', () => {
     // browser refused the cross-origin EventSource and the UI silently ran
     // on its polling fallback.
     const stream = await fetch(`${base}/api/events/stream`, {
-      headers: { origin: 'http://127.0.0.1:3000', cookie: app.cookie! },
+      headers: { origin: 'http://127.0.0.1:3000' },
     });
     expect(stream.status).toBe(200);
     expect(stream.headers.get('access-control-allow-origin')).toBe(
@@ -40,10 +41,9 @@ describe('loopback binding and authenticated SSE', () => {
     await stream.body?.cancel();
   });
 
-  it('streams activity events to authenticated owners', async () => {
+  it('streams activity events on loopback without local auth', async () => {
     const controller = new AbortController();
     const stream = await fetch(`${base}/api/events/stream`, {
-      headers: { cookie: app.cookie! },
       signal: controller.signal,
     });
     expect(stream.status).toBe(200);
@@ -54,8 +54,6 @@ describe('loopback binding and authenticated SSE', () => {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        cookie: app.cookie!,
-        'x-csrf-token': app.csrfToken!,
       },
       body: JSON.stringify({ title: 'Streamed', request: 'stream me' }),
     });

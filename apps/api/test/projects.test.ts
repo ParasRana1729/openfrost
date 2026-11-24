@@ -3,7 +3,7 @@ import * as fs from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { jarHeaders, setupOwner, startApp, waitFor, type TestApp } from './helpers.js';
+import { startApp, waitFor, type TestApp } from './helpers.js';
 
 let app: TestApp;
 let notesRoot: string;
@@ -19,7 +19,6 @@ beforeAll(async () => {
       { type: 'final', text: 'placeholder' },
     ],
   });
-  await setupOwner(app);
   notesRoot = mkdtempSync(join(tmpdir(), 'openfrost-api-projects-'));
   notesDir = join(notesRoot, 'notes');
   fs.mkdirSync(notesDir, { recursive: true });
@@ -44,26 +43,12 @@ function createProject(body: Record<string, unknown>): Promise<{ statusCode: num
     .inject({
       method: 'POST',
       url: '/api/projects',
-      headers: jarHeaders(app),
       payload: body,
     })
     .then((res) => ({ statusCode: res.statusCode, json: () => res.json() }));
 }
 
 describe('projects API', () => {
-  it('requires authentication and CSRF', async () => {
-    const anon = await app.built.app.inject({ method: 'GET', url: '/api/projects' });
-    expect(anon.statusCode).toBe(401);
-
-    const noCsrf = await app.built.app.inject({
-      method: 'POST',
-      url: '/api/projects',
-      headers: { cookie: app.cookie! },
-      payload: { name: 'X' },
-    });
-    expect(noCsrf.statusCode).toBe(403);
-  });
-
   it('creates, lists, and updates a project', async () => {
     const created = await createProject({
       name: 'Thesis',
@@ -77,7 +62,6 @@ describe('projects API', () => {
     const list = await app.built.app.inject({
       method: 'GET',
       url: '/api/projects',
-      headers: { cookie: app.cookie! },
     });
     expect(list.statusCode).toBe(200);
     expect(list.json().projects.some((p: ProjectResponse) => p.id === project.id)).toBe(true);
@@ -85,7 +69,6 @@ describe('projects API', () => {
     const updated = await app.built.app.inject({
       method: 'PUT',
       url: `/api/projects/${project.id}`,
-      headers: jarHeaders(app),
       payload: { name: 'Thesis 2026' },
     });
     expect(updated.statusCode).toBe(200);
@@ -98,7 +81,6 @@ describe('projects API', () => {
     const missing = await app.built.app.inject({
       method: 'PUT',
       url: '/api/projects/does-not-exist',
-      headers: jarHeaders(app),
       payload: { name: 'X' },
     });
     expect(missing.statusCode).toBe(404);
@@ -112,7 +94,6 @@ describe('projects API', () => {
     const granted = await app.built.app.inject({
       method: 'POST',
       url: `/api/projects/${projectId}/grants`,
-      headers: jarHeaders(app),
       payload: { path: notesDir.replace(/\\/g, '/') },
     });
     expect(granted.statusCode).toBe(201);
@@ -122,7 +103,6 @@ describe('projects API', () => {
     const duplicate = await app.built.app.inject({
       method: 'POST',
       url: `/api/projects/${projectId}/grants`,
-      headers: jarHeaders(app),
       payload: { path: notesDir },
     });
     expect(duplicate.statusCode).toBe(409);
@@ -130,7 +110,6 @@ describe('projects API', () => {
     const missing = await app.built.app.inject({
       method: 'POST',
       url: `/api/projects/${projectId}/grants`,
-      headers: jarHeaders(app),
       payload: { path: join(notesRoot, 'nope') },
     });
     expect(missing.statusCode).toBe(400);
@@ -138,7 +117,6 @@ describe('projects API', () => {
     const relative = await app.built.app.inject({
       method: 'POST',
       url: `/api/projects/${projectId}/grants`,
-      headers: jarHeaders(app),
       payload: { path: 'relative/path' },
     });
     expect(relative.statusCode).toBe(400);
@@ -147,7 +125,6 @@ describe('projects API', () => {
     const homeGrant = await app.built.app.inject({
       method: 'POST',
       url: `/api/projects/${projectId}/grants`,
-      headers: jarHeaders(app),
       payload: { path: app.home },
     });
     expect(homeGrant.statusCode).toBe(400);
@@ -156,7 +133,6 @@ describe('projects API', () => {
     const driveRoot = await app.built.app.inject({
       method: 'POST',
       url: `/api/projects/${projectId}/grants`,
-      headers: jarHeaders(app),
       payload: { path: 'C:\\' },
     });
     expect(driveRoot.statusCode).toBe(400);
@@ -164,13 +140,11 @@ describe('projects API', () => {
     const revoked = await app.built.app.inject({
       method: 'DELETE',
       url: `/api/projects/${projectId}/grants/${grant.id}`,
-      headers: jarHeaders(app),
     });
     expect(revoked.statusCode).toBe(200);
     const after = await app.built.app.inject({
       method: 'GET',
       url: `/api/projects/${projectId}`,
-      headers: { cookie: app.cookie! },
     });
     expect(after.json().project.grants).toEqual([]);
   });
@@ -182,7 +156,6 @@ describe('projects API', () => {
     const updateWithoutProject = await app.built.app.inject({
       method: 'POST',
       url: '/api/tasks',
-      headers: jarHeaders(app),
       payload: { title: 'Update', request: 'x', kind: 'project_update' },
     });
     expect(updateWithoutProject.statusCode).toBe(400);
@@ -190,7 +163,6 @@ describe('projects API', () => {
     const unknownProject = await app.built.app.inject({
       method: 'POST',
       url: '/api/tasks',
-      headers: jarHeaders(app),
       payload: {
         title: 'Update',
         request: 'x',
@@ -203,7 +175,6 @@ describe('projects API', () => {
     const scopedBrief = await app.built.app.inject({
       method: 'POST',
       url: '/api/tasks',
-      headers: jarHeaders(app),
       payload: { title: 'Brief', request: 'x', projectId },
     });
     expect(scopedBrief.statusCode).toBe(202);
@@ -212,7 +183,7 @@ describe('projects API', () => {
     // Drain the queue before the full update flow below consumes its steps.
     await waitFor(async () => {
       const tasks = await app.built.app
-        .inject({ method: 'GET', url: '/api/tasks', headers: { cookie: app.cookie! } })
+        .inject({ method: 'GET', url: '/api/tasks' })
         .then((res) => res.json().tasks as Array<{ id: string; state: string }>);
       return tasks.every((t) => !['queued', 'running'].includes(t.state));
     });
@@ -235,19 +206,16 @@ describe('projects API', () => {
         },
       ],
     });
-    await setupOwner(flowApp);
     try {
       const created = await flowApp.built.app.inject({
         method: 'POST',
         url: '/api/projects',
-        headers: jarHeaders(flowApp),
         payload: { name: 'E2E', instructions: 'Quote the notes exactly.' },
       });
       const projectId = created.json().project.id as string;
       const grant = await flowApp.built.app.inject({
         method: 'POST',
         url: `/api/projects/${projectId}/grants`,
-        headers: jarHeaders(flowApp),
         payload: { path: notesDir },
       });
       expect(grant.statusCode).toBe(201);
@@ -255,7 +223,6 @@ describe('projects API', () => {
       const submit = await flowApp.built.app.inject({
         method: 'POST',
         url: '/api/tasks',
-        headers: jarHeaders(flowApp),
         payload: {
           title: 'Weekly update',
           request: 'Prepare the weekly project update.',
@@ -268,7 +235,7 @@ describe('projects API', () => {
 
       await waitFor(async () => {
         const tasks = await flowApp.built.app
-          .inject({ method: 'GET', url: '/api/tasks', headers: { cookie: flowApp.cookie! } })
+          .inject({ method: 'GET', url: '/api/tasks' })
           .then((res) => res.json().tasks as Array<{ id: string; state: string }>);
         return tasks.some((t) => t.id === taskId && (t.state === 'completed' || t.state === 'failed'));
       });
@@ -276,7 +243,6 @@ describe('projects API', () => {
       const detail = await flowApp.built.app.inject({
         method: 'GET',
         url: `/api/tasks/${taskId}`,
-        headers: { cookie: flowApp.cookie! },
       });
       expect(detail.statusCode).toBe(200);
       const body = detail.json();

@@ -9,6 +9,7 @@ export default tseslint.config(
       '**/dist/**',
       '**/out/**',
       '**/.next/**',
+      '**/.worktrees/**',
       '**/coverage/**',
     ],
   },

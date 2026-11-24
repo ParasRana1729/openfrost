@@ -50,27 +50,6 @@ export const routineDetailSchema = routineViewSchema.extend({
   occurrences: z.array(routineOccurrenceViewSchema),
 });
 
-// Setup completes onboarding atomically; there is no separate onboarding body.
-// Shared by the API auth routes and contract tests, including the default owner.
-export const setupRequestSchema = z.strictObject({
-  username: z.string().min(1).max(60).default('owner'),
-  password: z.string().min(8).max(200),
-});
-export const loginRequestSchema = z.strictObject({
-  username: z.string().min(1).max(60).default('owner'),
-  password: z.string().min(1).max(200),
-});
-export const sessionResponseSchema = z.strictObject({
-  authenticated: z.boolean(),
-  ownerCreated: z.boolean(),
-  onboardingCompletedAt: z.string().min(1).nullable(),
-  csrfToken: z.string().min(1).optional(),
-});
-export const authSuccessSchema = z.strictObject({
-  authenticated: z.literal(true),
-  csrfToken: z.string().min(1),
-});
-
 export type ExecutorStatus = z.infer<typeof executorStatusSchema>;
 export type TasksResponse = z.infer<typeof tasksResponseSchema>;
 export type TaskDetail = z.infer<typeof taskDetailSchema>;
@@ -82,7 +61,3 @@ export type RoutineView = z.infer<typeof routineViewSchema>;
 export type RoutinesResponse = z.infer<typeof routinesResponseSchema>;
 export type RoutineOccurrenceView = z.infer<typeof routineOccurrenceViewSchema>;
 export type RoutineDetail = z.infer<typeof routineDetailSchema>;
-export type SetupRequest = z.infer<typeof setupRequestSchema>;
-export type LoginRequest = z.infer<typeof loginRequestSchema>;
-export type SessionResponse = z.infer<typeof sessionResponseSchema>;
-export type AuthSuccess = z.infer<typeof authSuccessSchema>;

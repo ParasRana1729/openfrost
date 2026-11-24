@@ -14,8 +14,6 @@ function fixtures(name: string) {
   return casesSchema.parse(input);
 }
 const responses = {
-  SessionResponse: domain.sessionResponseSchema,
-  AuthSuccess: domain.authSuccessSchema,
   Task: domain.taskSchema,
   TasksResponse: domain.tasksResponseSchema,
   TaskDetail: domain.taskDetailSchema,
@@ -49,8 +47,6 @@ const requests = {
   ApproveMemoryProposalRequest: domain.approveMemoryProposalRequestSchema,
   UpdateMemoryEntryRequest: domain.updateMemoryEntryRequestSchema,
   DeleteMemoryEntryRequest: domain.deleteMemoryEntryRequestSchema,
-  SetupRequest: domain.setupRequestSchema,
-  LoginRequest: domain.loginRequestSchema,
 };
 const enums = {
   TaskState: domain.taskStateSchema,
@@ -108,8 +104,6 @@ describe('shared Rust / Zod contract fixtures', () => {
     ['UpdateRoutineRequest', ['name', 'projectId', 'timezone', 'schedule', 'template']],
     ['SetProviderConfigRequest', ['model']],
     ['ApproveMemoryProposalRequest', ['content']],
-    ['SetupRequest', ['username']],
-    ['LoginRequest', ['username']],
   ];
   for (const [name, fields] of optionalFields) {
     for (const field of fields) {
@@ -125,8 +119,5 @@ describe('shared Rust / Zod contract fixtures', () => {
     expect(domain.createTaskRequestSchema.safeParse({ title: 'T', request: 'R', constraints: null }).success).toBe(false);
     expect(domain.approveMemoryProposalRequestSchema.safeParse({}).success).toBe(false);
     expect(domain.setProviderConfigRequestSchema.safeParse({ provider: 'openai', model: null }).success).toBe(true);
-    expect(domain.sessionResponseSchema.safeParse({
-      authenticated: false, ownerCreated: false, onboardingCompletedAt: null, csrfToken: null,
-    }).success).toBe(false);
   });
 });

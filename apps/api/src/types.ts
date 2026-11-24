@@ -1,4 +1,4 @@
-import type { Store, Session } from '@openfrost/db';
+import type { Store } from '@openfrost/db';
 import type { TaskExecutor, LlmProvider } from '@openfrost/agent';
 import type { ExecutionLimits } from '@openfrost/domain';
 import type { EventBus } from './bus.js';
@@ -24,11 +24,3 @@ export interface BuildAppOptions {
   store?: Store;
   bus?: EventBus;
 }
-
-declare module 'fastify' {
-  interface FastifyRequest {
-    ownerSession: Session;
-  }
-}
-
-export type { Session };

@@ -1,12 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { readProviderKey } from '@openfrost/db';
-import { jarHeaders, setupOwner, startApp, type TestApp } from './helpers.js';
+import { startApp, type TestApp } from './helpers.js';
 
 let app: TestApp;
 
 beforeAll(async () => {
   app = await startApp();
-  await setupOwner(app);
 });
 
 afterAll(async () => {
@@ -18,7 +17,6 @@ describe('settings API', () => {
     const res = await app.built.app.inject({
       method: 'GET',
       url: '/api/settings',
-      headers: { cookie: app.cookie! },
     });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({
@@ -37,16 +35,10 @@ describe('settings API', () => {
     expect(res.json().executionLimits).toMatchObject({ maxSteps: 12 });
   });
 
-  it('requires authentication', async () => {
-    const res = await app.built.app.inject({ method: 'GET', url: '/api/settings' });
-    expect(res.statusCode).toBe(401);
-  });
-
   it('rejects malformed keys and unknown providers', async () => {
     const short = await app.built.app.inject({
       method: 'PUT',
       url: '/api/settings/provider-key',
-      headers: jarHeaders(app),
       payload: { provider: 'openai', key: 'short' },
     });
     expect(short.statusCode).toBe(400);
@@ -54,7 +46,6 @@ describe('settings API', () => {
     const badProvider = await app.built.app.inject({
       method: 'PUT',
       url: '/api/settings/provider-key',
-      headers: jarHeaders(app),
       payload: { provider: 'anthropic', key: 'a-long-enough-key' },
     });
     expect(badProvider.statusCode).toBe(400);
@@ -66,7 +57,6 @@ describe('provider switching', () => {
     const customModel = await app.built.app.inject({
       method: 'PUT',
       url: '/api/settings/provider',
-      headers: jarHeaders(app),
       payload: { provider: 'gemini', model: 'gemini-2.5-pro' },
     });
     expect(customModel.statusCode).toBe(200);
@@ -74,7 +64,6 @@ describe('provider switching', () => {
     const after = await app.built.app.inject({
       method: 'GET',
       url: '/api/settings',
-      headers: { cookie: app.cookie! },
     });
     expect(after.json()).toMatchObject({
       provider: 'gemini',
@@ -88,28 +77,24 @@ describe('provider switching', () => {
     const cleared = await app.built.app.inject({
       method: 'PUT',
       url: '/api/settings/provider',
-      headers: jarHeaders(app),
       payload: { provider: 'gemini', model: null },
     });
     expect(cleared.statusCode).toBe(200);
     const afterClear = await app.built.app.inject({
       method: 'GET',
       url: '/api/settings',
-      headers: { cookie: app.cookie! },
     });
     expect(afterClear.json().model).toBe('gemini-3.8-flash');
 
     const back = await app.built.app.inject({
       method: 'PUT',
       url: '/api/settings/provider',
-      headers: jarHeaders(app),
       payload: { provider: 'openai' },
     });
     expect(back.statusCode).toBe(200);
     const final = await app.built.app.inject({
       method: 'GET',
       url: '/api/settings',
-      headers: { cookie: app.cookie! },
     });
     expect(final.json().provider).toBe('openai');
     expect(final.json().hasProviderKey).toBe(false);
@@ -119,14 +104,12 @@ describe('provider switching', () => {
     const sw = await app.built.app.inject({
       method: 'PUT',
       url: '/api/settings/provider',
-      headers: jarHeaders(app),
       payload: { provider: 'openrouter' },
     });
     expect(sw.statusCode).toBe(200);
     const asDefault = await app.built.app.inject({
       method: 'GET',
       url: '/api/settings',
-      headers: { cookie: app.cookie! },
     });
     expect(asDefault.json()).toMatchObject({
       provider: 'openrouter',
@@ -138,21 +121,18 @@ describe('provider switching', () => {
     const overridden = await app.built.app.inject({
       method: 'PUT',
       url: '/api/settings/provider',
-      headers: jarHeaders(app),
       payload: { provider: 'openrouter', model: 'openai/gpt-4.1-mini' },
     });
     expect(overridden.statusCode).toBe(200);
     const after = await app.built.app.inject({
       method: 'GET',
       url: '/api/settings',
-      headers: { cookie: app.cookie! },
     });
     expect(after.json()).toMatchObject({ provider: 'openrouter', model: 'openai/gpt-4.1-mini' });
 
     const back = await app.built.app.inject({
       method: 'PUT',
       url: '/api/settings/provider',
-      headers: jarHeaders(app),
       payload: { provider: 'openai' },
     });
     expect(back.statusCode).toBe(200);
@@ -162,7 +142,6 @@ describe('provider switching', () => {
     const res = await app.built.app.inject({
       method: 'PUT',
       url: '/api/settings/provider',
-      headers: jarHeaders(app),
       payload: { provider: 'anthropic' },
     });
     expect(res.statusCode).toBe(400);
@@ -183,7 +162,6 @@ describe('provider key handling (real DPAPI)', () => {
     const putOpenAI = await app.built.app.inject({
       method: 'PUT',
       url: '/api/settings/provider-key',
-      headers: jarHeaders(app),
       payload: { provider: 'openai', key: OPENAI_KEY },
     });
     expect(putOpenAI.statusCode).toBe(200);
@@ -192,7 +170,6 @@ describe('provider key handling (real DPAPI)', () => {
     const putGemini = await app.built.app.inject({
       method: 'PUT',
       url: '/api/settings/provider-key',
-      headers: jarHeaders(app),
       payload: { provider: 'gemini', key: GEMINI_KEY },
     });
     expect(putGemini.statusCode).toBe(200);
@@ -201,7 +178,6 @@ describe('provider key handling (real DPAPI)', () => {
     const putOpenRouter = await app.built.app.inject({
       method: 'PUT',
       url: '/api/settings/provider-key',
-      headers: jarHeaders(app),
       payload: { provider: 'openrouter', key: OPENROUTER_KEY },
     });
     expect(putOpenRouter.statusCode).toBe(200);
@@ -217,7 +193,6 @@ describe('provider key handling (real DPAPI)', () => {
     const settings = await app.built.app.inject({
       method: 'GET',
       url: '/api/settings',
-      headers: { cookie: app.cookie! },
     });
     expect(settings.json()).toMatchObject({
       hasOpenAIKey: true,
@@ -234,31 +209,26 @@ describe('provider key handling (real DPAPI)', () => {
     await app.built.app.inject({
       method: 'PUT',
       url: '/api/settings/provider',
-      headers: jarHeaders(app),
       payload: { provider: 'gemini' },
     });
     const asGemini = await app.built.app.inject({
       method: 'GET',
       url: '/api/settings',
-      headers: { cookie: app.cookie! },
     });
     expect(asGemini.json()).toMatchObject({ provider: 'gemini', hasProviderKey: true });
     await app.built.app.inject({
       method: 'PUT',
       url: '/api/settings/provider',
-      headers: jarHeaders(app),
       payload: { provider: 'openrouter' },
     });
     const asOpenRouter = await app.built.app.inject({
       method: 'GET',
       url: '/api/settings',
-      headers: { cookie: app.cookie! },
     });
     expect(asOpenRouter.json()).toMatchObject({ provider: 'openrouter', hasProviderKey: true });
     await app.built.app.inject({
       method: 'PUT',
       url: '/api/settings/provider',
-      headers: jarHeaders(app),
       payload: { provider: 'openai' },
     });
   });
@@ -267,19 +237,16 @@ describe('provider key handling (real DPAPI)', () => {
     const del = await app.built.app.inject({
       method: 'DELETE',
       url: '/api/settings/provider-key?provider=gemini',
-      headers: jarHeaders(app),
     });
     expect(del.statusCode).toBe(204);
     const delRouter = await app.built.app.inject({
       method: 'DELETE',
       url: '/api/settings/provider-key?provider=openrouter',
-      headers: jarHeaders(app),
     });
     expect(delRouter.statusCode).toBe(204);
     const settings = await app.built.app.inject({
       method: 'GET',
       url: '/api/settings',
-      headers: { cookie: app.cookie! },
     });
     expect(settings.json()).toMatchObject({
       hasGeminiKey: false,
@@ -292,7 +259,6 @@ describe('provider key handling (real DPAPI)', () => {
     const unknown = await app.built.app.inject({
       method: 'DELETE',
       url: '/api/settings/provider-key?provider=anthropic',
-      headers: jarHeaders(app),
     });
     expect(unknown.statusCode).toBe(400);
     // The rejected removal must not have touched the stored OpenAI key.

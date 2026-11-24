@@ -1,6 +1,4 @@
-import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import Fastify from 'fastify';
-import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
 import pino, { type Logger } from 'pino';
 import {
@@ -25,7 +23,6 @@ import {
   MemoryProjectNotFoundError,
   MemoryProposalNotFoundError,
   MemorySecretError,
-  OwnerExistsError,
   ProjectNotFoundError,
   RoutineNotFoundError,
   RoutineOccurrenceExistsError,
@@ -42,7 +39,6 @@ import { ActiveProvider } from './activeProvider.js';
 import { EventBus } from './bus.js';
 import { RoutineScheduler } from './routineScheduler.js';
 import type { AppContext, BuildAppOptions } from './types.js';
-import { makeAuthRoutes } from './routes/auth.js';
 import { makeSettingsRoutes } from './routes/settings.js';
 import { makeTaskRoutes } from './routes/tasks.js';
 import { makeProjectRoutes } from './routes/projects.js';
@@ -51,21 +47,6 @@ import { makeExportRoutes } from './routes/exports.js';
 import { makeRoutineRoutes } from './routes/routines.js';
 import { makeDispatchRoutes } from './routes/dispatch.js';
 import { makeEventRoutes } from './routes/events.js';
-
-export const SESSION_COOKIE = 'openfrost_session';
-
-const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
-
-export function newCsrfToken(): string {
-  return randomBytes(32).toString('hex');
-}
-
-/** Constant-time comparison for secret values of equal length. */
-export function tokensMatch(a: string, b: string): boolean {
-  const ha = createHash('sha256').update(a).digest();
-  const hb = createHash('sha256').update(b).digest();
-  return timingSafeEqual(ha, hb);
-}
 
 function buildLogger(): Logger {
   return pino({
@@ -218,9 +199,6 @@ export async function buildApp(options: BuildAppOptions, logger?: Logger | false
     if (err instanceof DpapiUnavailableError) {
       return reply.code(503).send({ error: err.message });
     }
-    if (err instanceof OwnerExistsError) {
-      return reply.code(409).send({ error: err.message });
-    }
     const httpError = err as { statusCode?: number; message?: string };
     const status = httpError.statusCode ?? 500;
     if (status >= 500) {
@@ -231,8 +209,8 @@ export async function buildApp(options: BuildAppOptions, logger?: Logger | false
   });
 
   // Origin guard runs before CORS so disallowed origins never proceed,
-  // regardless of method. Requests without an Origin header (local tools,
-  // health checks) pass; the session/CSRF guards still apply to /api.
+  // regardless of method. Non-browser loopback clients (like the local TUI)
+  // send no Origin header and are allowed directly on 127.0.0.1.
   app.addHook('onRequest', async (request, reply) => {
     const origin = request.headers.origin;
     if (typeof origin !== 'string' || config.webOrigins.includes(origin)) {
@@ -241,7 +219,6 @@ export async function buildApp(options: BuildAppOptions, logger?: Logger | false
     return reply.code(403).send({ error: 'Origin not allowed' });
   });
 
-  await app.register(cookie);
   await app.register(cors, {
     origin: (origin, callback) => {
       // Non-browser clients send no Origin; serve them without CORS headers.
@@ -262,44 +239,23 @@ export async function buildApp(options: BuildAppOptions, logger?: Logger | false
 
   const ctx: AppContext = { store, executor, scheduler, bus, config, now };
 
-  await app.register(makeAuthRoutes(ctx));
+  app.get('/health', async () => ({ ok: true }));
+
   await app.register(
-    async (protectedScope) => {
-      // Everything under /api (other than auth/setup, auth/login, and
-      // auth/session) requires an owner session; state-changing requests
-      // additionally require the session-bound CSRF token.
-      protectedScope.addHook('preHandler', async (request, reply) => {
-        const sid = request.cookies[SESSION_COOKIE];
-        const session = sid ? store.sessions.get(sid) : null;
-        const nowIso = now();
-        if (!session || session.expiresAt <= nowIso) {
-          if (sid) {
-            store.sessions.remove(sid);
-          }
-          return reply.code(401).send({ error: 'Authentication required' });
-        }
-        store.sessions.touch(session.id, nowIso);
-        request.ownerSession = session;
-        if (MUTATING_METHODS.has(request.method)) {
-          const token = request.headers['x-csrf-token'];
-          if (typeof token !== 'string' || !tokensMatch(token, session.csrfToken)) {
-            return reply.code(403).send({ error: 'CSRF token missing or invalid' });
-          }
-        }
-      });
-      await protectedScope.register(makeTaskRoutes(ctx));
-      await protectedScope.register(makeProjectRoutes(ctx));
-      await protectedScope.register(makeMemoryRoutes(ctx));
-      await protectedScope.register(makeExportRoutes(ctx));
-      await protectedScope.register(makeRoutineRoutes(ctx));
-      await protectedScope.register(
+    async (apiScope) => {
+      await apiScope.register(makeTaskRoutes(ctx));
+      await apiScope.register(makeProjectRoutes(ctx));
+      await apiScope.register(makeMemoryRoutes(ctx));
+      await apiScope.register(makeExportRoutes(ctx));
+      await apiScope.register(makeRoutineRoutes(ctx));
+      await apiScope.register(
         makeSettingsRoutes(
           ctx,
           builtProvider instanceof ActiveProvider ? builtProvider : undefined,
         ),
       );
-      await protectedScope.register(makeDispatchRoutes(ctx));
-      await protectedScope.register(makeEventRoutes(ctx));
+      await apiScope.register(makeDispatchRoutes(ctx));
+      await apiScope.register(makeEventRoutes(ctx));
     },
     { prefix: '/api' },
   );

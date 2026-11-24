@@ -2,8 +2,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import type { AppContext } from '../types.js';
 
 /**
- * Activity feed. The SSE stream is authenticated by the same session guard
- * as every other /api route; the origin guard rejects foreign origins.
+ * Activity feed. Served on loopback only; the origin guard rejects foreign origins.
  */
 export const makeEventRoutes = (ctx: AppContext): FastifyPluginAsync => async (app) => {
   app.get('/events', async (request) => {

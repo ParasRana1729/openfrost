@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { jarHeaders, setupOwner, startApp, waitFor, type TestApp } from './helpers.js';
+import { startApp, waitFor, type TestApp } from './helpers.js';
 
 let app: TestApp;
 
@@ -10,7 +10,6 @@ beforeAll(async () => {
       { type: 'final', text: 'recovered on retry' },
     ],
   });
-  await setupOwner(app);
 });
 
 afterAll(async () => {
@@ -19,7 +18,7 @@ afterAll(async () => {
 
 function listTasks(): Promise<Array<{ id: string; state: string }>> {
   return app.built.app
-    .inject({ method: 'GET', url: '/api/tasks', headers: { cookie: app.cookie! } })
+    .inject({ method: 'GET', url: '/api/tasks' })
     .then((res) => res.json().tasks);
 }
 
@@ -28,7 +27,6 @@ describe('task lifecycle over the API', () => {
     const create = await app.built.app.inject({
       method: 'POST',
       url: '/api/tasks',
-      headers: jarHeaders(app),
       payload: { title: 'Fails first', request: 'please fail' },
     });
     expect(create.statusCode).toBe(202);
@@ -42,7 +40,6 @@ describe('task lifecycle over the API', () => {
     const retry = await app.built.app.inject({
       method: 'POST',
       url: `/api/tasks/${taskId}/retry`,
-      headers: jarHeaders(app),
     });
     expect(retry.statusCode).toBe(200);
 
@@ -54,7 +51,6 @@ describe('task lifecycle over the API', () => {
     const detail = await app.built.app.inject({
       method: 'GET',
       url: `/api/tasks/${taskId}`,
-      headers: { cookie: app.cookie! },
     });
     expect(detail.statusCode).toBe(200);
     const body = detail.json();
@@ -68,7 +64,6 @@ describe('task lifecycle over the API', () => {
     const create = await app.built.app.inject({
       method: 'POST',
       url: '/api/tasks',
-      headers: jarHeaders(app),
       payload: {
         title: 'Sourced research',
         request: 'Compare the two products for personal use.',
@@ -87,7 +82,6 @@ describe('task lifecycle over the API', () => {
     const detail = await app.built.app.inject({
       method: 'GET',
       url: `/api/tasks/${taskId}`,
-      headers: { cookie: app.cookie! },
     });
     expect(detail.statusCode).toBe(200);
     expect(detail.json().task.constraints).toContain('open-source');
@@ -105,7 +99,6 @@ describe('task lifecycle over the API', () => {
     const res = await app.built.app.inject({
       method: 'POST',
       url: '/api/tasks',
-      headers: jarHeaders(app),
       payload: {
         title: 'Bad urls',
         request: 'x',
@@ -119,7 +112,6 @@ describe('task lifecycle over the API', () => {
     const create = await app.built.app.inject({
       method: 'POST',
       url: '/api/tasks',
-      headers: jarHeaders(app),
       payload: { title: 'Will run', request: 'x' },
     });
     const taskId = create.json().task.id as string;
@@ -134,7 +126,6 @@ describe('task lifecycle over the API', () => {
     const retry = await app.built.app.inject({
       method: 'POST',
       url: `/api/tasks/${taskId}/retry`,
-      headers: jarHeaders(app),
     });
     expect([200, 409]).toContain(retry.statusCode);
   });
@@ -157,7 +148,6 @@ describe('dispatch review after recovery', () => {
     const status = await app.built.app.inject({
       method: 'GET',
       url: '/api/dispatch',
-      headers: { cookie: app.cookie! },
     });
     expect(status.statusCode).toBe(200);
     expect(status.json().paused).toBe(true);
@@ -168,7 +158,6 @@ describe('dispatch review after recovery', () => {
     const resume = await app.built.app.inject({
       method: 'POST',
       url: '/api/dispatch/resume',
-      headers: jarHeaders(app),
     });
     expect(resume.statusCode).toBe(200);
     expect(resume.json().paused).toBe(false);

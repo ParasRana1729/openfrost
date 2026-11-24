@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { jarHeaders, setupOwner, startApp, waitFor, type TestApp } from './helpers.js';
+import { startApp, waitFor, type TestApp } from './helpers.js';
 
 let app: TestApp;
 let projectId: string;
@@ -14,11 +14,9 @@ beforeAll(async () => {
     steps: Array.from({ length: 12 }, () => ({ type: 'final' as const, text: 'Plan draft.' })),
     now: tick,
   });
-  await setupOwner(app);
   const created = await app.built.app.inject({
     method: 'POST',
     url: '/api/projects',
-    headers: jarHeaders(app),
     payload: { name: 'Routine project' },
   });
   projectId = created.json().project.id as string;
@@ -64,7 +62,6 @@ async function createRoutine(overrides: Record<string, unknown> = {}) {
   const res = await app.built.app.inject({
     method: 'POST',
     url: '/api/routines',
-    headers: jarHeaders(app),
     payload: {
       name: 'Friday planning',
       projectId,
@@ -82,19 +79,6 @@ async function createRoutine(overrides: Record<string, unknown> = {}) {
 }
 
 describe('routines API', () => {
-  it('requires authentication and CSRF', async () => {
-    const anon = await app.built.app.inject({ method: 'GET', url: '/api/routines' });
-    expect(anon.statusCode).toBe(401);
-
-    const noCsrf = await app.built.app.inject({
-      method: 'POST',
-      url: '/api/routines',
-      headers: { cookie: app.cookie! },
-      payload: {},
-    });
-    expect(noCsrf.statusCode).toBe(403);
-  });
-
   it('creates a paused draft and validates input', async () => {
     const created = await createRoutine();
     expect(created.statusCode).toBe(201);
@@ -116,7 +100,6 @@ describe('routines API', () => {
     const list = await app.built.app.inject({
       method: 'GET',
       url: '/api/routines',
-      headers: { cookie: app.cookie! },
     });
     const entry = list
       .json()
@@ -129,7 +112,6 @@ describe('routines API', () => {
     const detail = await app.built.app.inject({
       method: 'GET',
       url: `/api/routines/${body.routine.id}`,
-      headers: { cookie: app.cookie! },
     });
     expect(detail.statusCode).toBe(200);
     expect(detail.json().occurrences).toEqual([]);
@@ -137,7 +119,6 @@ describe('routines API', () => {
     const missing = await app.built.app.inject({
       method: 'GET',
       url: '/api/routines/does-not-exist',
-      headers: { cookie: app.cookie! },
     });
     expect(missing.statusCode).toBe(404);
   });
@@ -149,7 +130,6 @@ describe('routines API', () => {
     const enable = await app.built.app.inject({
       method: 'POST',
       url: `/api/routines/${id}/enable`,
-      headers: jarHeaders(app),
     });
     expect(enable.statusCode).toBe(200);
     expect(enable.json().routine.state).toBe('active');
@@ -157,14 +137,12 @@ describe('routines API', () => {
     const again = await app.built.app.inject({
       method: 'POST',
       url: `/api/routines/${id}/enable`,
-      headers: jarHeaders(app),
     });
     expect(again.statusCode).toBe(409);
 
     const pause = await app.built.app.inject({
       method: 'POST',
       url: `/api/routines/${id}/pause`,
-      headers: jarHeaders(app),
     });
     expect(pause.statusCode).toBe(200);
     expect(pause.json().routine.state).toBe('paused');
@@ -172,7 +150,6 @@ describe('routines API', () => {
     const pauseAgain = await app.built.app.inject({
       method: 'POST',
       url: `/api/routines/${id}/pause`,
-      headers: jarHeaders(app),
     });
     expect(pauseAgain.statusCode).toBe(409);
   });
@@ -184,7 +161,6 @@ describe('routines API', () => {
     const edit = await app.built.app.inject({
       method: 'PUT',
       url: `/api/routines/${before.id}`,
-      headers: jarHeaders(app),
       payload: {
         schedule: { kind: 'daily', time: '08:30' },
         template: {
@@ -203,7 +179,6 @@ describe('routines API', () => {
     const rename = await app.built.app.inject({
       method: 'PUT',
       url: `/api/routines/${before.id}`,
-      headers: jarHeaders(app),
       payload: { name: 'Renamed' },
     });
     // Non-schedule edits keep the anchor.
@@ -222,7 +197,6 @@ describe('routines API', () => {
     await app.built.app.inject({
       method: 'POST',
       url: `/api/routines/${id}/enable`,
-      headers: jarHeaders(app),
     });
 
     // Not due yet…
@@ -234,7 +208,6 @@ describe('routines API', () => {
     const detail = await app.built.app.inject({
       method: 'GET',
       url: `/api/routines/${id}`,
-      headers: { cookie: app.cookie! },
     });
     const occurrence = detail.json().occurrences[0];
     expect(occurrence.state).toBe('scheduled');
@@ -275,7 +248,6 @@ describe('routines API', () => {
     const list = await app.built.app.inject({
       method: 'GET',
       url: '/api/routines',
-      headers: { cookie: app.cookie! },
     });
     const entry = list
       .json()
@@ -285,7 +257,6 @@ describe('routines API', () => {
     const run = await app.built.app.inject({
       method: 'POST',
       url: `/api/routines/${id}/occurrences/2026-10-23/run`,
-      headers: jarHeaders(app),
     });
     expect(run.statusCode).toBe(200);
     const runBody = run.json().occurrence;
@@ -296,14 +267,12 @@ describe('routines API', () => {
     const runAgain = await app.built.app.inject({
       method: 'POST',
       url: `/api/routines/${id}/occurrences/2026-10-23/run`,
-      headers: jarHeaders(app),
     });
     expect(runAgain.statusCode).toBe(409);
 
     const skip = await app.built.app.inject({
       method: 'POST',
       url: `/api/routines/${id}/occurrences/2026-10-16/skip`,
-      headers: jarHeaders(app),
     });
     expect(skip.statusCode).toBe(200);
     expect(skip.json().occurrence.state).toBe('skipped');
@@ -311,14 +280,12 @@ describe('routines API', () => {
     const skipAgain = await app.built.app.inject({
       method: 'POST',
       url: `/api/routines/${id}/occurrences/2026-10-16/skip`,
-      headers: jarHeaders(app),
     });
     expect(skipAgain.statusCode).toBe(409);
 
     const unknownOccurrence = await app.built.app.inject({
       method: 'POST',
       url: `/api/routines/${id}/occurrences/1999-01-01/run`,
-      headers: jarHeaders(app),
     });
     expect(unknownOccurrence.statusCode).toBe(404);
   });
@@ -328,13 +295,11 @@ describe('routines API', () => {
     const removed = await app.built.app.inject({
       method: 'DELETE',
       url: `/api/routines/${body.routine.id}`,
-      headers: jarHeaders(app),
     });
     expect(removed.statusCode).toBe(200);
     const detail = await app.built.app.inject({
       method: 'GET',
       url: `/api/routines/${body.routine.id}`,
-      headers: { cookie: app.cookie! },
     });
     expect(detail.statusCode).toBe(404);
   });

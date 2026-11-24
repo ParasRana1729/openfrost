@@ -606,31 +606,6 @@ pub struct SetProviderConfigRequest<Model = String> {
 }
 
 // ---------------------------------------------------------------------------
-// Auth
-// ---------------------------------------------------------------------------
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SessionResponse {
-    pub authenticated: bool,
-    pub ownerCreated: bool,
-    pub onboardingCompletedAt: Option<String>,
-    pub csrfToken: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct CredentialsRequest {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub username: Option<String>,
-    pub password: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AuthSuccess {
-    pub authenticated: bool,
-    pub csrfToken: String,
-}
-
-// ---------------------------------------------------------------------------
 // Tests: canonical JSON is shared with packages/domain/test/contracts.test.ts.
 // Requests are constructed as actual Rust structs, never deserialized from
 // their expected JSON: renames, extra fields and null/omission drift must fail.
@@ -704,16 +679,6 @@ mod tests {
         for (actual, case) in actual.into_iter().zip(expected) {
             assert_eq!(actual, case.value, "{name}/{}", case.name);
         }
-    }
-
-    #[test]
-    fn response_sessionresponse() {
-        assert_response::<SessionResponse>("SessionResponse");
-    }
-
-    #[test]
-    fn response_authsuccess() {
-        assert_response::<AuthSuccess>("AuthSuccess");
     }
 
     #[test]
@@ -1183,54 +1148,6 @@ mod tests {
     }
 
     #[test]
-    fn request_setuprequest() {
-        assert_requests(
-            "SetupRequest",
-            vec![
-                // default-owner
-                serde_json::to_value(CredentialsRequest {
-                    username: None,
-                    password: "fixture-password".into(),
-                })
-                .unwrap(),
-                // named-owner
-                serde_json::to_value(CredentialsRequest {
-                    username: Some("owner".into()),
-                    password: "fixture-password".into(),
-                })
-                .unwrap(),
-            ],
-        );
-    }
-
-    #[test]
-    fn request_loginrequest() {
-        assert_requests(
-            "LoginRequest",
-            vec![
-                // default-owner
-                serde_json::to_value(CredentialsRequest {
-                    username: None,
-                    password: "fixture-password".into(),
-                })
-                .unwrap(),
-                // named-owner
-                serde_json::to_value(CredentialsRequest {
-                    username: Some("owner".into()),
-                    password: "fixture-password".into(),
-                })
-                .unwrap(),
-                // short-existing-password
-                serde_json::to_value(CredentialsRequest {
-                    username: None,
-                    password: "x".into(),
-                })
-                .unwrap(),
-            ],
-        );
-    }
-
-    #[test]
     fn all_enum_variants_match_shared_fixture() {
         let raw = std::fs::read_to_string(fixture_dir().join("enums.json")).unwrap();
         let expected: serde_json::Map<String, Value> = serde_json::from_str(&raw).unwrap();
@@ -1287,8 +1204,6 @@ mod tests {
             .filter(|name| name.ends_with(".json"))
             .collect();
         let mut expected: Vec<String> = vec![
-            "SessionResponse",
-            "AuthSuccess",
             "Task",
             "TasksResponse",
             "TaskDetail",
@@ -1320,8 +1235,6 @@ mod tests {
             "ApproveMemoryProposalRequest",
             "UpdateMemoryEntryRequest",
             "DeleteMemoryEntryRequest",
-            "SetupRequest",
-            "LoginRequest",
             "enums",
         ]
         .into_iter()

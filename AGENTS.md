@@ -12,8 +12,9 @@ Phase 2 web work is checkpointed on `feat/ui-phase2-task-lifecycle` and
 superseded. S09 replaces the web Control Center with a Rust Ratatui + Crossterm
 TUI (`apps/tui`) client of the same loopback API and is merged on `main`;
 it does not close S07.** The pnpm workspace,
-shared Zod contracts, SQLite persistence, DPAPI secret storage, authenticated
-loopback API/UI, the bounded single-run executor, the research-brief workflow
+shared Zod contracts, SQLite persistence, DPAPI secret storage, loopback
+API/TUI (with local auth removed in favor of loopback binding and strict Origin
+guards), the bounded single-run executor, the research-brief workflow
 (OpenAI, Gemini, and OpenRouter adapters with hosted web search and an
 SSRF-hardened fetch tool), the project-update workflow (project CRUD with
 explicitly granted folder roots, canonical-path checks, bounded text/Markdown
@@ -57,7 +58,7 @@ These paths are planned; create only what the assigned slice needs:
 ```text
 apps/tui          Rust / Ratatui + Crossterm local assistant terminal UI (Control Center)
 apps/landing      Next.js static product landing page (no API dependency)
-apps/api          Fastify API, owner auth, SSE, task worker, routine tick
+apps/api          Fastify loopback API, SSE, task worker, routine tick
 packages/domain   Shared Zod schemas and inferred TypeScript contracts
 packages/db       SQLite + Drizzle, migrations, DPAPI-backed secret storage
 packages/agent    Provider adapters (OpenAI, Gemini, OpenRouter), bounded tools, execution policy
@@ -100,8 +101,15 @@ not a description of an existing runtime.
    escapes and credential stores, and bound reads. Public HTTP(S) tools must block
    private/loopback/link-local/metadata destinations through redirects and DNS
    changes. Source content cannot change permissions or approve actions.
-8. **Local access is not sufficient trust:** require owner sessions, loopback
-   binding, authenticated streams, origin checks, and CSRF protection.
+8. **Loopback-only trust and origin guards:** bind the API strictly to `127.0.0.1`
+   loopback in a single-user model. Traditional local auth (passwords, sessions,
+   CSRF tokens, and login/onboarding screens) is removed; non-browser clients
+   like the TUI connect directly without authentication. Browser requests are
+   guarded by a strict Origin check (foreign origins are rejected with 403
+   Forbidden). Existing SQLite `users` and `sessions` schema tables and historical
+   domain events are retained without dropping. All other local trust boundaries
+   remain mandatory: Windows DPAPI provider key protection, explicit folder
+   grants, canonical-path verification, SSRF guards, and approval-gated exports.
 9. **Bounded, recoverable work:** finite limits, cancellation, durable run history,
    interrupted-run recovery, and deduplicated routines. Never blindly retry writes.
 10. **Context and privacy:** use only the active project's context plus approved
