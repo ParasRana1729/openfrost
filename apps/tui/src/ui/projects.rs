@@ -1,7 +1,8 @@
-use super::{accent, block, muted, selected_style};
+use super::theme::{
+    accent_bold, frost_glow, ice_mid, muted, primary_bold, rounded_block, selected_style,
+};
 use crate::app::App;
 use ratatui::layout::Rect;
-use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{List, ListItem, ListState, Paragraph, Wrap};
 use ratatui::Frame;
@@ -13,42 +14,48 @@ pub(super) fn render_projects(app: &mut App, frame: &mut Frame, area: Rect) {
         };
         let mut lines: Vec<Line> = vec![
             Line::styled(
-                project.name.clone(),
-                Style::default().add_modifier(Modifier::BOLD),
+                format!(" {}", project.name),
+                frost_glow().add_modifier(ratatui::style::Modifier::BOLD),
             ),
             Line::styled(
-                project
-                    .instructions
-                    .clone()
-                    .unwrap_or_else(|| "(no instructions)".to_string()),
-                Style::default(),
+                format!(
+                    " {}",
+                    project
+                        .instructions
+                        .clone()
+                        .unwrap_or_else(|| "(no project instructions)".to_string())
+                ),
+                muted(),
             ),
             Line::from(""),
-            Line::styled("Granted folders", accent().add_modifier(Modifier::BOLD)),
+            Line::styled(" Granted folders", accent_bold()),
         ];
         for (index, grant) in project.grants.iter().enumerate() {
-            let marker = if index == app.projects.grant_selected {
-                " > "
-            } else {
-                "   "
-            };
-            lines.push(Line::from(format!("{marker}{}", grant.path)));
+            let is_sel = index == app.projects.grant_selected;
+            let marker = if is_sel { " ▸ " } else { "   " };
+            lines.push(Line::from(vec![
+                Span::styled(marker, if is_sel { accent_bold() } else { muted() }),
+                Span::styled(
+                    grant.path.clone(),
+                    if is_sel { frost_glow() } else { primary_bold() },
+                ),
+            ]));
         }
         if project.grants.is_empty() {
             lines.push(Line::styled(
-                "  (none \u{2014} press g to grant a folder)",
+                "   (none — press g to grant a folder)",
                 muted(),
             ));
         }
         lines.push(Line::from(""));
         lines.push(Line::styled(
-            " b/Esc back | g grant folder | j/k select grant | x revoke".to_string(),
+            " b/Esc back • g grant folder • j/k select grant • x revoke".to_string(),
             muted(),
         ));
         frame.render_widget(
             Paragraph::new(lines)
                 .wrap(Wrap { trim: false })
-                .block(block("Project detail")),
+                .block(rounded_block("Project detail")),
             area,
         );
         return;
@@ -59,11 +66,16 @@ pub(super) fn render_projects(app: &mut App, frame: &mut Frame, area: Rect) {
         .iter()
         .enumerate()
         .map(|(index, project)| {
+            let is_sel = index == app.projects.selected;
             let line = Line::from(vec![
-                Span::raw(project.name.clone()),
-                Span::styled(format!("  {} grant(s)", project.grants.len()), muted()),
+                Span::styled(
+                    if is_sel { " ▸ " } else { "   " },
+                    if is_sel { accent_bold() } else { muted() },
+                ),
+                Span::styled(project.name.clone(), frost_glow()),
+                Span::styled(format!("  •  {} grant(s)", project.grants.len()), ice_mid()),
             ]);
-            if index == app.projects.selected {
+            if is_sel {
                 ListItem::new(line).style(selected_style())
             } else {
                 ListItem::new(line)
@@ -77,12 +89,8 @@ pub(super) fn render_projects(app: &mut App, frame: &mut Frame, area: Rect) {
             .min(app.projects.projects.len().saturating_sub(1)),
     ));
     frame.render_stateful_widget(
-        List::new(items).block(block("Projects (n new, Enter detail, e edit)")),
+        List::new(items).block(rounded_block("Projects  •  n new • Enter detail • e edit")),
         area,
         &mut list_state,
     );
 }
-
-// ---------------------------------------------------------------------------
-// Memory
-// ---------------------------------------------------------------------------
