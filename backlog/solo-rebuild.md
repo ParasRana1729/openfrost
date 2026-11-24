@@ -1221,3 +1221,24 @@ does not close S07's one-working-week owner-use gate.
     final workspace suite passed unchanged. No unrelated timeout fixes added.
   - No push, PR, merge, or other priority implemented. S07's owner-use gate
     remains open. Next: owner review of this implementation and handoff branch.
+
+### Integration audit — Priorities 3–5 (2026-11-24)
+
+- Owner authorized sequential PR integration: Priority 5A, 3, 4, then 5B;
+  each merge requires passing configured Windows CI. S07 remains open.
+- Read-only spot-checks found no blockers: Priority 4 keeps existing API
+  responses/statuses and identical shared auth validation; Priority 3 adds
+  the intended async hashing and five-failure/30-second login backoff.
+- The 88-test Rust baseline predates Priority 5B: d0c3ebf added 24 legitimate
+  stream-lifetime, stale-read, and retry tests after the earlier 64-test
+  checkpoint. Priority 5B preserves all 88 tests and moved function bodies.
+- Drizzle journal idx 6/tag 0006_indexes, SQL, snapshot linkage and generated
+  schema agree on exactly eight additive indexes. The upgrade test uses the
+  real pre-0006 SQL migrations against populated file-backed SQLite.
+- Priority 5A re-verification: pnpm lint, CI=true pnpm test (328 passed:
+  domain 83, db 54 including real Windows DPAPI, agent 121, API 70), and
+  pnpm build passed. Initial four-minute TypeScript and unnecessary cold
+  Rust checks timed out; the complete TypeScript retry passed unchanged
+  with a ten-minute bound. Rust was unchanged and will be checked by CI.
+- Not run: interactive visual TUI and live-provider workflows. Primary
+  checkout retains the owner-provided untracked execution brief untouched.
