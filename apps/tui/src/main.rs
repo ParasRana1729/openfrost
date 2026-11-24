@@ -5,11 +5,13 @@
 mod api;
 mod app;
 mod apply;
+mod cli;
 mod contracts;
 mod dialog_forms;
 mod event;
 mod markdown;
 mod refresh;
+mod runtime;
 mod ui;
 
 #[cfg(test)]
@@ -30,18 +32,166 @@ use tokio::sync::mpsc;
 
 use api::ApiClient;
 use app::App;
+use cli::CliCommand;
 use event::{forward_input, forward_ticks, subscribe_events, AppEvent, AppRx, AppTx, Payload};
+use runtime::{EnsureOutcome, StopOutcome};
 
 const DEFAULT_API_ORIGIN: &str = "http://127.0.0.1:8787";
 
 #[tokio::main]
 async fn main() -> ExitCode {
-    if let Err(error) = run().await {
-        let _ = restore_terminal();
-        eprintln!("OpenFrost TUI failed: {error:#}");
-        return ExitCode::from(1);
+    let command = match cli::parse_args(std::env::args().skip(1)) {
+        Ok(cmd) => cmd,
+        Err(error) => {
+            eprintln!("openfrost: {error}");
+            eprintln!("Run `openfrost --help` for usage.");
+            return ExitCode::from(2);
+        }
+    };
+
+    match command {
+        CliCommand::Help => {
+            print!("{}", cli::help_text());
+            ExitCode::SUCCESS
+        }
+        CliCommand::Version => {
+            println!("{}", cli::version_text());
+            ExitCode::SUCCESS
+        }
+        CliCommand::Logs { lines } => match run_logs(lines) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("openfrost logs failed: {error:#}");
+                ExitCode::from(1)
+            }
+        },
+        CliCommand::Status { api_origin } => match run_status(api_origin).await {
+            Ok(healthy) => {
+                if healthy {
+                    ExitCode::SUCCESS
+                } else {
+                    ExitCode::from(1)
+                }
+            }
+            Err(error) => {
+                eprintln!("openfrost status failed: {error:#}");
+                ExitCode::from(1)
+            }
+        },
+        CliCommand::Start { api_origin } => match run_start(api_origin).await {
+            Ok(code) => code,
+            Err(error) => {
+                eprintln!("openfrost start failed: {error:#}");
+                ExitCode::from(1)
+            }
+        },
+        CliCommand::Stop { api_origin } => match run_stop(api_origin).await {
+            Ok(code) => code,
+            Err(error) => {
+                eprintln!("openfrost stop failed: {error:#}");
+                ExitCode::from(1)
+            }
+        },
+        CliCommand::Tui {
+            api_origin,
+            no_spawn,
+        } => {
+            if let Err(error) = run_tui(api_origin, no_spawn).await {
+                let _ = restore_terminal();
+                eprintln!("OpenFrost TUI failed: {error:#}");
+                return ExitCode::from(1);
+            }
+            ExitCode::SUCCESS
+        }
     }
-    ExitCode::SUCCESS
+}
+
+fn resolve_api_origin(override_origin: Option<String>) -> String {
+    override_origin
+        .or_else(|| {
+            std::env::var("OPENFROST_API_ORIGIN")
+                .ok()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+        })
+        .unwrap_or_else(|| DEFAULT_API_ORIGIN.to_string())
+}
+
+fn run_logs(lines: usize) -> Result<()> {
+    let home = runtime::resolve_home_dir()?;
+    let log_path = runtime::log_file_path(&home);
+    match runtime::read_log_tail(&log_path, lines)? {
+        Some(content) if !content.is_empty() => println!("{content}"),
+        Some(_) => println!("API log file is empty ({}).", log_path.display()),
+        None => println!("No API logs found at {}.", log_path.display()),
+    }
+    Ok(())
+}
+
+async fn run_status(api_origin: Option<String>) -> Result<bool> {
+    let origin = resolve_api_origin(api_origin);
+    let home = runtime::resolve_home_dir()?;
+    let status = runtime::inspect_status(&origin, &home).await;
+    let state = if status.healthy { "running" } else { "stopped" };
+    println!("OpenFrost API: {state} ({})", status.origin);
+    match (status.managed_pid, status.managed_pid_alive) {
+        (Some(pid), true) => println!("Managed PID:   {pid}"),
+        (Some(pid), false) => println!("Managed PID:   {pid} (stale)"),
+        (None, _) => println!("Managed PID:   none"),
+    }
+    if let Some(entry) = status.api_entry {
+        println!("API entry:     {}", entry.display());
+    } else {
+        println!("API entry:     not found (run .\\scripts\\install.ps1 or `pnpm build`)");
+    }
+    println!("Logs:          {}", status.log_path.display());
+    Ok(status.healthy)
+}
+
+async fn run_start(api_origin: Option<String>) -> Result<ExitCode> {
+    let origin = resolve_api_origin(api_origin);
+    let home = runtime::resolve_home_dir()?;
+    match runtime::ensure_api_running(&origin, &home, false).await? {
+        EnsureOutcome::AlreadyRunning => {
+            println!("OpenFrost API is already running at {origin}.");
+            Ok(ExitCode::SUCCESS)
+        }
+        EnsureOutcome::Started { pid, log_path } => {
+            println!("Started OpenFrost API at {origin} (PID {pid}).");
+            println!("Logs: {}", log_path.display());
+            Ok(ExitCode::SUCCESS)
+        }
+        EnsureOutcome::Skipped => {
+            eprintln!("Cannot auto-start a non-loopback API origin: {origin}");
+            Ok(ExitCode::from(1))
+        }
+    }
+}
+
+async fn run_stop(api_origin: Option<String>) -> Result<ExitCode> {
+    let origin = resolve_api_origin(api_origin);
+    let home = runtime::resolve_home_dir()?;
+    match runtime::stop_api(&origin, &home).await? {
+        StopOutcome::Stopped { pid } => {
+            println!("Stopped OpenFrost API (PID {pid}).");
+            Ok(ExitCode::SUCCESS)
+        }
+        StopOutcome::NotRunning { cleaned_stale_pid } => {
+            if cleaned_stale_pid {
+                println!("OpenFrost API is not running (cleaned up stale PID file).");
+            } else {
+                println!("OpenFrost API is not running.");
+            }
+            Ok(ExitCode::SUCCESS)
+        }
+        StopOutcome::UnmanagedRunning => {
+            eprintln!(
+                "OpenFrost API is running at {origin}, but was not started by `openfrost` \
+                 (no active managed PID). Stop it where it was launched."
+            );
+            Ok(ExitCode::from(1))
+        }
+    }
 }
 
 fn restore_terminal() -> Result<()> {
@@ -60,9 +210,18 @@ fn setup_terminal() -> Result<Terminal<CrosstermBackend<Stdout>>> {
     Ok(Terminal::new(backend)?)
 }
 
-async fn run() -> Result<()> {
-    let base_url =
-        std::env::var("OPENFROST_API_ORIGIN").unwrap_or_else(|_| DEFAULT_API_ORIGIN.to_string());
+async fn run_tui(api_origin: Option<String>, no_spawn: bool) -> Result<()> {
+    let base_url = resolve_api_origin(api_origin);
+    if !no_spawn {
+        let home = runtime::resolve_home_dir()?;
+        if !runtime::probe_health(&base_url).await {
+            let (is_loopback, _) = runtime::parse_origin(&base_url)?;
+            if is_loopback {
+                eprintln!("Starting local OpenFrost API...");
+            }
+            runtime::ensure_api_running(&base_url, &home, false).await?;
+        }
+    }
     // `ApiClient` is a cheap clone (shared connection pool, cookie jar, and
     // CSRF token); no lock is held across any HTTP round-trip.
     let api = ApiClient::new(&base_url).context("Invalid API origin")?;

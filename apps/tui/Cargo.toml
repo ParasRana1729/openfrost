@@ -5,6 +5,10 @@ edition = "2021"
 description = "OpenFrost Control Center terminal UI (S09)"
 publish = false
 
+[[bin]]
+name = "openfrost"
+path = "src/main.rs"
+
 [dependencies]
 ratatui = "0.29"
 crossterm = { version = "0.28", features = ["event-stream"] }

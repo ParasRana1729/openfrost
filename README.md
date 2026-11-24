@@ -70,9 +70,40 @@ Install pnpm if needed:
 npm install --global pnpm@10.34.7
 ```
 
-### Run locally
+### Install and run (recommended)
 
-From the repository root:
+From the repository root, install dependencies once and install the `openfrost` CLI:
+
+```powershell
+pnpm install
+pnpm run install:cli
+```
+
+(`.\scripts\install.ps1` builds the local API, records its path in
+`%USERPROFILE%\.openfrost\runtime.json`, and installs `openfrost.exe` to your
+Cargo `bin` directory.)
+
+Then launch the Control Center from any terminal:
+
+```sh
+openfrost
+```
+
+`openfrost` checks whether the local API is running on `127.0.0.1:8787`, starts
+it in the background if needed, and opens the TUI. Closing the TUI leaves the
+local API running so queued tasks and routines can finish. Useful lifecycle
+commands:
+
+```sh
+openfrost status        # check local API health, PID, and log path
+openfrost stop          # stop the background API started by openfrost
+openfrost logs -n 100   # print recent background API logs
+openfrost --no-spawn    # attach to an already-running API (e.g. `pnpm dev`)
+```
+
+### Run from source (development)
+
+If you want hot-reload while developing the API or landing page:
 
 ```sh
 pnpm install
@@ -80,10 +111,10 @@ pnpm build
 pnpm dev
 ```
 
-Then start the TUI Control Center:
+Then attach the TUI in another terminal without auto-spawning a second API:
 
 ```sh
-cargo run -p openfrost-tui
+cargo run --manifest-path apps/tui/Cargo.toml -- --no-spawn
 ```
 
 Create the local account in the TUI on first run, then choose a provider and
@@ -104,6 +135,8 @@ By default, application data is stored in `%USERPROFILE%\.openfrost`:
 - `secrets\` — DPAPI-protected provider keys
 - `memory\` and `projects\` — approved Markdown memory and project
   instructions
+- `runtime.json`, `api.pid`, and `logs\api.log` — local CLI runtime path,
+  managed background API PID, and background API logs
 
 Set `OPENFROST_HOME` to use another data directory. Database upgrades use
 additive migrations and preserve existing data.
