@@ -337,4 +337,3 @@ export class ExportPipeline {
 function pathKeyOf(p: string): string {
   return process.platform === 'win32' ? p.toLowerCase() : p;
 }
-

@@ -120,4 +120,3 @@ function retrievalAppendix(retrievals: RetrievalRecord[]): string {
       .join('\n') + '\n'
   );
 }
-

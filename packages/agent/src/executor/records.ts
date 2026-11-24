@@ -27,4 +27,3 @@ export class RunToolRecords implements RunToolContext {
     this.recentUpdates.push(record);
   }
 }
-
