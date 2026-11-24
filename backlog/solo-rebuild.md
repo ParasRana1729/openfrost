@@ -1508,3 +1508,18 @@ does not close S07's one-working-week owner-use gate.
   pnpm build all passed, including real Windows DPAPI tests. No code
   conflict or test/assertion change was needed.
 - S07 owner-use gate remains open; next is Windows PR CI and authorized merge.
+
+### Integration — Priority 4 (2026-11-24)
+
+- Priority 3 landed via PR #41, merge a8797628d717807c34d4bc9fa29d48d433a8c0b0.
+- Merged updated origin/main without rewriting history. auth.ts auto-merged:
+  shared domain setup/login schemas coexist with awaited owner credentials,
+  serialized verifications, five-failure/30-second backoff, 429/Retry-After,
+  session/cookie/origin/CSRF behavior and all Priority 3 tests.
+- The only conflict was appended backlog text; retained both sides in full.
+  A line-subsequence check confirms both pre-merge backlog versions survive.
+- Integrated verification: pnpm lint, CI=true pnpm test (521 passed: domain
+  258, db 64 with real Windows DPAPI, agent 121, API 78), pnpm build passed.
+  Rust fmt, Clippy with warnings denied, all 117 tests, and build passed.
+- No paid-provider or interactive visual TUI workflow run. S07 remains open.
+  Next: Windows PR CI, then authorized merge before integrating Priority 5B.
