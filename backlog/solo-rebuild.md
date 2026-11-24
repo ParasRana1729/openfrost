@@ -1339,3 +1339,13 @@ does not close S07's one-working-week owner-use gate.
   with a ten-minute bound. Rust was unchanged and will be checked by CI.
 - Not run: interactive visual TUI and live-provider workflows. Primary
   checkout retains the owner-provided untracked execution brief untouched.
+
+### Integration — Priority 3 (2026-11-24)
+
+- Priority 5A landed via PR #40, merge c06ecce50d5f54b479f785ff1ffe92e18297955e.
+- Merged origin/main into the Priority 3 branch without rewriting history;
+  backlog auto-merged, preserving both complete handoffs and audit evidence.
+- Re-verification on the integrated code: pnpm lint, CI=true pnpm test, and
+  pnpm build all passed, including real Windows DPAPI tests. No code
+  conflict or test/assertion change was needed.
+- S07 owner-use gate remains open; next is Windows PR CI and authorized merge.
