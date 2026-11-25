@@ -1,92 +1,136 @@
-use super::theme::{accent_bold, frost_glow, muted, rounded_block, success, warn};
+use super::tasks::keybind_footer;
+use super::theme::{
+    accent_bold, frost_glow, ice_mid, muted, pill, rounded_block, section_rule, selected_style,
+    AMBER, EMERALD, ICE_DIM, SURFACE_SEL,
+};
 use crate::app::App;
-use ratatui::layout::Rect;
+use ratatui::layout::{Constraint, Layout, Rect};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Wrap};
 use ratatui::Frame;
 
 pub(super) fn render_settings(app: &mut App, frame: &mut Frame, area: Rect) {
+    let vertical = Layout::vertical([Constraint::Min(2), Constraint::Length(1)]).split(area);
+    let (content_area, footer_area) = (vertical[0], vertical[1]);
+    let inner_w = content_area.width.saturating_sub(2);
+
     let mut lines: Vec<Line> = Vec::new();
     let selected = app.settings.selected;
 
     let settings = app.settings.settings.as_ref();
-    let provider = settings.map(|s| s.provider.clone()).unwrap_or_default();
+    let provider = settings
+        .map(|s| s.provider.clone())
+        .filter(|p| !p.is_empty())
+        .unwrap_or_else(|| "—".to_string());
     let model = settings
         .and_then(|s| s.model.clone())
         .unwrap_or_else(|| "—".to_string());
     let has_key = settings.map(|s| s.hasProviderKey).unwrap_or(false);
 
-    lines.push(row_line(
-        0 == selected,
-        "Provider",
-        &format!("{provider}  (model: {model})"),
-        warn(),
-    ));
+    lines.push(section_rule("Model & Provider", inner_w));
+
+    let provider_sel = selected == 0;
+    let provider_line = Line::from(vec![
+        Span::styled(
+            if provider_sel { " ▸ " } else { "   " },
+            if provider_sel { accent_bold() } else { muted() },
+        ),
+        Span::styled(
+            format!("{:<14}", "Provider"),
+            if provider_sel { accent_bold() } else { muted() },
+        ),
+        Span::styled(provider, frost_glow().add_modifier(Modifier::BOLD)),
+        Span::styled("  ·  model: ", muted()),
+        Span::styled(
+            model.clone(),
+            if model == "—" { muted() } else { ice_mid() },
+        ),
+    ]);
+    lines.push(if provider_sel {
+        provider_line.style(selected_style())
+    } else {
+        provider_line
+    });
     lines.push(Line::styled(
-        "     Enter/l to cycle openai → gemini → openrouter".to_string(),
-        muted(),
-    ));
-    lines.push(row_line(
-        1 == selected,
-        "Provider key",
-        if has_key {
-            "configured (stored with Windows DPAPI)"
-        } else {
-            "not set"
-        },
-        if has_key { success() } else { warn() },
-    ));
-    lines.push(Line::styled(
-        "     Enter to set a key (masked input); the key is never shown again".to_string(),
-        muted(),
+        "     Enter to cycle openai → gemini → openrouter",
+        Style::default().fg(ICE_DIM),
     ));
     lines.push(Line::from(""));
 
-    lines.push(Line::styled(" Export destinations", accent_bold()));
+    let key_sel = selected == 1;
+    let key_badge = if has_key {
+        Span::styled(" configured ", pill(EMERALD, SURFACE_SEL))
+    } else {
+        Span::styled(" not set ", pill(AMBER, SURFACE_SEL))
+    };
+    let key_note = if has_key {
+        Span::styled("  stored with Windows DPAPI", muted())
+    } else {
+        Span::styled("  required before running tasks", muted())
+    };
+    let key_line = Line::from(vec![
+        Span::styled(
+            if key_sel { " ▸ " } else { "   " },
+            if key_sel { accent_bold() } else { muted() },
+        ),
+        Span::styled(
+            format!("{:<14}", "Provider key"),
+            if key_sel { accent_bold() } else { muted() },
+        ),
+        key_badge,
+        key_note,
+    ]);
+    lines.push(if key_sel {
+        key_line.style(selected_style())
+    } else {
+        key_line
+    });
+    lines.push(Line::styled(
+        "     Enter to set key (masked) · x to remove stored key",
+        Style::default().fg(ICE_DIM),
+    ));
+    lines.push(Line::from(""));
+
+    lines.push(section_rule("Export destinations", inner_w));
     for (index, destination) in app.settings.destinations.iter().enumerate() {
         let row = 2 + index;
         let is_sel = row == selected;
         let marker = if is_sel { " ▸ " } else { "   " };
-        lines.push(Line::from(vec![
+        let mut spans = vec![
             Span::styled(marker, if is_sel { accent_bold() } else { muted() }),
             Span::styled(destination.path.clone(), frost_glow()),
-            Span::styled("  (x remove)", muted()),
-        ]));
+        ];
+        if is_sel {
+            spans.push(Span::styled("  (x remove)", Style::default().fg(ICE_DIM)));
+        }
+        let line = Line::from(spans);
+        lines.push(if is_sel {
+            line.style(selected_style())
+        } else {
+            line
+        });
     }
     if app.settings.destinations.is_empty() {
         lines.push(Line::styled(
-            "   (none — press a to add a folder exports may write into)".to_string(),
+            "   No export destinations yet — press a to allow a folder for exports.",
             muted(),
         ));
     }
-    lines.push(Line::from(""));
-    lines.push(Line::styled(
-        " j/k move • Enter activate • a add destination • x remove destination".to_string(),
-        muted(),
-    ));
+
     frame.render_widget(
         Paragraph::new(lines)
             .wrap(Wrap { trim: false })
             .block(rounded_block("Settings")),
-        area,
+        content_area,
     );
-}
-
-fn row_line(
-    active: bool,
-    label: &str,
-    value: &str,
-    value_style: ratatui::style::Style,
-) -> Line<'static> {
-    Line::from(vec![
-        Span::styled(
-            if active { " ▸ " } else { "   " },
-            if active { accent_bold() } else { muted() },
-        ),
-        Span::styled(
-            format!("{label}: "),
-            if active { accent_bold() } else { frost_glow() },
-        ),
-        Span::styled(value.to_string(), value_style),
-    ])
+    frame.render_widget(
+        keybind_footer(&[
+            ("j/k", "move"),
+            ("Enter", "activate"),
+            ("a", "add destination"),
+            ("x", "remove"),
+        ]),
+        footer_area,
+    );
 }
