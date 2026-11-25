@@ -1,6 +1,6 @@
 # Contributing to OpenFrost
 
-OpenFrost is currently a solo project owned by ParasRana1729. Human and AI
+OpenFrost is a Windows-first personal AI OS project. Human and AI
 contributors follow the same scope, security, and verification rules.
 
 Read [AGENTS.md](AGENTS.md), the [specification](docs/ai-os-project-spec.md), and the

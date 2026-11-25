@@ -1,7 +1,6 @@
 # OpenFrost — Product one-pager
 
 - **Direction:** Accepted; core workflows and TUI Control Center implemented on `main`
-- **Builder and first user:** ParasRana1729
 - **Release:** v0.1, Windows-first local runtime and Rust terminal UI (TUI) Control Center
 - **Source of truth:** [Full specification](./ai-os-project-spec.md)
 

@@ -35,10 +35,10 @@ part of the S07 follow-up, not completion of S07. Do not invent APIs,
 scripts, migrations, tools, or passing checks beyond what the repository
 actually contains.
 
-OpenFrost is a Windows-first personal **AI OS** being rebuilt by one owner,
-ParasRana1729. One assistant completes research briefs, project updates, and
-weekly planning through a local terminal UI (TUI) Control Center. Projects
-scope context; they are not separate assistant personalities.
+OpenFrost is a Windows-first personal **AI OS**. One assistant completes
+research briefs, project updates, and weekly planning through a local
+terminal UI (TUI) Control Center. Projects scope context; they are not
+separate assistant personalities.
 
 - Product authority: [`docs/ai-os-project-spec.md`](docs/ai-os-project-spec.md).
 - Current work: [`backlog/solo-rebuild.md`](backlog/solo-rebuild.md), S00–S09.
