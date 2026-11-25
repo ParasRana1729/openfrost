@@ -2,8 +2,8 @@
 
 ## Solo rebuild specification — v0.1
 
-- **Status:** Accepted product direction; S00–S06, S08 Phase 1, and S09 (TUI Control Center) implemented on `main`; S07 release hardening in progress (pre-week validation performed 2026-10-26; the one-working-week gate runs on the owner's real use)
-- **Owner and first user:** ParasRana1729
+- **Status:** Accepted product direction; S00–S06, S08 Phase 1, and S09 (TUI Control Center) implemented on `main`; S07 release hardening in progress (pre-week validation performed 2026-10-26; the one-working-week gate remains on real-world use)
+- **Target user:** Single local owner
 - **Platform:** Windows-first, local runtime
 - **Primary interface:** Local terminal UI (TUI) Control Center (`apps/tui`); static local web landing page (`apps/landing`)
 

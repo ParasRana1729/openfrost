@@ -1,7 +1,6 @@
 # OpenFrost — Solo rebuild backlog
 
 - **Specification:** [v0.1 solo rebuild](../docs/ai-os-project-spec.md)
-- **Owner for every item:** ParasRana1729
 - **Current assignment:** S09 complete and landed on main; S07's one-working-week owner-use gate remains open
 
 These are local backlog identifiers, not GitHub issue numbers. S00–S06, S08

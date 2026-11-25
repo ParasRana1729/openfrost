@@ -1,8 +1,8 @@
 # OpenFrost — Building solo with AI tools
 
-The owner is ParasRana1729. The goal is useful personal workflows, not
-building a team platform. AI tools can help implement and verify a slice;
-the owner remains responsible for scope and release decisions.
+The goal is useful personal workflows, not building a team platform. AI tools can
+help implement and verify a slice; the maintainer remains responsible for scope
+and release decisions.
 
 ## 1. Start with the active sources
 

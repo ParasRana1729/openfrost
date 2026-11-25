@@ -18,9 +18,9 @@ Use **[solo-rebuild.md](solo-rebuild.md)** with the
 | S08 | Control Center usability quick wins (Phase 1) | S01–S06 |
 | S09 | TUI Control Center (Ratatui + Crossterm) | S01–S06 |
 
-All items belong to ParasRana1729. IDs are local planning identifiers, **not**
-GitHub issue numbers. Work one assigned slice at a time; each entry contains its
-acceptance criteria. There are no team role assignments or fixed iteration dates.
+IDs are local planning identifiers, **not** GitHub issue numbers. Work one
+assigned slice at a time; each entry contains its acceptance criteria. There
+are no team role assignments or fixed iteration dates.
 
 **Current state:** S00–S06, S08 Phase 1, and S09 are complete on `main`. This
 includes the pnpm workspace, shared Zod contracts, SQLite persistence, DPAPI
