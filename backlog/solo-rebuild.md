@@ -899,8 +899,7 @@ gate; findings marked WEEK carry into this log.
     `redactSecret(message, apiKey)` (matching `GeminiProvider`).
   - Updated stale browser/web-UI copy in `apps/landing/app/page.tsx` and synced
     agent instructions and docs (`AGENTS.md`, `CLAUDE.md`, `.cursorrules`,
-    `.github/copilot-instructions.md`, `CONTRIBUTING.md`, `docs/`, `backlog/`,
-    `.taste-skill/`).
+    `.github/copilot-instructions.md`, `CONTRIBUTING.md`, `docs/`, `backlog/`).
 - Verification: `pnpm lint` passed; all 5 workspace builds (`@openfrost/domain`,
   `@openfrost/db`, `@openfrost/agent`, `@openfrost/api`, `@openfrost/landing`)
   passed; 328 TypeScript tests passed (83 domain, 54 db incl. real Windows
