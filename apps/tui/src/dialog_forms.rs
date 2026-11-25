@@ -13,6 +13,7 @@ pub struct Form {
     pub focus: usize,
     pub kind: FormKind,
     pub error: Option<String>,
+    pub submitting: bool,
 }
 
 // TextArea is a large value; boxing it would churn every edit site for no
@@ -51,6 +52,7 @@ impl Form {
             focus: 0,
             kind,
             error: None,
+            submitting: false,
         }
     }
 
@@ -58,7 +60,9 @@ impl Form {
         let mut area = if value.is_empty() {
             TextArea::default()
         } else {
-            TextArea::new(value.lines().map(str::to_string).collect::<Vec<_>>())
+            let mut area = TextArea::new(value.lines().map(str::to_string).collect::<Vec<_>>());
+            area.move_cursor(tui_textarea::CursorMove::End);
+            area
         };
         if masked {
             area.set_mask_char('\u{2022}');
@@ -153,6 +157,53 @@ impl Form {
             format!("Set provider key \u{2014} {provider}"),
             vec![Self::text("API key", "", true, Some(hint))],
             FormKind::SetProviderKey {
+                provider: provider.to_string(),
+            },
+        )
+    }
+
+    pub fn edit_model(provider: &str, current_model: &str) -> Self {
+        let presets: Vec<String> = match provider {
+            "openrouter" => vec![
+                "(custom)".into(),
+                "openrouter/free".into(),
+                "openrouter/auto".into(),
+                "(reset to default)".into(),
+            ],
+            "openai" => vec![
+                "(custom)".into(),
+                "gpt-4o-mini".into(),
+                "gpt-4o".into(),
+                "(reset to default)".into(),
+            ],
+            "gemini" => vec![
+                "(custom)".into(),
+                "gemini-2.5-flash".into(),
+                "gemini-2.0-flash".into(),
+                "(reset to default)".into(),
+            ],
+            _ => vec!["(custom)".into(), "(reset to default)".into()],
+        };
+        let preset_selected = presets
+            .iter()
+            .enumerate()
+            .skip(1)
+            .take(presets.len().saturating_sub(2))
+            .find(|(_, opt)| opt.as_str() == current_model.trim())
+            .map(|(idx, _)| idx)
+            .unwrap_or(0);
+        Self::new(
+            format!("Set model \u{2014} {provider}"),
+            vec![
+                Self::text(
+                    "Model",
+                    current_model,
+                    false,
+                    Some("e.g. openrouter/free for free tier; leave blank to reset to default"),
+                ),
+                Self::select("Preset", presets, preset_selected),
+            ],
+            FormKind::EditModel {
                 provider: provider.to_string(),
             },
         )
@@ -267,6 +318,7 @@ impl Form {
             ],
             FormKind::EditRoutine {
                 routine_id: routine.id.clone(),
+                project_id: routine.projectId.clone(),
             },
         )
     }
@@ -289,6 +341,9 @@ impl Form {
         if key.code == KeyCode::Esc {
             return false;
         }
+        if self.submitting {
+            return true;
+        }
         if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('s') {
             return false; // submit
         }
@@ -299,29 +354,73 @@ impl Form {
             KeyCode::BackTab => {
                 self.focus = (self.focus + self.fields.len() - 1) % self.fields.len();
             }
-            _ => match &mut self.fields[self.focus] {
-                Field::Text { area, .. } => {
-                    let _ = area.input(key);
+            _ => {
+                let mut model_preset_changed: Option<String> = None;
+                let mut model_text_edited: Option<String> = None;
+                match &mut self.fields[self.focus] {
+                    Field::Text { area, .. } => {
+                        let _ = area.input(key);
+                        if matches!(self.kind, FormKind::EditModel { .. }) && self.focus == 0 {
+                            model_text_edited = Some(area.lines().join("\n"));
+                        }
+                    }
+                    Field::Select {
+                        options, selected, ..
+                    } => match key.code {
+                        KeyCode::Right | KeyCode::Char('l') | KeyCode::Down => {
+                            if !options.is_empty() {
+                                *selected = (*selected + 1) % options.len();
+                                if matches!(self.kind, FormKind::EditModel { .. })
+                                    && self.focus == 1
+                                {
+                                    model_preset_changed = options.get(*selected).cloned();
+                                }
+                            }
+                        }
+                        KeyCode::Left | KeyCode::Char('h') | KeyCode::Up => {
+                            if !options.is_empty() {
+                                *selected = (*selected + options.len() - 1) % options.len();
+                                if matches!(self.kind, FormKind::EditModel { .. })
+                                    && self.focus == 1
+                                {
+                                    model_preset_changed = options.get(*selected).cloned();
+                                }
+                            }
+                        }
+                        KeyCode::Enter => {
+                            self.focus = (self.focus + 1) % self.fields.len();
+                        }
+                        _ => {}
+                    },
                 }
-                Field::Select {
-                    options, selected, ..
-                } => match key.code {
-                    KeyCode::Right | KeyCode::Char('l') | KeyCode::Down => {
-                        if !options.is_empty() {
-                            *selected = (*selected + 1) % options.len();
+                if let Some(choice) = model_preset_changed {
+                    if let Some(Field::Text { area, .. }) = self.fields.get_mut(0) {
+                        if choice == "(reset to default)" {
+                            *area = TextArea::default();
+                        } else if choice != "(custom)" {
+                            let mut next = TextArea::new(vec![choice]);
+                            next.move_cursor(tui_textarea::CursorMove::End);
+                            *area = next;
                         }
                     }
-                    KeyCode::Left | KeyCode::Char('h') | KeyCode::Up => {
-                        if !options.is_empty() {
-                            *selected = (*selected + options.len() - 1) % options.len();
-                        }
+                }
+                if let Some(typed) = model_text_edited {
+                    let trimmed = typed.trim();
+                    if let Some(Field::Select {
+                        options, selected, ..
+                    }) = self.fields.get_mut(1)
+                    {
+                        *selected = options
+                            .iter()
+                            .enumerate()
+                            .skip(1)
+                            .take(options.len().saturating_sub(2))
+                            .find(|(_, opt)| opt.as_str() == trimmed)
+                            .map(|(idx, _)| idx)
+                            .unwrap_or(0);
                     }
-                    KeyCode::Enter => {
-                        self.focus = (self.focus + 1) % self.fields.len();
-                    }
-                    _ => {}
-                },
-            },
+                }
+            }
         }
         true
     }
@@ -339,14 +438,29 @@ impl Form {
 
     /// Replace a select's options (used when destinations/projects arrive).
     pub fn set_options(&mut self, field: usize, options: Vec<String>) {
+        self.set_options_with_selected(field, options, 0);
+    }
+
+    /// Replace a select's options and highlight a specific index (clamped).
+    pub fn set_options_with_selected(
+        &mut self,
+        field: usize,
+        options: Vec<String>,
+        selected_idx: usize,
+    ) {
         if let Field::Select {
             options: slot,
             selected,
             ..
         } = &mut self.fields[field]
         {
+            let clamped = if options.is_empty() {
+                0
+            } else {
+                selected_idx.min(options.len() - 1)
+            };
             *slot = options;
-            *selected = 0;
+            *selected = clamped;
         }
     }
 }
@@ -416,5 +530,81 @@ mod tests {
             }
             _ => panic!("expected Field::Text"),
         }
+    }
+
+    #[test]
+    fn edit_model_prefills_and_syncs_presets() {
+        let mut form = Form::edit_model("openrouter", "openrouter/free");
+        assert_eq!(form.values()[0], "openrouter/free");
+        assert_eq!(form.select_index(1), 1);
+        match &form.fields[0] {
+            Field::Text { hint, .. } => {
+                let h = hint.as_deref().unwrap();
+                assert!(h.contains("openrouter/free"));
+                assert!(h.contains("leave blank to reset to default"));
+            }
+            _ => panic!("expected Field::Text"),
+        }
+
+        // Move focus to Preset and cycle to openrouter/auto, then reset.
+        form.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
+        assert_eq!(form.focus, 1);
+        form.handle_key(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE));
+        assert_eq!(form.values()[0], "openrouter/auto");
+        form.handle_key(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE));
+        assert_eq!(form.values()[0], "");
+
+        // Typing custom model name resets Preset to (custom).
+        form.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
+        assert_eq!(form.focus, 0);
+        form.handle_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE));
+        assert_eq!(form.values()[0], "x");
+        assert_eq!(form.select_index(1), 0);
+    }
+
+    #[test]
+    fn submitting_form_ignores_edits_and_submit_but_allows_esc() {
+        let mut form = Form::edit_model("openai", "gpt-4o-mini");
+        form.submitting = true;
+        assert!(form.handle_key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE)));
+        assert!(form.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE)));
+        assert!(form.handle_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL)));
+        assert_eq!(form.values()[0], "gpt-4o-mini");
+        assert_eq!(form.focus, 0);
+        assert!(!form.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)));
+    }
+
+    #[test]
+    fn edit_routine_captures_project_id_and_clamps_select_index() {
+        let routine = crate::contracts::Routine {
+            id: "r1".into(),
+            name: "Weekly".into(),
+            projectId: "proj-2".into(),
+            timezone: "UTC".into(),
+            schedule: crate::contracts::RoutineSchedule::Daily {
+                time: "09:00".into(),
+            },
+            template: crate::contracts::RoutineTemplate {
+                title: "Plan".into(),
+                request: "Draft".into(),
+                constraints: None,
+            },
+            state: crate::contracts::RoutineState::Paused,
+            windowStartAt: "2026-11-01T00:00:00Z".into(),
+            lastOccurrenceKey: None,
+            lastOccurrenceAt: None,
+            createdAt: "2026-11-01T00:00:00Z".into(),
+            updatedAt: "2026-11-01T00:00:00Z".into(),
+        };
+        let mut form = Form::edit_routine(&routine);
+        assert!(matches!(
+            &form.kind,
+            FormKind::EditRoutine { routine_id, project_id }
+                if routine_id == "r1" && project_id == "proj-2"
+        ));
+        form.set_options_with_selected(1, vec!["A".into(), "B".into()], 1);
+        assert_eq!(form.select_index(1), 1);
+        form.set_options_with_selected(1, vec!["Only".into()], 99);
+        assert_eq!(form.select_index(1), 0);
     }
 }

@@ -334,7 +334,8 @@ impl ApiClient {
     // -- Memory ---------------------------------------------------------------
 
     pub async fn memory(&self) -> Result<MemorySnapshot, ApiError> {
-        self.send(Method::GET, "/api/memory", None::<&()>).await
+        self.send(Method::GET, "/api/memory?status=pending", None::<&()>)
+            .await
     }
 
     pub async fn approve_memory_proposal(
@@ -493,6 +494,14 @@ impl ApiClient {
     }
 
     pub async fn set_provider(&self, input: &SetProviderConfigRequest) -> Result<(), ApiError> {
+        self.send_ack(Method::PUT, "/api/settings/provider", Some(input))
+            .await
+    }
+
+    pub async fn set_provider_config<M: Serialize>(
+        &self,
+        input: &SetProviderConfigRequest<M>,
+    ) -> Result<(), ApiError> {
         self.send_ack(Method::PUT, "/api/settings/provider", Some(input))
             .await
     }

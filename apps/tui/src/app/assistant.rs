@@ -1,6 +1,6 @@
 use super::{truncate, App, KeyCode, KeyEvent, KeyModifiers, Tab, TextArea};
 use crate::contracts::{
-    ApprovalView, CreateTaskRequest, Event, Project, RoutineView, TaskDetail, TaskKind,
+    ApprovalView, CreateTaskRequest, Event, Project, RoutineView, TaskDetail, TaskKind, TaskState,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -105,6 +105,7 @@ pub(crate) struct AssistantState {
     pub(crate) history: Vec<String>,
     pub(crate) history_idx: Option<usize>,
     pub(crate) active_task_detail: Option<TaskDetail>,
+    pub(crate) cleared_task_id: Option<String>,
     pub(crate) slash_help_open: bool,
     pub(crate) slash_selected: usize,
     pub(crate) slash_dismissed: bool,
@@ -394,16 +395,30 @@ impl App {
             }
             "/clear" => {
                 self.assistant.stream_scroll = 0;
-                self.assistant.active_task_detail = None;
+                if let Some(detail) = self.assistant.active_task_detail.take() {
+                    self.assistant.cleared_task_id = Some(detail.task.id);
+                } else if let Some(latest) = self.tasks.tasks.first() {
+                    self.assistant.cleared_task_id = Some(latest.id.clone());
+                }
                 self.set_notice("Session stream cleared", false);
             }
             "/cancel" => {
                 if let Some(detail) = &self.assistant.active_task_detail {
-                    let task_id = detail.task.id.clone();
-                    let api = self.api.clone();
-                    self.spawn_mutation("Task cancellation requested", async move {
-                        api.cancel_task(&task_id).await.map(|_| ())
-                    });
+                    match detail.task.state {
+                        TaskState::Queued | TaskState::Running | TaskState::AwaitingApproval => {
+                            let task_id = detail.task.id.clone();
+                            let api = self.api.clone();
+                            self.spawn_mutation("Task cancellation requested", async move {
+                                api.cancel_task(&task_id).await.map(|_| ())
+                            });
+                        }
+                        TaskState::Completed
+                        | TaskState::Failed
+                        | TaskState::Canceled
+                        | TaskState::Interrupted => {
+                            self.set_notice("Current task is already finished", false);
+                        }
+                    }
                 } else {
                     self.set_notice("No active task to cancel", true);
                 }
@@ -551,6 +566,7 @@ impl App {
         self.spawn_mutation("Task queued", async move {
             api.create_task(&input).await.map(|_| ())
         });
+        self.assistant.cleared_task_id = None;
         self.assistant.request = TextArea::default();
         self.assistant.title = TextArea::default();
         self.assistant.constraints = TextArea::default();

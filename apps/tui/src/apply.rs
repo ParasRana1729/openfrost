@@ -83,31 +83,60 @@ pub fn apply_payload(app: &mut App, payload: Payload) {
                 app.tasks.tasks = tasks_res.tasks;
             }
             if let Some(task_detail) = latest_task {
-                app.assistant.active_task_detail = Some(task_detail);
+                if app.assistant.cleared_task_id.as_deref() != Some(task_detail.task.id.as_str()) {
+                    app.assistant.cleared_task_id = None;
+                    app.assistant.active_task_detail = Some(task_detail);
+                }
             }
         }
         Payload::Projects(result) => match result {
             Ok(projects) => {
-                // Feed the routine-creation dialog's project select before
+                // Feed the routine-creation/edit dialog's project select before
                 // caching the list on the projects tab state.
                 if let Some(Dialog::Form(form)) = &mut app.dialog {
-                    if matches!(
-                        form.kind,
-                        crate::app::FormKind::CreateRoutine
-                            | crate::app::FormKind::EditRoutine { .. }
-                    ) {
-                        let names: Vec<String> = projects
-                            .iter()
-                            .map(|project| project.name.clone())
-                            .collect();
-                        if names.is_empty() {
-                            form.set_options(
-                                1,
-                                vec!["(no projects yet \u{2014} create one first)".into()],
-                            );
-                        } else {
-                            form.set_options(1, names);
+                    match &form.kind {
+                        crate::app::FormKind::CreateRoutine => {
+                            let names: Vec<String> = projects
+                                .iter()
+                                .map(|project| project.name.clone())
+                                .collect();
+                            if names.is_empty() {
+                                form.set_options(
+                                    1,
+                                    vec!["(no projects yet \u{2014} create one first)".into()],
+                                );
+                            } else {
+                                let current_name = form.fields.get(1).map(|field| field.value());
+                                let selected_idx = current_name
+                                    .as_deref()
+                                    .and_then(|name| names.iter().position(|n| n == name))
+                                    .unwrap_or(0);
+                                form.set_options_with_selected(1, names, selected_idx);
+                            }
                         }
+                        crate::app::FormKind::EditRoutine { project_id, .. } => {
+                            let project_id = project_id.clone();
+                            let names: Vec<String> = projects
+                                .iter()
+                                .map(|project| project.name.clone())
+                                .collect();
+                            if names.is_empty() {
+                                form.set_options(
+                                    1,
+                                    vec!["(no projects yet \u{2014} create one first)".into()],
+                                );
+                            } else {
+                                let current_name = form.fields.get(1).map(|field| field.value());
+                                let selected_idx = current_name
+                                    .as_deref()
+                                    .filter(|name| *name != "(loading projects\u{2026})")
+                                    .and_then(|name| names.iter().position(|n| n == name))
+                                    .or_else(|| projects.iter().position(|p| p.id == project_id))
+                                    .unwrap_or(0);
+                                form.set_options_with_selected(1, names, selected_idx);
+                            }
+                        }
+                        _ => {}
                     }
                 }
                 let selected = app.projects.selected;
@@ -179,10 +208,22 @@ pub fn apply_payload(app: &mut App, payload: Payload) {
         }
         Payload::Mutation { label, result } => match result {
             Ok(()) => {
+                if matches!(&app.dialog, Some(Dialog::Form(form)) if form.submitting) {
+                    app.dialog = None;
+                }
                 app.set_notice(label, false);
                 app.refresh_all();
             }
-            Err(message) => app.set_notice(format!("{label} failed: {message}"), true),
+            Err(message) => {
+                if let Some(Dialog::Form(form)) = &mut app.dialog {
+                    if form.submitting {
+                        form.submitting = false;
+                        form.error = Some(message);
+                        return;
+                    }
+                }
+                app.set_notice(format!("{label} failed: {message}"), true);
+            }
         },
     }
 }
