@@ -1,8 +1,9 @@
 import type { MetadataRoute } from 'next';
+import { getSiteBaseUrl } from '../lib/content';
 
 export const dynamic = 'force-static';
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
-  return siteUrl ? [{ url: new URL('/', siteUrl).toString() }] : [];
+  const baseUrl = getSiteBaseUrl();
+  return baseUrl ? [{ url: baseUrl }] : [];
 }

@@ -1,4 +1,5 @@
 import Image from 'next/image';
+import { withBasePath } from '../lib/content';
 import { Tilt } from './Tilt';
 
 export function HeroScene() {
@@ -6,7 +7,7 @@ export function HeroScene() {
     <Tilt className="hero-scene" aria-label="OpenFrost Terminal Control Center preview">
       <div className="hero-crystal-photo">
         <Image
-          src="/images/real-snowflake-flickr-alexey-kljatov-6.jpg"
+          src={withBasePath('/images/real-snowflake-flickr-alexey-kljatov-6.jpg')}
           alt="A real branching snow crystal, photographed against a deep blue background"
           fill
           priority
@@ -18,7 +19,7 @@ export function HeroScene() {
       <div className="hero-window hero-window-tui" data-ui>
         <div className="hero-window-shot">
           <Image
-            src="/images/tui-assistant.png"
+            src={withBasePath('/images/tui-assistant.png')}
             alt="OpenFrost Rust Control Center TUI showing a completed research brief, SSE tool timeline, and rendered Markdown table"
             width={1908}
             height={1212}
