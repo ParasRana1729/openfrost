@@ -231,6 +231,22 @@ pub(super) fn format_stream_event_branch(event: &Event, is_last: bool) -> Line<'
                 .get("tool")
                 .and_then(|v| v.as_str())
                 .unwrap_or("tool");
+            if tool == "web_search_skipped" {
+                let reason = event
+                    .payload
+                    .get("reason")
+                    .and_then(|v| v.as_str())
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or("hosted web search unavailable; using starting URLs");
+                return Line::from(vec![
+                    Span::styled(branch, hairline_style()),
+                    Span::styled("◌ ", warn()),
+                    Span::styled("web search skipped  ", warn().add_modifier(Modifier::BOLD)),
+                    Span::styled(reason.to_string(), muted()),
+                    Span::styled(format!("  {time}"), muted()),
+                ]);
+            }
             let ok = event
                 .payload
                 .get("ok")
@@ -615,7 +631,11 @@ fn render_assistant_stream(app: &mut App, frame: &mut Frame, area: Rect) {
                         .get("tool")
                         .and_then(|v| v.as_str())
                         .unwrap_or("tool");
-                    format!("Synthesizing brief with {provider_name} from {tool} evidence…")
+                    if tool == "web_search_skipped" {
+                        format!("Continuing without hosted web search ({provider_name})…")
+                    } else {
+                        format!("Synthesizing brief with {provider_name} from {tool} evidence…")
+                    }
                 } else if last_event.kind == "run.started" {
                     format!("Evaluating tools & instructions with {provider_name}…")
                 } else {
@@ -1545,5 +1565,79 @@ mod tests {
         let other_err = render_error("Upstream connection timed out");
         assert!(other_err.contains("Upstream connection timed out"));
         assert!(!other_err.contains("Tip: press Tab 6 (Settings)"));
+    }
+
+    #[test]
+    fn web_search_skipped_renders_clean_branch_and_running_status() {
+        use crate::api::ApiClient;
+        use crate::app::{Screen, Tab};
+        use crate::contracts::{Task, TaskDetail};
+        use ratatui::backend::TestBackend;
+        use ratatui::Terminal;
+        use tokio::sync::mpsc;
+
+        let skipped_with_reason = make_event(
+            10,
+            "tool.executed",
+            json!({ "tool": "web_search_skipped", "ok": false, "reason": "HTTP 402 credits required for web plugin" }),
+        );
+        let branch_with_reason =
+            format_stream_event_branch(&skipped_with_reason, false).to_string();
+        assert!(branch_with_reason.contains("web search skipped"));
+        assert!(branch_with_reason.contains("HTTP 402 credits required for web plugin"));
+        assert!(!branch_with_reason.contains("web_search_skipped"));
+
+        let skipped_no_reason = make_event(
+            11,
+            "tool.executed",
+            json!({ "tool": "web_search_skipped", "ok": false }),
+        );
+        let branch_fallback = format_stream_event_branch(&skipped_no_reason, true).to_string();
+        assert!(branch_fallback.contains("web search skipped"));
+        assert!(branch_fallback.contains("hosted web search unavailable; using starting URLs"));
+
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let api = ApiClient::new("http://127.0.0.1:0").unwrap();
+        let mut app = App::new(tx, api);
+        app.screen = Screen::Main;
+        app.tab = Tab::Assistant;
+        app.assistant.active_task_detail = Some(TaskDetail {
+            task: Task {
+                id: "t1".to_string(),
+                title: "Test".to_string(),
+                request: "Test request".to_string(),
+                constraints: None,
+                startingUrls: None,
+                projectId: None,
+                kind: TaskKind::ResearchBrief,
+                exportArgs: None,
+                routineId: None,
+                state: TaskState::Running,
+                attemptCount: 1,
+                lastRunId: None,
+                resultArtifactId: None,
+                error: None,
+                createdAt: "2026-11-25T00:00:00Z".to_string(),
+                updatedAt: "2026-11-25T00:00:00Z".to_string(),
+            },
+            runs: vec![],
+            events: vec![skipped_with_reason],
+            artifact: None,
+            approval: None,
+        });
+        let backend = TestBackend::new(110, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| crate::ui::render(&mut app, frame))
+            .unwrap();
+        let rendered: String = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|c| c.symbol())
+            .collect();
+        assert!(rendered.contains("Continuing without hosted web search (openrouter)…"));
+        assert!(!rendered.contains("from web_search_skipped evidence"));
     }
 }
