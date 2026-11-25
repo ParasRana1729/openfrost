@@ -63,10 +63,53 @@ if (Test-Path -LiteralPath (Join-Path $toolsNode 'node.exe') -PathType Leaf) {
     $env:PATH = "$toolsNode;$env:PATH"
   }
 }
-foreach ($toolSub in @('tools\pnpm', 'tools\git\cmd', 'tools\mingw64\bin')) {
+foreach ($toolSub in @('tools\pnpm', 'tools\git\cmd')) {
   $toolDir = Join-Path $openfrostHome $toolSub
   if (Test-Path -LiteralPath $toolDir) {
     $env:PATH = "$env:PATH;$toolDir"
+  }
+}
+
+# Prepend 64-bit MinGW-w64 if present and active gcc/dlltool is missing or not x86_64
+# (for example, when legacy 32-bit C:\MinGW\bin is earlier on Machine PATH).
+$activeGcc = Get-Command 'gcc.exe' -ErrorAction SilentlyContinue
+$has64BitGcc = $false
+if ($activeGcc) {
+  $prevEap = $ErrorActionPreference
+  $ErrorActionPreference = 'Continue'
+  try {
+    $machine = ((& $activeGcc.Source -dumpmachine 2>$null) -join '').Trim()
+    $has64BitGcc = ($LASTEXITCODE -eq 0 -and $machine -match '^x86_64-')
+  } finally {
+    $ErrorActionPreference = $prevEap
+  }
+}
+if (-not $has64BitGcc) {
+  $mingwCandidates = [System.Collections.Generic.List[string]]::new()
+  $mingwCandidates.Add((Join-Path $openfrostHome 'tools\mingw64\bin'))
+  $wingetPackages = Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Packages'
+  if (Test-Path -LiteralPath $wingetPackages) {
+    $winlibsDirs = Get-ChildItem -LiteralPath $wingetPackages -Directory -Filter 'BrechtSanders.WinLibs*' -ErrorAction SilentlyContinue
+    foreach ($dir in $winlibsDirs) {
+      $mingwCandidates.Add((Join-Path $dir.FullName 'mingw64\bin'))
+    }
+  }
+  foreach ($cand in $mingwCandidates) {
+    $candGcc = Join-Path $cand 'gcc.exe'
+    $candDlltool = Join-Path $cand 'dlltool.exe'
+    if ((Test-Path -LiteralPath $candGcc -PathType Leaf) -and (Test-Path -LiteralPath $candDlltool -PathType Leaf)) {
+      $prevEap = $ErrorActionPreference
+      $ErrorActionPreference = 'Continue'
+      try {
+        $candMachine = ((& $candGcc -dumpmachine 2>$null) -join '').Trim()
+        if ($LASTEXITCODE -eq 0 -and $candMachine -match '^x86_64-') {
+          $env:PATH = "$cand;$env:PATH"
+          break
+        }
+      } finally {
+        $ErrorActionPreference = $prevEap
+      }
+    }
   }
 }
 
@@ -78,6 +121,35 @@ if (-not $SkipBuild) {
 }
 if (-not $SkipCargo) {
   $null = Require-Command 'cargo'
+  $hasMsvc = ($null -ne (Get-Command 'cl.exe' -ErrorAction SilentlyContinue)) -and ($null -ne (Get-Command 'link.exe' -ErrorAction SilentlyContinue))
+  if (-not $hasMsvc) {
+    $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+    if (Test-Path -LiteralPath $vswhere -PathType Leaf) {
+      $prevEap = $ErrorActionPreference
+      $ErrorActionPreference = 'Continue'
+      try {
+        $vsPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath 2>$null
+        $hasMsvc = ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace(($vsPath -join '')))
+      } finally {
+        $ErrorActionPreference = $prevEap
+      }
+    }
+  }
+  if (-not $hasMsvc -and -not $env:RUSTUP_TOOLCHAIN -and (Get-Command 'rustup' -ErrorAction SilentlyContinue)) {
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+      $active = ((& rustup show active-toolchain 2>$null) -join "`n")
+      if ($active -match 'windows-msvc') {
+        $installed = ((& rustup toolchain list 2>$null) -join "`n")
+        if ($installed -match 'stable-x86_64-pc-windows-gnu') {
+          $env:RUSTUP_TOOLCHAIN = 'stable-x86_64-pc-windows-gnu'
+        }
+      }
+    } finally {
+      $ErrorActionPreference = $prevEap
+    }
+  }
 }
 
 Push-Location $repoRoot

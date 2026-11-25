@@ -253,23 +253,47 @@
         return $false
       }
 
+      function Test-Valid64BitMinGw {
+        param([string]$BinDir)
+        if ([string]::IsNullOrWhiteSpace($BinDir)) { return $false }
+        $gccExe = Join-Path $BinDir 'gcc.exe'
+        $dlltoolExe = Join-Path $BinDir 'dlltool.exe'
+        if (-not (Test-Path -LiteralPath $gccExe -PathType Leaf) -or -not (Test-Path -LiteralPath $dlltoolExe -PathType Leaf)) {
+          return $false
+        }
+        $prevEap = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        try {
+          $machine = ((& $gccExe -dumpmachine 2>$null) -join '').Trim()
+          if ($LASTEXITCODE -ne 0 -or $machine -notmatch '^x86_64-') {
+            return $false
+          }
+          $dllHelp = ((& $dlltoolExe --help 2>$null) -join "`n")
+          return ($LASTEXITCODE -eq 0 -and $dllHelp -match 'x86-64')
+        } finally {
+          $ErrorActionPreference = $prevEap
+        }
+      }
+
       function Find-GccBinDir {
+        $candidates = [System.Collections.Generic.List[string]]::new()
         $gcc = Get-Command gcc.exe -ErrorAction SilentlyContinue
         if ($gcc) {
-          return (Split-Path -Parent $gcc.Source)
+          $candidates.Add((Split-Path -Parent $gcc.Source))
         }
-        $candidates = @(
-          (Join-Path $toolsDir 'mingw64\bin')
-        )
+        $candidates.Add((Join-Path $toolsDir 'mingw64\bin'))
         $wingetPackages = Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Packages'
         if (Test-Path -LiteralPath $wingetPackages) {
           $winlibsDirs = Get-ChildItem -LiteralPath $wingetPackages -Directory -Filter 'BrechtSanders.WinLibs*' -ErrorAction SilentlyContinue
           foreach ($dir in $winlibsDirs) {
-            $candidates += (Join-Path $dir.FullName 'mingw64\bin')
+            $candidates.Add((Join-Path $dir.FullName 'mingw64\bin'))
           }
         }
+        $candidates.Add('C:\msys64\ucrt64\bin')
+        $candidates.Add('C:\msys64\mingw64\bin')
+
         foreach ($candidate in $candidates) {
-          if (Test-Path -LiteralPath (Join-Path $candidate 'gcc.exe') -PathType Leaf) {
+          if (Test-Valid64BitMinGw $candidate) {
             return $candidate
           }
         }
@@ -438,11 +462,12 @@
         throw 'Failed to provision pnpm 10.34.7+ (<11).'
       }
 
-      # 4. Ensure C/C++ linker (MSVC or WinLibs MinGW-w64) and Rust/Cargo
+      # 4. Ensure C/C++ linker (MSVC or 64-bit WinLibs MinGW-w64) and Rust/Cargo
       $hasMsvc = Test-MsvcAvailable
       $gccBin = Find-GccBinDir
       if ($gccBin) {
-        Add-PathEntry -Dir $gccBin -Persist
+        # Prepend so 64-bit MinGW-w64 precedes any legacy 32-bit C:\MinGW\bin on PATH.
+        Add-PathEntry -Dir $gccBin -Prepend -Persist
       }
 
       if (-not $isArm64 -and -not $hasMsvc -and -not $gccBin) {
@@ -477,7 +502,7 @@
           $gccBin = Join-Path $mingwTarget 'bin'
         }
         if ($gccBin) {
-          Add-PathEntry -Dir $gccBin -Persist
+          Add-PathEntry -Dir $gccBin -Prepend -Persist
         }
       } elseif ($isArm64 -and -not $hasMsvc) {
         Write-Host 'No MSVC Build Tools detected on ARM64. Installing Visual Studio C++ Build Tools...' -ForegroundColor Cyan
