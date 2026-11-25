@@ -1,14 +1,13 @@
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import { Anton, Archivo } from 'next/font/google';
+import { getMetadataBaseUrl } from '../lib/content';
 import './styles.css';
 
 const display = Anton({ subsets: ['latin'], weight: '400', variable: '--font-display', display: 'swap' });
 const body = Archivo({ subsets: ['latin'], variable: '--font-body', display: 'swap' });
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
-
 export const metadata: Metadata = {
-  metadataBase: siteUrl ? new URL(siteUrl) : undefined,
+  metadataBase: getMetadataBaseUrl(),
   title: 'OpenFrost — a local assistant for work',
   description:
     'OpenFrost researches the public web or reads project files you grant, then saves finished work with its sources. A Windows-first local AI assistant.',

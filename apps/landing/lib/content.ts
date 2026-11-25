@@ -15,6 +15,23 @@ export function getSiteBaseUrl(): string | undefined {
   return siteUrl.endsWith('/') ? siteUrl : `${siteUrl}/`;
 }
 
+export function getMetadataBaseUrl(): URL {
+  const fallback = new URL('http://127.0.0.1:3001');
+  const siteBaseUrl = getSiteBaseUrl();
+  if (!siteBaseUrl) {
+    return fallback;
+  }
+  const trimmed = siteBaseUrl.trim();
+  if (!trimmed) {
+    return fallback;
+  }
+  try {
+    return new URL(trimmed);
+  } catch {
+    return fallback;
+  }
+}
+
 export const repositoryUrl = 'https://github.com/ParasRana1729/openfrost';
 export const releasesUrl = `${repositoryUrl}/releases`;
 export const bootstrapScriptUrl =
