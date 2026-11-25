@@ -1,4 +1,7 @@
-use super::theme::{accent, accent_bold, danger, frost_glow, muted, rounded_block, SURFACE_SEL};
+use super::theme::{
+    accent, accent_bold, danger, frost_glow, muted, rounded_block, selected_style, ICE_DIM,
+    SURFACE_SEL,
+};
 use crate::app::{App, ConfirmAction, Dialog, ALL_TABS};
 use ratatui::layout::Rect;
 use ratatui::style::Style;
@@ -12,29 +15,38 @@ pub(super) fn render_tab_picker(frame: &mut Frame, selected: usize) {
     let popup = centered_rect(area, 42, height);
     frame.render_widget(Clear, popup);
 
+    let label_width = (popup.width as usize).saturating_sub(8).max(16);
     let mut lines: Vec<Line> = Vec::new();
     for (index, tab) in ALL_TABS.iter().enumerate() {
         let is_sel = index == selected;
         let marker = if is_sel { " ▸ " } else { "   " };
-        let style = if is_sel {
+        let marker_style = if is_sel {
             accent_bold().bg(SURFACE_SEL)
         } else {
             Style::default()
         };
         let num_style = if is_sel {
-            frost_glow().bg(SURFACE_SEL)
+            accent().bg(SURFACE_SEL)
         } else {
-            muted()
+            Style::default().fg(ICE_DIM)
+        };
+        let label_style = if is_sel {
+            selected_style()
+        } else {
+            frost_glow()
         };
         lines.push(Line::from(vec![
-            Span::styled(marker, style),
+            Span::styled(marker, marker_style),
             Span::styled(format!("{}. ", index + 1), num_style),
-            Span::styled(format!("{:<22}", tab.title()), style),
+            Span::styled(
+                format!("{:<width$}", tab.title(), width = label_width),
+                label_style,
+            ),
         ]));
     }
     lines.push(Line::from(""));
     lines.push(Line::styled(
-        " ↑↓/j/k move • Enter open • Esc cancel".to_string(),
+        " ↑↓/j/k move · Enter open · Esc cancel".to_string(),
         muted(),
     ));
     frame.render_widget(
@@ -77,7 +89,7 @@ pub(super) fn render_dialog(_app: &App, frame: &mut Frame, dialog: &Dialog) {
             }
             lines.push(Line::from(""));
             lines.push(Line::styled(
-                " Enter confirm • Esc cancel".to_string(),
+                " Enter confirm · Esc cancel".to_string(),
                 muted(),
             ));
             frame.render_widget(
@@ -109,21 +121,22 @@ pub(super) fn render_dialog(_app: &App, frame: &mut Frame, dialog: &Dialog) {
                                 .unwrap_or("")
                                 .to_string()
                         };
-                        lines.push(Line::from(vec![
+                        let mut value_spans = vec![
                             Span::styled(prefix, if focused { accent_bold() } else { muted() }),
                             Span::styled(
                                 format!("{label}: "),
-                                if focused { accent_bold() } else { frost_glow() },
-                            ),
-                            Span::styled(
                                 if focused {
-                                    format!("{shown}▏")
+                                    accent_bold()
                                 } else {
-                                    shown
+                                    Style::default().fg(ICE_DIM)
                                 },
-                                frost_glow(),
                             ),
-                        ]));
+                            Span::styled(shown, frost_glow()),
+                        ];
+                        if focused {
+                            value_spans.push(Span::styled("▏", accent()));
+                        }
+                        lines.push(Line::from(value_spans));
                         if let Some(hint) = hint {
                             lines.push(Line::styled(format!("     {hint}"), muted()));
                         }
@@ -138,20 +151,24 @@ pub(super) fn render_dialog(_app: &App, frame: &mut Frame, dialog: &Dialog) {
                             Span::styled(prefix, if focused { accent_bold() } else { muted() }),
                             Span::styled(
                                 format!("{label}: "),
-                                if focused { accent_bold() } else { frost_glow() },
+                                if focused {
+                                    accent_bold()
+                                } else {
+                                    Style::default().fg(ICE_DIM)
+                                },
                             ),
-                            Span::styled(value, if focused { accent() } else { Style::default() }),
+                            Span::styled(value, if focused { accent() } else { frost_glow() }),
                             Span::styled(if focused { "  (h/l change)" } else { "" }, muted()),
                         ]));
                     }
                 }
             }
             if let Some(error) = &form.error {
-                lines.push(Line::styled(format!(" ✖ {error}"), danger()));
+                lines.push(Line::styled(format!(" × {error}"), danger()));
             }
             lines.push(Line::from(""));
             lines.push(Line::styled(
-                " Tab next field • Ctrl+S submit • Esc cancel".to_string(),
+                " Tab next field · Ctrl+S submit · Esc cancel".to_string(),
                 muted(),
             ));
             frame.render_widget(
