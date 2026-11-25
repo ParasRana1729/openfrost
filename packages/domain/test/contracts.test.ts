@@ -119,5 +119,7 @@ describe('shared Rust / Zod contract fixtures', () => {
     expect(domain.createTaskRequestSchema.safeParse({ title: 'T', request: 'R', constraints: null }).success).toBe(false);
     expect(domain.approveMemoryProposalRequestSchema.safeParse({}).success).toBe(false);
     expect(domain.setProviderConfigRequestSchema.safeParse({ provider: 'openai', model: null }).success).toBe(true);
+    expect(domain.setProviderConfigRequestSchema.safeParse({ provider: 'openrouter', model: '' }).success).toBe(true);
+    expect(domain.setProviderConfigRequestSchema.safeParse({ provider: 'openrouter', model: '   ' }).success).toBe(true);
   });
 });

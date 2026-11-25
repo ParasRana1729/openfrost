@@ -51,6 +51,14 @@ const DISPATCH_PAUSED_KEY = 'dispatch.paused';
 const MAX_TOOL_CALLS_PER_STEP = 4;
 /** Tool result content handed back to the model is capped. */
 const MAX_TOOL_RESULT_CHARS = 20_000;
+export interface ExecutorFailureInfo {
+  taskId: string;
+  runId: string | null;
+  code: RunFailure['code'] | 'executor';
+  message: string;
+  limitHit: RunLimitKind | null;
+}
+
 export interface ExecutorOptions {
   store: Store;
   /** Null runs fail honestly with provider_missing. */
@@ -61,6 +69,8 @@ export interface ExecutorOptions {
   tools?: AgentTool[];
   /** How long an undecided export approval stays valid. */
   approvalTtlMs?: number;
+  /** Optional observer for failed runs (e.g., API redacted structured logging). */
+  onFailure?: (failure: ExecutorFailureInfo) => void;
 }
 
 export interface ExecutorStatus {
@@ -98,6 +108,7 @@ export class TaskExecutor {
   readonly approvalTtlMs: number;
 
   readonly #now: () => string;
+  readonly #onFailure?: (failure: ExecutorFailureInfo) => void;
   readonly #toolsByName: Map<string, AgentTool>;
   readonly #workflowBuilders: WorkflowContextBuilders;
   readonly #exportPipeline: ExportPipeline;
@@ -117,6 +128,7 @@ export class TaskExecutor {
     this.tools = options.tools ?? [createFetchPageTool()];
     this.approvalTtlMs = options.approvalTtlMs ?? DEFAULT_APPROVAL_TTL_MS;
     this.#now = options.now ?? (() => new Date().toISOString());
+    this.#onFailure = options.onFailure;
     this.#toolsByName = new Map(this.tools.map((tool) => [tool.definition.name, tool]));
     this.#workflowBuilders = new WorkflowContextBuilders(
       this.store,
@@ -181,7 +193,7 @@ export class TaskExecutor {
    * from here on: artifact id, destination grant, and filename are stored on
    * the task and snapshotted again into the approval proposal. The run itself
    * performs no model work — it prepares the proposal, waits for the owner's
-   * decision in the web app, and only then revalidates and writes.
+   * decision in the Control Center, and only then revalidates and writes.
    */
   async enqueueExport(input: {
     artifactId: string;
@@ -200,7 +212,7 @@ export class TaskExecutor {
         request:
           'Export the saved artifact as a new Markdown file inside the granted ' +
           'destination. The write happens only after the owner approves the exact ' +
-          'proposal in the web app.',
+          'proposal in the Control Center.',
         kind: 'export_report',
         exportArgs: { ...input },
       },
@@ -538,6 +550,15 @@ export class TaskExecutor {
           } catch {
             // Finalized concurrently (e.g. canceled); nothing to do.
           }
+          if (to === 'failed') {
+            this.#notifyFailure({
+              taskId: next.id,
+              runId: null,
+              code: 'executor',
+              message,
+              limitHit: null,
+            });
+          }
         }
       }
     }
@@ -679,6 +700,9 @@ export class TaskExecutor {
             );
       messages.push({ role: 'user', content: userContent });
 
+      let webSearchSkippedReason: string | null = null;
+      const runWarnings: string[] = [];
+
       for (let step = 1; step <= this.limits.maxSteps; step += 1) {
         if (Date.now() >= deadlineMs) {
           throw new LimitReachedError(
@@ -707,9 +731,46 @@ export class TaskExecutor {
           throw err;
         }
         this.#accumulateUsage(usage, result.usage);
+        if (result.webSearchSkippedReason && webSearchSkippedReason === null) {
+          webSearchSkippedReason = result.webSearchSkippedReason;
+          this.store.events.append(
+            'tool.executed',
+            {
+              taskId,
+              runId: run.id,
+              payload: {
+                tool: 'web_search_skipped',
+                hosted: true,
+                ok: false,
+                step,
+                riskTier: 'auto',
+                reason: webSearchSkippedReason,
+              },
+            },
+            this.now(),
+          );
+        }
+        if (result.warnings) {
+          for (const warning of result.warnings) {
+            if (!runWarnings.includes(warning)) {
+              runWarnings.push(warning);
+            }
+          }
+        }
         if (result.kind === 'final') {
+          const extraNotes: string[] = [];
+          if (webSearchSkippedReason && !result.text.includes(webSearchSkippedReason)) {
+            extraNotes.push(`> [!NOTE]\n> ${webSearchSkippedReason}`);
+          }
+          for (const warning of runWarnings) {
+            if (warning !== webSearchSkippedReason && !result.text.includes(warning)) {
+              extraNotes.push(`> [!WARNING]\n> ${warning}`);
+            }
+          }
+          const finalText =
+            extraNotes.length > 0 ? `${result.text}\n\n${extraNotes.join('\n\n')}` : result.text;
           steps += 1;
-          outputChars = result.text.length;
+          outputChars = finalText.length;
           if (outputChars > this.limits.maxOutputChars) {
             throw new LimitReachedError(
               'max_output',
@@ -723,7 +784,7 @@ export class TaskExecutor {
           // so a persistence failure still classifies as a normal run failure.
           let artifact: Artifact;
           try {
-            artifact = this.reportArtifact(task, result.text, toolCtx);
+            artifact = this.reportArtifact(task, finalText, toolCtx);
           } catch (err) {
             throw new ExecutorInternalError(
               `Failed to save the result artifact: ${
@@ -977,6 +1038,21 @@ export class TaskExecutor {
       { taskId, runId, payload: { code: failure.code, message: failure.message } },
       this.now(),
     );
+    this.#notifyFailure({
+      taskId,
+      runId,
+      code: failure.code,
+      message: failure.message,
+      limitHit: failure.limitHit,
+    });
+  }
+
+  #notifyFailure(failure: ExecutorFailureInfo): void {
+    try {
+      this.#onFailure?.(failure);
+    } catch {
+      // Logging observers must never break run finalization.
+    }
   }
 
   private reportArtifact(task: Task, finalText: string, records: RunToolRecords): Artifact {

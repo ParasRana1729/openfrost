@@ -1360,4 +1360,445 @@ mod tests {
         assert!(app.assistant.matching_slash_commands().is_empty());
         assert_eq!(app.assistant.request.lines().join(""), "/p");
     }
+
+    fn sample_settings(provider: &str, model: Option<&str>) -> AssistantSettings {
+        AssistantSettings {
+            provider: provider.into(),
+            model: model.map(str::to_string),
+            models: ProviderModels {
+                openai: "gpt-4o-mini".into(),
+                gemini: "gemini-2.0-flash".into(),
+                openrouter: "openrouter/auto".into(),
+            },
+            hasProviderKey: true,
+            hasOpenAIKey: false,
+            hasGeminiKey: false,
+            hasOpenRouterKey: true,
+            executionLimits: ExecutionLimits {
+                maxSteps: 12,
+                maxWallClockMs: 600_000,
+                maxInputChars: 20_000,
+                maxOutputChars: 100_000,
+            },
+            onboardingCompletedAt: None,
+        }
+    }
+
+    #[test]
+    fn settings_renders_default_for_blank_model_and_shows_edit_model_hint() {
+        use ratatui::backend::TestBackend;
+        use ratatui::Terminal;
+
+        for blank_model in [None, Some(""), Some("   ")] {
+            let mut app = main_app();
+            app.tab = Tab::Settings;
+            app.settings.settings = Some(sample_settings("openrouter", blank_model));
+
+            let backend = TestBackend::new(100, 26);
+            let mut terminal = Terminal::new(backend).unwrap();
+            terminal
+                .draw(|frame| {
+                    crate::ui::render(&mut app, frame);
+                })
+                .unwrap();
+
+            let content: String = terminal
+                .backend()
+                .buffer()
+                .content()
+                .iter()
+                .map(|c| c.symbol())
+                .collect();
+            assert!(
+                content.contains("model: default"),
+                "expected 'model: default' in settings view, got:\n{content}"
+            );
+            assert!(content.contains("edit model"));
+        }
+    }
+
+    #[tokio::test]
+    async fn settings_m_opens_edit_model_and_submits_null_when_cleared() {
+        use httpmock::{Method::PUT, MockServer};
+
+        let server = MockServer::start();
+        let reset_mock = server.mock(|when, then| {
+            when.method(PUT)
+                .path("/api/settings/provider")
+                .body(r#"{"provider":"openrouter","model":null}"#);
+            then.status(200)
+                .body(r#"{"ok":true,"provider":"openrouter"}"#);
+        });
+
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let mut app = App::new(tx, ApiClient::new(&server.base_url()).unwrap());
+        app.screen = Screen::Main;
+        app.tab = Tab::Settings;
+        app.settings.settings = Some(sample_settings("openrouter", Some("openrouter/free")));
+
+        app.on_key(key(KeyCode::Char('m')));
+        match &app.dialog {
+            Some(Dialog::Form(form)) => {
+                assert!(matches!(
+                    &form.kind,
+                    FormKind::EditModel { provider } if provider == "openrouter"
+                ));
+                assert_eq!(form.values()[0], "openrouter/free");
+            }
+            _ => panic!("expected EditModel form dialog"),
+        }
+
+        // Cycle Preset to "(reset to default)" to clear the model field, then Ctrl+S.
+        app.on_key(key(KeyCode::Tab));
+        app.on_key(key(KeyCode::Right));
+        app.on_key(key(KeyCode::Right));
+        app.on_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL));
+
+        // Dialog remains open while submission is in flight.
+        assert!(matches!(&app.dialog, Some(Dialog::Form(form)) if form.submitting));
+
+        let event = tokio::time::timeout(Duration::from_secs(3), rx.recv())
+            .await
+            .unwrap();
+        match event {
+            Some(AppEvent::Api(payload)) => crate::apply::apply_payload(&mut app, *payload),
+            other => panic!("unexpected event: {other:?}"),
+        }
+
+        reset_mock.assert_hits(1);
+        assert!(app.dialog.is_none());
+        assert!(!app.notice.as_ref().unwrap().is_error);
+    }
+
+    #[tokio::test]
+    async fn form_mutation_error_keeps_dialog_open_with_inputs_and_error() {
+        use httpmock::{Method::POST, MockServer};
+        use ratatui::backend::TestBackend;
+        use ratatui::Terminal;
+
+        let server = MockServer::start();
+        server.mock(|when, then| {
+            when.method(POST).path("/api/projects");
+            then.status(409)
+                .body(r#"{"error":"Project already exists"}"#);
+        });
+
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let mut app = App::new(tx, ApiClient::new(&server.base_url()).unwrap());
+        app.screen = Screen::Main;
+        app.tab = Tab::Projects;
+        app.dialog = Some(Dialog::Form(Form::create_project()));
+
+        for ch in "Alpha".chars() {
+            app.on_key(key(KeyCode::Char(ch)));
+        }
+        app.on_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL));
+        assert!(matches!(&app.dialog, Some(Dialog::Form(form)) if form.submitting));
+
+        let event = tokio::time::timeout(Duration::from_secs(3), rx.recv())
+            .await
+            .unwrap();
+        match event {
+            Some(AppEvent::Api(payload)) => crate::apply::apply_payload(&mut app, *payload),
+            other => panic!("unexpected event: {other:?}"),
+        }
+
+        match &app.dialog {
+            Some(Dialog::Form(form)) => {
+                assert!(!form.submitting);
+                assert_eq!(form.values()[0], "Alpha");
+                assert!(form
+                    .error
+                    .as_deref()
+                    .unwrap()
+                    .contains("Project already exists"));
+            }
+            _ => panic!("expected form dialog to remain open on API error"),
+        }
+
+        let backend = TestBackend::new(110, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| {
+                crate::ui::render(&mut app, frame);
+            })
+            .unwrap();
+        let content: String = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|c| c.symbol())
+            .collect();
+        assert!(
+            content.contains("Project already exists"),
+            "expected error in rendered dialog:\n{content}"
+        );
+        assert!(content.contains("Alpha"));
+
+        // Subsequent success closes the dialog.
+        crate::apply::apply_payload(
+            &mut app,
+            Payload::Mutation {
+                label: "Project created".into(),
+                result: Ok(()),
+            },
+        );
+        // Without submitting=true a background mutation wouldn't close an open form;
+        // verify submitting -> Ok closes it.
+        assert!(app.dialog.is_some());
+        if let Some(Dialog::Form(form)) = &mut app.dialog {
+            form.submitting = true;
+        }
+        crate::apply::apply_payload(
+            &mut app,
+            Payload::Mutation {
+                label: "Project created".into(),
+                result: Ok(()),
+            },
+        );
+        assert!(app.dialog.is_none());
+    }
+
+    #[test]
+    fn routine_dialog_scrolls_focused_field_and_keeps_footer_visible() {
+        use ratatui::backend::TestBackend;
+        use ratatui::Terminal;
+
+        let mut app = main_app();
+        app.tab = Tab::Routines;
+        let mut form = Form::create_routine();
+        form.focus = 7; // last field ("Request")
+        app.dialog = Some(Dialog::Form(form));
+
+        for (w, h) in [(80, 24), (80, 16)] {
+            let backend = TestBackend::new(w, h);
+            let mut terminal = Terminal::new(backend).unwrap();
+            terminal
+                .draw(|frame| {
+                    crate::ui::render(&mut app, frame);
+                })
+                .unwrap();
+            let content: String = terminal
+                .backend()
+                .buffer()
+                .content()
+                .iter()
+                .map(|c| c.symbol())
+                .collect();
+            assert!(
+                content.contains("Request:"),
+                "focused Request field missing at {w}x{h}:\n{content}"
+            );
+            assert!(
+                content.contains("Ctrl+S submit"),
+                "footer missing at {w}x{h}:\n{content}"
+            );
+            if h == 16 {
+                assert!(
+                    content.contains('↑') || content.contains('↓'),
+                    "scroll indicator missing when clipped at {w}x{h}:\n{content}"
+                );
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn edit_routine_preserves_project_and_submits_correct_cadence() {
+        use httpmock::{Method::PUT, MockServer};
+
+        let server = MockServer::start();
+        let update_mock = server.mock(|when, then| {
+            when.method(PUT)
+                .path("/api/routines/rt-1")
+                .body_contains(r#""projectId":"p2""#)
+                .body_contains(r#""kind":"daily""#);
+            then.status(200).body(
+                r#"{"routine":{"id":"rt-1","name":"Daily standup","projectId":"p2","timezone":"UTC","schedule":{"kind":"daily","time":"09:30"},"template":{"title":"Standup","request":"Summarize","constraints":null},"state":"paused","windowStartAt":"2026-11-01T00:00:00Z","lastOccurrenceKey":null,"lastOccurrenceAt":null,"createdAt":"2026-11-01T00:00:00Z","updatedAt":"2026-11-01T00:00:00Z"}}"#,
+            );
+        });
+
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let mut app = App::new(tx, ApiClient::new(&server.base_url()).unwrap());
+        app.screen = Screen::Main;
+        app.tab = Tab::Routines;
+
+        let routine = Routine {
+            id: "rt-1".into(),
+            name: "Daily standup".into(),
+            projectId: "p2".into(),
+            timezone: "UTC".into(),
+            schedule: RoutineSchedule::Daily {
+                time: "09:30".into(),
+            },
+            template: RoutineTemplate {
+                title: "Standup".into(),
+                request: "Summarize".into(),
+                constraints: None,
+            },
+            state: RoutineState::Paused,
+            windowStartAt: "2026-11-01T00:00:00Z".into(),
+            lastOccurrenceKey: None,
+            lastOccurrenceAt: None,
+            createdAt: "2026-11-01T00:00:00Z".into(),
+            updatedAt: "2026-11-01T00:00:00Z".into(),
+        };
+        app.dialog = Some(Dialog::Form(Form::edit_routine(&routine)));
+
+        let projects = vec![
+            Project {
+                id: "p1".into(),
+                name: "First".into(),
+                instructions: None,
+                createdAt: "2026-11-01T00:00:00Z".into(),
+                updatedAt: "2026-11-01T00:00:00Z".into(),
+                grants: vec![],
+            },
+            Project {
+                id: "p2".into(),
+                name: "Second".into(),
+                instructions: None,
+                createdAt: "2026-11-01T00:00:00Z".into(),
+                updatedAt: "2026-11-01T00:00:00Z".into(),
+                grants: vec![],
+            },
+        ];
+        crate::apply::apply_payload(&mut app, Payload::Projects(Ok(projects)));
+
+        match &app.dialog {
+            Some(Dialog::Form(form)) => {
+                assert_eq!(form.select_index(1), 1);
+                assert_eq!(form.fields[1].value(), "Second");
+            }
+            _ => panic!("expected EditRoutine form dialog"),
+        }
+
+        app.on_key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL));
+        let event = tokio::time::timeout(Duration::from_secs(3), rx.recv())
+            .await
+            .unwrap();
+        match event {
+            Some(AppEvent::Api(payload)) => crate::apply::apply_payload(&mut app, *payload),
+            other => panic!("unexpected event: {other:?}"),
+        }
+        update_mock.assert_hits(1);
+        assert!(app.dialog.is_none());
+    }
+
+    #[tokio::test]
+    async fn assistant_cancel_guard_and_clear_persistence() {
+        use httpmock::{Method::POST, MockServer};
+
+        let server = MockServer::start();
+        let cancel_mock = server.mock(|when, then| {
+            when.method(POST).path("/api/tasks/task-active/cancel");
+            then.status(200).body(format!(
+                r#"{{"task":{}}}"#,
+                serde_json::to_string(&sample_task(false).task)
+                    .unwrap()
+                    .replace("task-1", "task-active")
+                    .replace("completed", "canceled")
+            ));
+        });
+
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let mut app = App::new(tx, ApiClient::new(&server.base_url()).unwrap());
+        app.screen = Screen::Main;
+        app.tab = Tab::Assistant;
+
+        // Terminal task: /cancel shows informative notice without hitting POST /cancel.
+        for state in [
+            TaskState::Completed,
+            TaskState::Failed,
+            TaskState::Canceled,
+            TaskState::Interrupted,
+        ] {
+            let mut detail = sample_task(false);
+            detail.task.state = state;
+            app.assistant.active_task_detail = Some(detail);
+            app.execute_slash_command("/cancel");
+            let notice = app.notice.as_ref().unwrap();
+            assert!(!notice.is_error);
+            assert_eq!(notice.message, "Current task is already finished");
+        }
+        cancel_mock.assert_hits(0);
+
+        // Active task: /cancel dispatches POST /cancel.
+        let mut active = sample_task(false);
+        active.task.id = "task-active".into();
+        active.task.state = TaskState::Running;
+        app.assistant.active_task_detail = Some(active.clone());
+        app.execute_slash_command("/cancel");
+        let event = tokio::time::timeout(Duration::from_secs(3), rx.recv())
+            .await
+            .unwrap();
+        assert!(matches!(
+            event,
+            Some(AppEvent::Api(p)) if matches!(*p, Payload::Mutation { result: Ok(()), .. })
+        ));
+        cancel_mock.assert_hits(1);
+
+        // /clear persists across SSE refreshes carrying the same task ID.
+        app.assistant.active_task_detail = Some(active.clone());
+        app.execute_slash_command("/clear");
+        assert!(app.assistant.active_task_detail.is_none());
+        assert_eq!(
+            app.assistant.cleared_task_id.as_deref(),
+            Some("task-active")
+        );
+
+        crate::apply::apply_payload(
+            &mut app,
+            Payload::AssistantData {
+                events: Ok(vec![]),
+                approvals: Ok(vec![]),
+                routines: Ok(vec![]),
+                projects: Ok(vec![]),
+                tasks: Ok(TasksResponse {
+                    tasks: vec![active.task.clone()],
+                    executor: ExecutorStatus {
+                        busy: false,
+                        activeTaskId: None,
+                        dispatchPaused: false,
+                    },
+                }),
+                latest_task: Some(active),
+            },
+        );
+        assert!(app.assistant.active_task_detail.is_none());
+
+        // A new/different task clears the suppression and renders.
+        let mut newer = sample_task(false);
+        newer.task.id = "task-newer".into();
+        crate::apply::apply_payload(
+            &mut app,
+            Payload::AssistantData {
+                events: Ok(vec![]),
+                approvals: Ok(vec![]),
+                routines: Ok(vec![]),
+                projects: Ok(vec![]),
+                tasks: Ok(TasksResponse {
+                    tasks: vec![newer.task.clone()],
+                    executor: ExecutorStatus {
+                        busy: false,
+                        activeTaskId: None,
+                        dispatchPaused: false,
+                    },
+                }),
+                latest_task: Some(newer),
+            },
+        );
+        assert_eq!(
+            app.assistant.active_task_detail.as_ref().unwrap().task.id,
+            "task-newer"
+        );
+        assert!(app.assistant.cleared_task_id.is_none());
+
+        // submit_task also clears `cleared_task_id`.
+        app.execute_slash_command("/clear");
+        assert_eq!(app.assistant.cleared_task_id.as_deref(), Some("task-newer"));
+        app.assistant.request = TextArea::new(vec!["Follow up".into()]);
+        app.submit_task();
+        assert!(app.assistant.cleared_task_id.is_none());
+    }
 }

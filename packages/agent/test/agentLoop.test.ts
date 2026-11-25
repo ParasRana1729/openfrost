@@ -7,6 +7,7 @@ import { createStore, openDatabase, type Store } from '@openfrost/db';
 import {
   createFetchPageTool,
   FakeProvider,
+  OpenRouterProvider,
   TaskExecutor,
   type AgentMessage,
   type AgentTool,
@@ -213,5 +214,77 @@ describe('research-brief agent loop', () => {
     expect(toolResult?.ok).toBe(true);
     expect(toolResult?.content).toContain('[...truncated...]');
     expect(toolResult?.content.length).toBeLessThan(25_000);
+  });
+
+  it('surfaces OpenRouter 402 web-search fallback and length truncation in the saved brief', async () => {
+    let call = 0;
+    const fetchImpl: typeof fetch = async (_input, init) => {
+      call += 1;
+      const body = JSON.parse(String(init?.body ?? '{}')) as { plugins?: unknown };
+      if (call === 1) {
+        expect(body.plugins).toEqual([{ id: 'web' }]);
+        return new Response(JSON.stringify({ error: { code: 402, message: 'credits required' } }), {
+          status: 402,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      expect(body.plugins).toBeUndefined();
+      return new Response(
+        JSON.stringify({
+          id: 'chatcmpl-fallback',
+          object: 'chat.completion',
+          model: 'openrouter/free',
+          choices: [
+            {
+              index: 0,
+              message: { role: 'assistant', content: '## Comparison\n\nFallback sourced brief.' },
+              finish_reason: 'length',
+            },
+          ],
+          usage: { prompt_tokens: 50, completion_tokens: 20 },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    };
+
+    const provider = new OpenRouterProvider({
+      model: 'openrouter/free',
+      getApiKey: async () => 'sk-or-v1-test-key-0123456789',
+      fetchImpl,
+    });
+    const executor = new TaskExecutor({
+      store,
+      provider,
+      limits,
+      now: () => at(0),
+      tools: [scriptedFetchPageTool()],
+    });
+
+    const task = await executor.enqueue({
+      title: 'Fallback Brief',
+      request: 'compare options',
+      startingUrls: ['https://example.com/start'],
+    });
+    await executor.whenIdle();
+
+    expect(store.tasks.get(task.id)?.state).toBe('completed');
+    const artifact = store.artifacts.latestForTask(task.id);
+    expect(artifact?.markdown).toContain('Fallback sourced brief.');
+    expect(artifact?.markdown).toContain('Response truncated at max_tokens (8192).');
+    expect(artifact?.markdown).toContain('Hosted web search was skipped due to OpenRouter HTTP 402');
+
+    const toolEvents = store.events
+      .listForTask(task.id)
+      .filter((e) => e.type === 'tool.executed')
+      .map((e) => e.payload);
+    expect(toolEvents).toContainEqual(
+      expect.objectContaining({
+        tool: 'web_search_skipped',
+        hosted: true,
+        ok: false,
+        step: 1,
+        riskTier: 'auto',
+      }),
+    );
   });
 });

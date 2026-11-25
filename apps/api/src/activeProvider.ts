@@ -59,19 +59,32 @@ export class ActiveProvider implements LlmProvider {
   current(): { provider: ProviderId; model: string } {
     const provider = this.#activeProvider();
     const override = this.#deps.store.state.getValue(modelKey(provider));
+    const trimmed = override?.trim() ?? '';
     const model =
-      override ??
-      (provider === 'gemini'
-        ? this.#deps.config.geminiModel
-        : provider === 'openrouter'
-          ? this.#deps.config.openrouterModel
-          : this.#deps.config.openaiModel);
+      trimmed.length > 0
+        ? trimmed
+        : provider === 'gemini'
+          ? this.#deps.config.geminiModel
+          : provider === 'openrouter'
+            ? this.#deps.config.openrouterModel
+            : this.#deps.config.openaiModel;
     return { provider, model };
   }
 
   /** Clears the memoized key for one provider (after save/remove). */
   invalidateKey(provider: ProviderId): void {
     this.#keys.delete(provider);
+  }
+
+  /** Non-empty memoized provider keys for log redaction; never returned directly. */
+  knownSecrets(): string[] {
+    const secrets: string[] = [];
+    for (const key of this.#keys.values()) {
+      if (key && key.trim().length > 0) {
+        secrets.push(key);
+      }
+    }
+    return secrets;
   }
 
   async step(request: ProviderStepRequest): Promise<ProviderStepResult> {
@@ -120,7 +133,11 @@ export class ActiveProvider implements LlmProvider {
       provider === 'gemini'
         ? new GeminiProvider({ model, getApiKey: () => this.#key(provider) })
         : provider === 'openrouter'
-          ? new OpenRouterProvider({ model, getApiKey: () => this.#key(provider) })
+          ? new OpenRouterProvider({
+              model,
+              maxOutputTokens: this.#deps.config.openrouterMaxTokens,
+              getApiKey: () => this.#key(provider),
+            })
           : new OpenAIProvider({ model, getApiKey: () => this.#key(provider) });
     this.#adapters.set(cacheKey, adapter);
     return adapter;

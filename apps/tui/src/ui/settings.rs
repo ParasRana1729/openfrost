@@ -23,9 +23,16 @@ pub(super) fn render_settings(app: &mut App, frame: &mut Frame, area: Rect) {
         .map(|s| s.provider.clone())
         .filter(|p| !p.is_empty())
         .unwrap_or_else(|| "—".to_string());
-    let model = settings
-        .and_then(|s| s.model.clone())
-        .unwrap_or_else(|| "—".to_string());
+    let model = match settings {
+        Some(s) => s
+            .model
+            .as_deref()
+            .map(str::trim)
+            .filter(|m| !m.is_empty())
+            .unwrap_or("default")
+            .to_string(),
+        None => "—".to_string(),
+    };
     let has_key = settings.map(|s| s.hasProviderKey).unwrap_or(false);
 
     lines.push(section_rule("Model & Provider", inner_w));
@@ -44,7 +51,11 @@ pub(super) fn render_settings(app: &mut App, frame: &mut Frame, area: Rect) {
         Span::styled("  ·  model: ", muted()),
         Span::styled(
             model.clone(),
-            if model == "—" { muted() } else { ice_mid() },
+            if model == "—" || model == "default" {
+                muted()
+            } else {
+                ice_mid()
+            },
         ),
     ]);
     lines.push(if provider_sel {
@@ -53,7 +64,7 @@ pub(super) fn render_settings(app: &mut App, frame: &mut Frame, area: Rect) {
         provider_line
     });
     lines.push(Line::styled(
-        "     Enter to cycle openai → gemini → openrouter",
+        "     Enter to cycle openai → gemini → openrouter · m to edit model",
         Style::default().fg(ICE_DIM),
     ));
     lines.push(Line::from(""));
@@ -128,6 +139,7 @@ pub(super) fn render_settings(app: &mut App, frame: &mut Frame, area: Rect) {
         keybind_footer(&[
             ("j/k", "move"),
             ("Enter", "activate"),
+            ("m", "edit model"),
             ("a", "add destination"),
             ("x", "remove"),
         ]),

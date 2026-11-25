@@ -6,9 +6,11 @@ import {
   MEMORY_MAX_ENTRIES_PER_FILE,
   approveMemoryProposalRequestSchema,
   deleteMemoryEntryRequestSchema,
+  memoryProposalStateSchema,
   memorySnapshotSchema,
   updateMemoryEntryRequestSchema,
   type MemoryFileView,
+  type MemoryProposalState,
 } from '@openfrost/domain';
 import type { AppContext } from '../types.js';
 
@@ -23,7 +25,7 @@ function sha256(text: string): string {
  * changed externally. Events carry metadata and hashes only, never memory text.
  */
 export const makeMemoryRoutes = (ctx: AppContext): FastifyPluginAsync => async (app) => {
-  const snapshot = () => {
+  const snapshot = (states?: readonly MemoryProposalState[]) => {
     const global = ctx.store.memory.readFileView('global', null);
     const projects = ctx.store.projects.list().map((project) => {
       const view: MemoryFileView = ctx.store.memory.readFileView('project', project.id);
@@ -32,7 +34,7 @@ export const makeMemoryRoutes = (ctx: AppContext): FastifyPluginAsync => async (
     return memorySnapshotSchema.parse({
       global,
       projects,
-      proposals: ctx.store.memory.listProposals(),
+      proposals: ctx.store.memory.listProposals(states),
       limits: {
         contentMaxChars: MEMORY_CONTENT_MAX_CHARS,
         entriesPerFile: MEMORY_MAX_ENTRIES_PER_FILE,
@@ -41,7 +43,18 @@ export const makeMemoryRoutes = (ctx: AppContext): FastifyPluginAsync => async (
     });
   };
 
-  app.get('/memory', async () => snapshot());
+  app.get('/memory', async (request, reply) => {
+    const query = request.query as { status?: string };
+    let states: readonly MemoryProposalState[] | undefined;
+    if (query.status !== undefined && query.status.length > 0) {
+      const parsed = memoryProposalStateSchema.safeParse(query.status);
+      if (!parsed.success) {
+        return reply.code(400).send({ error: 'Invalid status filter.' });
+      }
+      states = [parsed.data];
+    }
+    return snapshot(states);
+  });
 
   app.post('/memory/proposals/:proposalId/approve', async (request) => {
     const { proposalId } = request.params as { proposalId: string };

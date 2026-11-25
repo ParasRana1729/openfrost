@@ -58,7 +58,7 @@ export class OpenRouterProvider implements LlmProvider {
   constructor(options: OpenRouterProviderOptions) {
     this.#model = options.model;
     this.#getApiKey = options.getApiKey;
-    this.#maxOutputTokens = options.maxOutputTokens ?? 4_000;
+    this.#maxOutputTokens = options.maxOutputTokens ?? 8_192;
     this.#fetchImpl = options.fetchImpl ?? fetch;
   }
 
@@ -73,9 +73,10 @@ export class OpenRouterProvider implements LlmProvider {
     // Abort and network errors from fetch propagate unchanged; the executor
     // classifies AbortError against cancellation and the wall-clock limit.
     // The hosted `web` plugin bills per executed search even on free models,
-    // so it is attached only to web-grounded workflows — on a creditless
-    // account any request carrying it fails outright (HTTP 402).
-    const requestBody: Record<string, unknown> = {
+    // so on a creditless account a request carrying it fails with HTTP 402;
+    // when that happens we retry once without `plugins` so startingUrls +
+    // fetch_page can still complete the brief.
+    const baseBody: Record<string, unknown> = {
       model: this.#model,
       messages: toChatMessages(request.messages),
       tools: request.tools.map((tool) => ({
@@ -88,34 +89,48 @@ export class OpenRouterProvider implements LlmProvider {
       })),
       max_tokens: this.#maxOutputTokens,
     };
-    if (request.webSearch) {
-      requestBody.plugins = [{ id: 'web' }];
-    }
-    // Abort errors propagate unchanged so the executor classifies them against
-    // cancellation and the wall-clock limit; other transport errors are
-    // wrapped and redacted so key material never reaches persisted failures.
-    let response: Response;
-    try {
-      response = await this.#fetchImpl(OPENROUTER_CHAT_URL, {
-        method: 'POST',
-        headers: {
-          authorization: `Bearer ${apiKey}`,
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify(requestBody),
-        signal: request.signal,
-      });
-    } catch (err) {
-      if (err instanceof Error && err.name === 'AbortError') {
-        throw err;
+
+    const postCompletion = async (body: Record<string, unknown>): Promise<Response> => {
+      try {
+        return await this.#fetchImpl(OPENROUTER_CHAT_URL, {
+          method: 'POST',
+          headers: {
+            authorization: `Bearer ${apiKey}`,
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify(body),
+          signal: request.signal,
+        });
+      } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') {
+          throw err;
+        }
+        const message = err instanceof Error ? err.message : String(err);
+        throw new ProviderError(`OpenRouter request failed: ${redactSecret(message, apiKey)}`);
       }
-      const message = err instanceof Error ? err.message : String(err);
-      throw new ProviderError(`OpenRouter request failed: ${redactSecret(message, apiKey)}`);
+    };
+
+    let webSearchSkippedReason: string | undefined;
+    let response = await postCompletion(
+      request.webSearch ? { ...baseBody, plugins: [{ id: 'web' }] } : baseBody,
+    );
+
+    if (response.status === 402 && request.webSearch) {
+      void response.body?.cancel?.().catch(() => {});
+      webSearchSkippedReason =
+        'Hosted web search was skipped due to OpenRouter HTTP 402; only startingUrls and fetch_page were used.';
+      response = await postCompletion(baseBody);
     }
 
     if (!response.ok) {
+      const detail = await errorDetail(response, apiKey);
+      if (response.status === 402) {
+        throw new ProviderError(
+          `OpenRouter request failed with HTTP 402: ${detail} Switch to a :free model such as openrouter/free in Settings, or add OpenRouter credits.`,
+        );
+      }
       throw new ProviderError(
-        `OpenRouter request failed with HTTP ${response.status}: ${await errorDetail(response, apiKey)}`,
+        `OpenRouter request failed with HTTP ${response.status}: ${detail}`,
       );
     }
 
@@ -135,17 +150,15 @@ export class OpenRouterProvider implements LlmProvider {
       throw new ProviderError('OpenRouter returned no choices.');
     }
     const finishReason = asString(choice.finish_reason);
-    if (finishReason === 'length') {
-      throw new ProviderError('OpenRouter response incomplete: stopped for max_tokens.');
-    }
     if (finishReason === 'content_filter') {
       throw new ProviderError('OpenRouter response blocked by a content filter.');
     }
 
     const message = asRecord(choice.message);
     const text = asString(message?.content) ?? '';
+    const rawToolCalls = asArray(message?.tool_calls);
     const calls: Array<{ id: string; name: string; argsJson: string }> = [];
-    for (const rawCall of asArray(message?.tool_calls)) {
+    for (const rawCall of rawToolCalls) {
       const call = asRecord(rawCall);
       const function_ = asRecord(call?.function);
       const id = asString(call?.id);
@@ -171,14 +184,49 @@ export class OpenRouterProvider implements LlmProvider {
       citations.push(title === null ? { url } : { url, title });
     }
 
+    const warnings: string[] = [];
+    if (webSearchSkippedReason) {
+      warnings.push(webSearchSkippedReason);
+    }
+
     const usage = toUsage(body.usage);
+    if (finishReason === 'length') {
+      if (rawToolCalls.length > 0 || calls.length > 0 || text.trim().length === 0) {
+        throw new ProviderError('OpenRouter response incomplete: stopped for max_tokens.');
+      }
+      const truncationNote = `Response truncated at max_tokens (${this.#maxOutputTokens}).`;
+      warnings.push(truncationNote);
+      return {
+        kind: 'final',
+        text: `${text}\n\n> [!WARNING]\n> ${truncationNote}`,
+        citations,
+        usage,
+        ...(webSearchSkippedReason ? { webSearchSkippedReason } : {}),
+        warnings,
+      };
+    }
+
     if (calls.length > 0) {
-      return { kind: 'tool_calls', calls, searches: citations.length, usage };
+      return {
+        kind: 'tool_calls',
+        calls,
+        searches: citations.length,
+        usage,
+        ...(webSearchSkippedReason ? { webSearchSkippedReason } : {}),
+        ...(warnings.length > 0 ? { warnings } : {}),
+      };
     }
     if (text.length === 0) {
       throw new ProviderError('OpenRouter returned an empty response.');
     }
-    return { kind: 'final', text, citations, usage };
+    return {
+      kind: 'final',
+      text,
+      citations,
+      usage,
+      ...(webSearchSkippedReason ? { webSearchSkippedReason } : {}),
+      ...(warnings.length > 0 ? { warnings } : {}),
+    };
   }
 }
 

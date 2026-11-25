@@ -231,6 +231,22 @@ pub(super) fn format_stream_event_branch(event: &Event, is_last: bool) -> Line<'
                 .get("tool")
                 .and_then(|v| v.as_str())
                 .unwrap_or("tool");
+            if tool == "web_search_skipped" {
+                let reason = event
+                    .payload
+                    .get("reason")
+                    .and_then(|v| v.as_str())
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or("hosted web search unavailable; using starting URLs");
+                return Line::from(vec![
+                    Span::styled(branch, hairline_style()),
+                    Span::styled("◌ ", warn()),
+                    Span::styled("web search skipped  ", warn().add_modifier(Modifier::BOLD)),
+                    Span::styled(reason.to_string(), muted()),
+                    Span::styled(format!("  {time}"), muted()),
+                ]);
+            }
             let ok = event
                 .payload
                 .get("ok")
@@ -615,7 +631,11 @@ fn render_assistant_stream(app: &mut App, frame: &mut Frame, area: Rect) {
                         .get("tool")
                         .and_then(|v| v.as_str())
                         .unwrap_or("tool");
-                    format!("Synthesizing brief with {provider_name} from {tool} evidence…")
+                    if tool == "web_search_skipped" {
+                        format!("Continuing without hosted web search ({provider_name})…")
+                    } else {
+                        format!("Synthesizing brief with {provider_name} from {tool} evidence…")
+                    }
                 } else if last_event.kind == "run.started" {
                     format!("Evaluating tools & instructions with {provider_name}…")
                 } else {
@@ -654,6 +674,15 @@ fn render_assistant_stream(app: &mut App, frame: &mut Frame, area: Rect) {
                         Span::styled(err_line, danger()),
                     ]));
                 }
+            }
+            if is_openrouter_credits_error(err) {
+                lines.push(Line::from(vec![
+                    Span::styled("  │   ", hairline_style()),
+                    Span::styled(
+                        "Tip: press Tab 6 (Settings) -> m to switch to openrouter/free or check credits",
+                        muted(),
+                    ),
+                ]));
             }
             lines.push(Line::from(""));
         }
@@ -1063,6 +1092,42 @@ fn render_slash_autocomplete(app: &App, frame: &mut Frame, stream_area: Rect) {
     frame.render_widget(Paragraph::new(lines).block(popup_block), popup);
 }
 
+fn is_openrouter_credits_error(err: &str) -> bool {
+    let lower = err.to_ascii_lowercase();
+    lower.contains("http 402")
+        || lower.contains("status 402")
+        || lower.contains("(402)")
+        || (lower.contains("openrouter") && lower.contains("credit"))
+        || lower.contains("insufficient credits")
+        || lower.contains("more credits")
+}
+
+/// Computes `(request_min, title_len, constraints_len, urls_len)` for the
+/// advanced composer (`Ctrl+A`). Each bordered input uses `Borders::ALL`
+/// (+2 border rows), so normal terminals allocate `(4, 3, 4, 3)` giving
+/// Title 1 inner row, Constraints 2 inner rows, and Starting URLs 1 inner row,
+/// while tiny terminals clamp gracefully without starving Request.
+fn advanced_composer_heights(total_height: u16) -> (u16, u16, u16, u16) {
+    if total_height >= 17 {
+        return (4, 3, 4, 3);
+    }
+    // Kind (1) + Project (1) + Footer (1) = 3 fixed rows.
+    let req_min = total_height.saturating_sub(3).min(3);
+    let budget = total_height.saturating_sub(3 + req_min);
+    if budget >= 10 {
+        (req_min, 3, 4, 3)
+    } else if budget >= 9 {
+        (req_min, 3, 3, 3)
+    } else {
+        let base = budget / 3;
+        let rem = budget % 3;
+        let title_h = base + u16::from(rem >= 2);
+        let constraints_h = base + u16::from(rem >= 1);
+        let urls_h = base;
+        (req_min, title_h, constraints_h, urls_h)
+    }
+}
+
 fn composer_row(frame: &mut Frame, area: Rect, label: &str, focused: bool) {
     let style = if focused { accent_bold() } else { muted() };
     let label_area = Rect {
@@ -1088,14 +1153,19 @@ fn render_composer(app: &mut App, frame: &mut Frame, area: Rect) {
         .map(|project| project.name.clone())
         .unwrap_or_else(|| "(no project)".to_string());
 
+    let (req_min, title_h, constraints_h, urls_h) = advanced_composer_heights(area.height);
     let mut constraints = Vec::new();
-    constraints.push(Constraint::Min(4)); // request
+    constraints.push(Constraint::Min(if app.assistant.advanced_open {
+        req_min
+    } else {
+        4
+    })); // request
     constraints.push(Constraint::Length(1)); // kind
     constraints.push(Constraint::Length(1)); // project
     if app.assistant.advanced_open {
-        constraints.push(Constraint::Length(1)); // title
-        constraints.push(Constraint::Length(2)); // constraints
-        constraints.push(Constraint::Length(1)); // urls
+        constraints.push(Constraint::Length(title_h)); // title
+        constraints.push(Constraint::Length(constraints_h)); // constraints
+        constraints.push(Constraint::Length(urls_h)); // urls
     }
     constraints.push(Constraint::Length(1)); // footer
     let rows = Layout::vertical(constraints).split(area);
@@ -1107,7 +1177,9 @@ fn render_composer(app: &mut App, frame: &mut Frame, area: Rect) {
         "Request (Ctrl+S queue, Tab next, Ctrl+A close)",
         focus == ComposerField::Request,
     ));
-    frame.render_widget(&app.assistant.request, rows[row]);
+    if rows[row].height > 0 {
+        frame.render_widget(&app.assistant.request, rows[row]);
+    }
     row += 1;
 
     render_select_row(
@@ -1133,21 +1205,27 @@ fn render_composer(app: &mut App, frame: &mut Frame, area: Rect) {
             "Title (optional)",
             focus == ComposerField::Title,
         ));
-        frame.render_widget(&app.assistant.title, rows[row]);
+        if rows[row].height > 0 {
+            frame.render_widget(&app.assistant.title, rows[row]);
+        }
         row += 1;
 
         app.assistant.constraints.set_block(rounded_block_focused(
             "Constraints (optional)",
             focus == ComposerField::Constraints,
         ));
-        frame.render_widget(&app.assistant.constraints, rows[row]);
+        if rows[row].height > 0 {
+            frame.render_widget(&app.assistant.constraints, rows[row]);
+        }
         row += 1;
 
         app.assistant.starting_urls.set_block(rounded_block_focused(
             "Starting URLs (optional, space/comma separated)",
             focus == ComposerField::StartingUrls,
         ));
-        frame.render_widget(&app.assistant.starting_urls, rows[row]);
+        if rows[row].height > 0 {
+            frame.render_widget(&app.assistant.starting_urls, rows[row]);
+        }
         row += 1;
     }
 
@@ -1371,5 +1449,195 @@ mod tests {
         let coalesced = coalesce_stream_events(&events);
         let kinds: Vec<&str> = coalesced.iter().map(|e| e.kind.as_str()).collect();
         assert_eq!(kinds, vec!["task.created", "run.started", "task.failed"]);
+    }
+
+    #[test]
+    fn advanced_composer_shows_inner_lines_for_title_constraints_and_urls() {
+        use crate::api::ApiClient;
+        use crate::app::{Screen, Tab, TextArea};
+        use ratatui::backend::TestBackend;
+        use ratatui::Terminal;
+        use tokio::sync::mpsc;
+
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let api = ApiClient::new("http://127.0.0.1:0").unwrap();
+        let mut app = App::new(tx, api);
+        app.screen = Screen::Main;
+        app.tab = Tab::Assistant;
+        app.assistant.advanced_open = true;
+        app.assistant.request = TextArea::new(vec!["Compare SQLite WAL modes".to_string()]);
+        app.assistant.title = TextArea::new(vec!["SQLite WAL Brief".to_string()]);
+        app.assistant.constraints = TextArea::new(vec![
+            "Line 1: cite benchmarks".to_string(),
+            "Line 2: stay concise".to_string(),
+        ]);
+        app.assistant.starting_urls =
+            TextArea::new(vec!["https://sqlite.org/wal.html".to_string()]);
+
+        // Normal viewport: every bordered advanced field gets 1-2 visible inner lines.
+        let backend = TestBackend::new(120, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| crate::ui::render(&mut app, frame))
+            .unwrap();
+        let content: String = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|c| c.symbol())
+            .collect();
+        assert!(
+            content.contains("SQLite WAL Brief"),
+            "missing Title input in: {content}"
+        );
+        assert!(content.contains("Line 1: cite benchmarks"));
+        assert!(content.contains("Line 2: stay concise"));
+        assert!(content.contains("https://sqlite.org/wal.html"));
+
+        // Tiny terminal viewport clamps gracefully without panicking.
+        let tiny_backend = TestBackend::new(60, 12);
+        let mut tiny_terminal = Terminal::new(tiny_backend).unwrap();
+        tiny_terminal
+            .draw(|frame| crate::ui::render(&mut app, frame))
+            .unwrap();
+    }
+
+    #[test]
+    fn error_rendering_shows_402_tip_only_for_402_or_credits_errors() {
+        use crate::api::ApiClient;
+        use crate::app::{Screen, Tab};
+        use crate::contracts::{Task, TaskDetail};
+        use ratatui::backend::TestBackend;
+        use ratatui::Terminal;
+        use tokio::sync::mpsc;
+
+        fn render_error(error_msg: &str) -> String {
+            let (tx, _rx) = mpsc::unbounded_channel();
+            let api = ApiClient::new("http://127.0.0.1:0").unwrap();
+            let mut app = App::new(tx, api);
+            app.screen = Screen::Main;
+            app.tab = Tab::Assistant;
+            app.assistant.active_task_detail = Some(TaskDetail {
+                task: Task {
+                    id: "t1".to_string(),
+                    title: "Test".to_string(),
+                    request: "Test request".to_string(),
+                    constraints: None,
+                    startingUrls: None,
+                    projectId: None,
+                    kind: TaskKind::ResearchBrief,
+                    exportArgs: None,
+                    routineId: None,
+                    state: TaskState::Failed,
+                    attemptCount: 1,
+                    lastRunId: None,
+                    resultArtifactId: None,
+                    error: Some(error_msg.to_string()),
+                    createdAt: "2026-11-25T00:00:00Z".to_string(),
+                    updatedAt: "2026-11-25T00:00:00Z".to_string(),
+                },
+                runs: vec![],
+                events: vec![],
+                artifact: None,
+                approval: None,
+            });
+            let backend = TestBackend::new(110, 24);
+            let mut terminal = Terminal::new(backend).unwrap();
+            terminal
+                .draw(|frame| crate::ui::render(&mut app, frame))
+                .unwrap();
+            terminal
+                .backend()
+                .buffer()
+                .content()
+                .iter()
+                .map(|c| c.symbol())
+                .collect()
+        }
+
+        let http_402 =
+            render_error("OpenRouter API error (HTTP 402): This request requires more credits");
+        assert!(http_402.contains(
+            "Tip: press Tab 6 (Settings) -> m to switch to openrouter/free or check credits"
+        ));
+
+        let other_err = render_error("Upstream connection timed out");
+        assert!(other_err.contains("Upstream connection timed out"));
+        assert!(!other_err.contains("Tip: press Tab 6 (Settings)"));
+    }
+
+    #[test]
+    fn web_search_skipped_renders_clean_branch_and_running_status() {
+        use crate::api::ApiClient;
+        use crate::app::{Screen, Tab};
+        use crate::contracts::{Task, TaskDetail};
+        use ratatui::backend::TestBackend;
+        use ratatui::Terminal;
+        use tokio::sync::mpsc;
+
+        let skipped_with_reason = make_event(
+            10,
+            "tool.executed",
+            json!({ "tool": "web_search_skipped", "ok": false, "reason": "HTTP 402 credits required for web plugin" }),
+        );
+        let branch_with_reason =
+            format_stream_event_branch(&skipped_with_reason, false).to_string();
+        assert!(branch_with_reason.contains("web search skipped"));
+        assert!(branch_with_reason.contains("HTTP 402 credits required for web plugin"));
+        assert!(!branch_with_reason.contains("web_search_skipped"));
+
+        let skipped_no_reason = make_event(
+            11,
+            "tool.executed",
+            json!({ "tool": "web_search_skipped", "ok": false }),
+        );
+        let branch_fallback = format_stream_event_branch(&skipped_no_reason, true).to_string();
+        assert!(branch_fallback.contains("web search skipped"));
+        assert!(branch_fallback.contains("hosted web search unavailable; using starting URLs"));
+
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let api = ApiClient::new("http://127.0.0.1:0").unwrap();
+        let mut app = App::new(tx, api);
+        app.screen = Screen::Main;
+        app.tab = Tab::Assistant;
+        app.assistant.active_task_detail = Some(TaskDetail {
+            task: Task {
+                id: "t1".to_string(),
+                title: "Test".to_string(),
+                request: "Test request".to_string(),
+                constraints: None,
+                startingUrls: None,
+                projectId: None,
+                kind: TaskKind::ResearchBrief,
+                exportArgs: None,
+                routineId: None,
+                state: TaskState::Running,
+                attemptCount: 1,
+                lastRunId: None,
+                resultArtifactId: None,
+                error: None,
+                createdAt: "2026-11-25T00:00:00Z".to_string(),
+                updatedAt: "2026-11-25T00:00:00Z".to_string(),
+            },
+            runs: vec![],
+            events: vec![skipped_with_reason],
+            artifact: None,
+            approval: None,
+        });
+        let backend = TestBackend::new(110, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| crate::ui::render(&mut app, frame))
+            .unwrap();
+        let rendered: String = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|c| c.symbol())
+            .collect();
+        assert!(rendered.contains("Continuing without hosted web search (openrouter)…"));
+        assert!(!rendered.contains("from web_search_skipped evidence"));
     }
 }

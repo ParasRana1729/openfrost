@@ -1,8 +1,8 @@
 use super::{App, Form, KeyCode, KeyEvent, KeyModifiers};
 use crate::contracts::{
     CreateExportRequest, CreateProjectRequest, CreateRoutineRequest, DeleteMemoryEntryRequest,
-    RoutineSchedule, RoutineTemplate, SetProviderKeyRequest, UpdateMemoryEntryRequest,
-    UpdateProjectRequest, UpdateRoutineRequest,
+    RoutineSchedule, RoutineTemplate, SetProviderConfigRequest, SetProviderKeyRequest,
+    UpdateMemoryEntryRequest, UpdateProjectRequest, UpdateRoutineRequest,
 };
 
 pub(crate) enum Dialog {
@@ -17,14 +17,31 @@ pub(crate) enum Dialog {
 /// What a submitted form maps to; one variant per API call.
 pub(crate) enum FormKind {
     CreateProject,
-    EditProject { project_id: String },
-    GrantFolder { project_id: String },
+    EditProject {
+        project_id: String,
+    },
+    GrantFolder {
+        project_id: String,
+    },
     AddDestination,
-    SetProviderKey { provider: String },
-    Export { artifact_id: String },
+    SetProviderKey {
+        provider: String,
+    },
+    EditModel {
+        provider: String,
+    },
+    Export {
+        artifact_id: String,
+    },
     CreateRoutine,
-    EditRoutine { routine_id: String },
-    EditMemoryEntry { entry_id: String, file_sha: String },
+    EditRoutine {
+        routine_id: String,
+        project_id: String,
+    },
+    EditMemoryEntry {
+        entry_id: String,
+        file_sha: String,
+    },
 }
 
 #[derive(Clone)]
@@ -80,12 +97,23 @@ impl App {
                     self.dialog = Some(Dialog::Form(form));
                     return;
                 }
+                if form.submitting {
+                    // Esc pressed while submitting: dismiss dialog.
+                    return;
+                }
                 // handle_key returned false: Esc closed, Ctrl+S submitted —
                 // distinguish by re-checking the key.
                 if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('s') {
-                    if let Err(message) = self.submit_form(&form) {
-                        form.error = Some(message);
-                        self.dialog = Some(Dialog::Form(form));
+                    form.error = None;
+                    match self.submit_form(&form) {
+                        Ok(()) => {
+                            form.submitting = true;
+                            self.dialog = Some(Dialog::Form(form));
+                        }
+                        Err(message) => {
+                            form.error = Some(message);
+                            self.dialog = Some(Dialog::Form(form));
+                        }
                     }
                 }
                 // Esc: dialog closed without submitting.
@@ -228,6 +256,35 @@ impl App {
                 });
                 Ok(())
             }
+            FormKind::EditModel { provider } => {
+                let raw = values.first().cloned().unwrap_or_default();
+                let trimmed = raw.trim().to_string();
+                if trimmed.len() > 100 {
+                    return Err("Model name must be 100 characters or fewer".into());
+                }
+                let provider = provider.clone();
+                let api = self.api.clone();
+                if trimmed.is_empty() {
+                    let input = SetProviderConfigRequest::<Option<String>> {
+                        provider: provider.clone(),
+                        model: Some(None),
+                    };
+                    self.spawn_mutation(
+                        format!("Model reset to default ({provider})"),
+                        async move { api.set_provider_config(&input).await },
+                    );
+                } else {
+                    let input = SetProviderConfigRequest {
+                        provider: provider.clone(),
+                        model: Some(trimmed.clone()),
+                    };
+                    self.spawn_mutation(
+                        format!("Model set to {trimmed} ({provider})"),
+                        async move { api.set_provider_config(&input).await },
+                    );
+                }
+                Ok(())
+            }
             FormKind::Export { artifact_id } => {
                 let destination_id = {
                     let form = &form;
@@ -245,16 +302,17 @@ impl App {
                     }
                 };
                 let filename = values.get(1).cloned().unwrap_or_default();
+                let trimmed_filename = filename.trim();
                 if destination_id.is_empty() {
                     return Err("Pick an export destination".into());
                 }
-                if !filename.ends_with(".md") || filename.trim().len() < 5 {
+                if !trimmed_filename.ends_with(".md") || trimmed_filename.len() < 5 {
                     return Err("Filename must be at least 5 characters and end in .md".into());
                 }
                 let input = CreateExportRequest {
                     artifactId: artifact_id.clone(),
                     destinationId: destination_id,
-                    filename: filename.trim().to_string(),
+                    filename: trimmed_filename.to_string(),
                 };
                 let api = self.api.clone();
                 self.spawn_mutation("Export queued for approval", async move {
@@ -266,8 +324,8 @@ impl App {
                 let name = values.first().cloned().unwrap_or_default();
                 let project_index = form.select_index(1);
                 let timezone = values.get(2).cloned().unwrap_or_default();
-                let cadence = form.select_index(2);
-                let weekday = form.select_index(3);
+                let cadence = form.select_index(3);
+                let weekday = form.select_index(4);
                 let time = values.get(5).cloned().unwrap_or_default();
                 let title = values.get(6).cloned().unwrap_or_default();
                 let request = values.get(7).cloned().unwrap_or_default();
@@ -282,7 +340,7 @@ impl App {
                         return Err(format!("{what} is required"));
                     }
                 }
-                if !time.contains(':') || time.len() != 5 {
+                if !time.trim().contains(':') || time.trim().len() != 5 {
                     return Err("Time must be HH:mm (24h)".into());
                 }
                 // The select carries project names; resolve against the
@@ -292,11 +350,23 @@ impl App {
                     .get(1)
                     .map(|field| field.value())
                     .unwrap_or_default();
+                if selected_name == "(loading projects\u{2026})" {
+                    return Err("Projects are still loading; wait a moment and try again".into());
+                }
+                if selected_name == "(no projects yet \u{2014} create one first)" {
+                    return Err("Create a project first".into());
+                }
                 let project_id = self
                     .projects
                     .projects
                     .iter()
                     .find(|project| project.name == selected_name)
+                    .or_else(|| {
+                        self.assistant
+                            .projects
+                            .iter()
+                            .find(|project| project.name == selected_name)
+                    })
                     .or_else(|| self.assistant.projects.get(project_index))
                     .map(|project| project.id.clone())
                     .ok_or_else(|| "Pick a project".to_string())?;
@@ -328,7 +398,7 @@ impl App {
                             api.create_routine(&input).await.map(|_| ())
                         });
                     }
-                    FormKind::EditRoutine { routine_id } => {
+                    FormKind::EditRoutine { routine_id, .. } => {
                         let input = UpdateRoutineRequest {
                             name: Some(name.trim().to_string()),
                             projectId: Some(project_id),

@@ -133,7 +133,9 @@ async fn delete_destination_uses_delete_verb() {
 async fn memory_and_settings_round_trip() {
     let server = MockServer::start();
     server.mock(|when, then| {
-        when.method(httpmock::Method::GET).path("/api/memory");
+        when.method(httpmock::Method::GET)
+            .path("/api/memory")
+            .query_param("status", "pending");
         then.status(200).body(
             r#"{ "global": { "scope": "global", "projectId": null, "path": "C:\\m.md", "exists": false, "sha256": null, "entries": [], "problems": [], "externalChange": false },
                  "projects": [], "proposals": [],
@@ -156,6 +158,42 @@ async fn memory_and_settings_round_trip() {
         })
         .await
         .unwrap();
+}
+
+#[tokio::test]
+async fn set_provider_config_sends_model_and_null_reset() {
+    let server = MockServer::start();
+    let set_mock = server.mock(|when, then| {
+        when.method(httpmock::Method::PUT)
+            .path("/api/settings/provider")
+            .body(r#"{"provider":"openrouter","model":"openrouter/free"}"#);
+        then.status(200)
+            .body(r#"{ "ok": true, "provider": "openrouter" }"#);
+    });
+    let reset_mock = server.mock(|when, then| {
+        when.method(httpmock::Method::PUT)
+            .path("/api/settings/provider")
+            .body(r#"{"provider":"openrouter","model":null}"#);
+        then.status(200)
+            .body(r#"{ "ok": true, "provider": "openrouter" }"#);
+    });
+    let client = client(&server);
+    client
+        .set_provider_config(&SetProviderConfigRequest::<String> {
+            provider: "openrouter".into(),
+            model: Some("openrouter/free".into()),
+        })
+        .await
+        .unwrap();
+    client
+        .set_provider_config(&SetProviderConfigRequest::<Option<String>> {
+            provider: "openrouter".into(),
+            model: Some(None),
+        })
+        .await
+        .unwrap();
+    set_mock.assert_hits(1);
+    reset_mock.assert_hits(1);
 }
 
 // ---------------------------------------------------------------------------

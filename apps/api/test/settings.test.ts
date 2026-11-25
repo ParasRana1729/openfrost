@@ -1,5 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { readProviderKey } from '@openfrost/db';
+import { ActiveProvider } from '../src/activeProvider.js';
+import { loadConfig } from '../src/config.js';
 import { startApp, type TestApp } from './helpers.js';
 
 let app: TestApp;
@@ -25,7 +27,7 @@ describe('settings API', () => {
       models: {
         openai: 'gpt-4.1-mini',
         gemini: 'gemini-3.8-flash',
-        openrouter: 'openrouter/auto',
+        openrouter: 'openrouter/free',
       },
       hasProviderKey: false,
       hasOpenAIKey: false,
@@ -113,15 +115,15 @@ describe('provider switching', () => {
     });
     expect(asDefault.json()).toMatchObject({
       provider: 'openrouter',
-      model: 'openrouter/auto',
-      models: { openrouter: 'openrouter/auto' },
+      model: 'openrouter/free',
+      models: { openrouter: 'openrouter/free' },
       hasOpenRouterKey: false,
     });
 
     const overridden = await app.built.app.inject({
       method: 'PUT',
       url: '/api/settings/provider',
-      payload: { provider: 'openrouter', model: 'openai/gpt-4.1-mini' },
+      payload: { provider: 'openrouter', model: '  openai/gpt-4.1-mini  ' },
     });
     expect(overridden.statusCode).toBe(200);
     const after = await app.built.app.inject({
@@ -130,12 +132,73 @@ describe('provider switching', () => {
     });
     expect(after.json()).toMatchObject({ provider: 'openrouter', model: 'openai/gpt-4.1-mini' });
 
+    // Empty and whitespace-only overrides clear back to the default model.
+    for (const emptyModel of ['', '   ', null]) {
+      await app.built.app.inject({
+        method: 'PUT',
+        url: '/api/settings/provider',
+        payload: { provider: 'openrouter', model: 'openai/gpt-4.1-mini' },
+      });
+      const cleared = await app.built.app.inject({
+        method: 'PUT',
+        url: '/api/settings/provider',
+        payload: { provider: 'openrouter', model: emptyModel },
+      });
+      expect(cleared.statusCode).toBe(200);
+      const res = await app.built.app.inject({
+        method: 'GET',
+        url: '/api/settings',
+      });
+      expect(res.json()).toMatchObject({
+        provider: 'openrouter',
+        model: 'openrouter/free',
+        models: { openrouter: 'openrouter/free' },
+      });
+      const active = new ActiveProvider({
+        config: { ...loadConfig({}), homeDir: app.home },
+        store: app.store,
+      });
+      expect(active.current()).toEqual({ provider: 'openrouter', model: 'openrouter/free' });
+    }
+
+    // Even if whitespace/empty is stored directly in appState, reads fall back cleanly.
+    app.store.state.setValue('provider.model.openrouter', '   ');
+    const directActive = new ActiveProvider({
+      config: { ...loadConfig({}), homeDir: app.home },
+      store: app.store,
+    });
+    expect(directActive.current()).toEqual({ provider: 'openrouter', model: 'openrouter/free' });
+    const directRes = await app.built.app.inject({
+      method: 'GET',
+      url: '/api/settings',
+    });
+    expect(directRes.json()).toMatchObject({
+      provider: 'openrouter',
+      model: 'openrouter/free',
+      models: { openrouter: 'openrouter/free' },
+    });
+
     const back = await app.built.app.inject({
       method: 'PUT',
       url: '/api/settings/provider',
       payload: { provider: 'openai' },
     });
     expect(back.statusCode).toBe(200);
+  });
+
+  it('validates and clamps openrouterMaxTokens in loadConfig', () => {
+    expect(loadConfig({}).openrouterMaxTokens).toBe(8192);
+    expect(loadConfig({ OPENFROST_OPENROUTER_MAX_TOKENS: '16384' }).openrouterMaxTokens).toBe(16384);
+    expect(loadConfig({ OPENFROST_OPENROUTER_MAX_TOKENS: '5000000' }).openrouterMaxTokens).toBe(1_000_000);
+    expect(() => loadConfig({ OPENFROST_OPENROUTER_MAX_TOKENS: '0' })).toThrowError(
+      /OPENFROST_OPENROUTER_MAX_TOKENS/,
+    );
+    expect(() => loadConfig({ OPENFROST_OPENROUTER_MAX_TOKENS: '-10' })).toThrowError(
+      /OPENFROST_OPENROUTER_MAX_TOKENS/,
+    );
+    expect(() => loadConfig({ OPENFROST_OPENROUTER_MAX_TOKENS: 'abc' })).toThrowError(
+      /OPENFROST_OPENROUTER_MAX_TOKENS/,
+    );
   });
 
   it('rejects an unknown provider when switching', async () => {

@@ -22,7 +22,7 @@ export interface ProposeMemoryToolOptions {
 /**
  * `propose_memory` lets the assistant suggest one durable global preference or
  * project fact (S05). A proposal is not memory: it is pending until the owner
- * approves it in the web app, and pending text is never retrieved into a task.
+ * approves it in the Control Center, and pending text is never retrieved into a task.
  * The tool scans for credential material before and inside the store, refuses
  * duplicates, and accepts at most MEMORY_MAX_PROPOSALS_PER_RUN per run. Events
  * carry metadata only — never the proposed text.

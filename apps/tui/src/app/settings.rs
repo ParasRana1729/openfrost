@@ -26,6 +26,28 @@ impl App {
             KeyCode::Char('a') => {
                 self.dialog = Some(Dialog::Form(Form::add_destination()));
             }
+            KeyCode::Char('m') => {
+                let Some(settings) = self.settings.settings.clone() else {
+                    return;
+                };
+                if settings.provider == "fake" {
+                    self.set_notice(
+                        "The fake provider hook does not use a configurable model",
+                        true,
+                    );
+                    return;
+                }
+                let current_model = settings
+                    .model
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|m| !m.is_empty())
+                    .unwrap_or("");
+                self.dialog = Some(Dialog::Form(Form::edit_model(
+                    &settings.provider,
+                    current_model,
+                )));
+            }
             KeyCode::Char('x') if self.settings.selected == 1 => {
                 let Some(settings) = self.settings.settings.clone() else {
                     return;
