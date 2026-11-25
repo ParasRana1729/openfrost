@@ -1,3 +1,20 @@
+const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? '';
+
+export function withBasePath(path: string): string {
+  if (!basePath || !path.startsWith('/')) {
+    return path;
+  }
+  return `${basePath}${path}`;
+}
+
+export function getSiteBaseUrl(): string | undefined {
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
+  if (!siteUrl) {
+    return undefined;
+  }
+  return siteUrl.endsWith('/') ? siteUrl : `${siteUrl}/`;
+}
+
 export const repositoryUrl = 'https://github.com/ParasRana1729/openfrost';
 export const releasesUrl = `${repositoryUrl}/releases`;
 export const bootstrapScriptUrl =
@@ -61,7 +78,7 @@ export const tuiScreens = [
     title: 'Conversation-first stream with live SSE tool traces',
     caption:
       'Prompt from the bottom composer, switch project scope with Tab or mode with Shift+Tab, and watch bounded tool calls resolve into a rendered Markdown brief.',
-    imageSrc: '/images/tui-assistant.png',
+    imageSrc: withBasePath('/images/tui-assistant.png'),
     imageAlt:
       'OpenFrost Assistant tab showing a live research brief execution tree, a rendered Markdown comparison table, and the bottom prompt composer',
   },
@@ -71,7 +88,7 @@ export const tuiScreens = [
     title: 'Animated Frost Owl splash & automatic runtime startup',
     caption:
       'Launching openfrost starts the background loopback API if needed and connects with an animated Glacier Ink boot card.',
-    imageSrc: '/images/tui-splash.png',
+    imageSrc: withBasePath('/images/tui-splash.png'),
     imageAlt:
       'OpenFrost terminal splash screen showing the Frost Owl mascot, shimmering wordmark, and local API startup indicator',
   },
@@ -81,7 +98,7 @@ export const tuiScreens = [
     title: 'Global single-run queue and exact export approvals',
     caption:
       'Filter queued, running, completed, and failed tasks, inspect run history, and review exact content hashes before any file is exported.',
-    imageSrc: '/images/tui-tasks.png',
+    imageSrc: withBasePath('/images/tui-tasks.png'),
     imageAlt:
       'OpenFrost Tasks tab listing an export task awaiting approval, completed briefs, and a queued weekly planning task',
   },
@@ -91,7 +108,7 @@ export const tuiScreens = [
     title: 'Provider, model picker, DPAPI keys & export roots',
     caption:
       'Cycle between OpenAI, Gemini, and OpenRouter, pick or reset models inline with m, seal API keys with Windows DPAPI, and grant export folders.',
-    imageSrc: '/images/tui-settings.png',
+    imageSrc: withBasePath('/images/tui-settings.png'),
     imageAlt:
       'OpenFrost Settings tab showing the active OpenRouter provider, model configuration, Windows DPAPI key badge, and granted export folder',
   },

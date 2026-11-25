@@ -11,6 +11,7 @@ import {
   recentUpdates,
   releasesUrl,
   repositoryUrl,
+  withBasePath,
   workflows,
 } from '../lib/content';
 
@@ -146,15 +147,15 @@ export default function Home() {
 
         <section className="crystal-band wrap" aria-label="Photographs of snow crystals" data-reveal>
           <figure>
-            <div className="crystal-photo"><Image src="/images/feathery-snow-crystals-2217830221.jpg" alt="Fine branching snow crystals on a dark glass surface" fill unoptimized sizes="(max-width: 760px) 100vw, 48vw" /></div>
+            <div className="crystal-photo"><Image src={withBasePath('/images/feathery-snow-crystals-2217830221.jpg')} alt="Fine branching snow crystals on a dark glass surface" fill unoptimized sizes="(max-width: 760px) 100vw, 48vw" /></div>
             <figcaption>Feathery crystals · Jason Hollinger</figcaption>
           </figure>
           <figure>
-            <div className="crystal-photo"><Image src="/images/snow-crystals.jpg" alt="A single snow crystal catching light against a black background" fill unoptimized sizes="(max-width: 760px) 100vw, 48vw" /></div>
+            <div className="crystal-photo"><Image src={withBasePath('/images/snow-crystals.jpg')} alt="A single snow crystal catching light against a black background" fill unoptimized sizes="(max-width: 760px) 100vw, 48vw" /></div>
             <figcaption>Snow crystals · ComputerHotline</figcaption>
           </figure>
           <figure>
-            <div className="crystal-photo"><Image src="/images/snowflake-flickr-alexey-kljatov.jpg" alt="A sharply defined snowflake photographed against a dark surface" fill unoptimized sizes="(max-width: 760px) 100vw, 48vw" /></div>
+            <div className="crystal-photo"><Image src={withBasePath('/images/snowflake-flickr-alexey-kljatov.jpg')} alt="A sharply defined snowflake photographed against a dark surface" fill unoptimized sizes="(max-width: 760px) 100vw, 48vw" /></div>
             <figcaption>Snowflake · Alexey Kljatov</figcaption>
           </figure>
         </section>
