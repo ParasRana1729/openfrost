@@ -8,6 +8,8 @@ One assistant handles the workflows; projects scope source folders and approved
 context. The local terminal UI (TUI) shows tasks, progress, results, memory,
 and approval requests.
 
+**Product site:** [parasrana1729.github.io/openfrost](https://parasrana1729.github.io/openfrost/)
+
 ## What it does
 
 - **Research briefs:** search the public web and save a Markdown brief with
@@ -240,13 +242,15 @@ free of paid calls. GitHub Actions runs the TypeScript and Rust checks on
 
 ## Product site
 
-The static marketing and source page lives in `apps/landing`. It runs on port
-3001 during development (`pnpm --filter @openfrost/landing dev`) and exports
-static files into `apps/landing/out` on build. It showcases the latest TUI
-Control Center screenshots, interactive workflow preview, and the PowerShell
-`irm | iex` bootstrap command (`scripts/bootstrap.ps1`). Set the canonical site
-URL (`NEXT_PUBLIC_SITE_URL`) before deployment so Open Graph links point at the
-published domain.
+The static marketing and source page lives in `apps/landing` and is published at
+[https://parasrana1729.github.io/openfrost/](https://parasrana1729.github.io/openfrost/)
+via `.github/workflows/deploy-landing.yml`. It runs on port 3001 during
+development (`pnpm --filter @openfrost/landing dev`) and exports static files
+into `apps/landing/out` on build. It showcases the latest TUI Control Center
+screenshots, interactive workflow preview, and the PowerShell `irm | iex`
+bootstrap command (`scripts/bootstrap.ps1`). Set `NEXT_PUBLIC_SITE_URL` (and
+`NEXT_PUBLIC_BASE_PATH` when hosting under a subpath) before deployment so
+Open Graph links, `robots.txt`, `sitemap.xml`, and image paths resolve cleanly.
 
 ## Repository map
 
