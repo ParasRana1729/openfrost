@@ -12,6 +12,7 @@ export interface ApiConfig {
   openaiModel: string;
   geminiModel: string;
   openrouterModel: string;
+  openrouterMaxTokens: number;
   /** How often the routine scheduler examines due occurrences. */
   routineTickMs: number;
 }
@@ -32,6 +33,17 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
       `Invalid OPENFROST_ROUTINE_TICK_MS: ${String(env.OPENFROST_ROUTINE_TICK_MS)}`,
     );
   }
+  const rawMaxTokens = env.OPENFROST_OPENROUTER_MAX_TOKENS;
+  const parsedMaxTokens =
+    rawMaxTokens !== undefined && rawMaxTokens.trim().length > 0
+      ? Number(rawMaxTokens)
+      : 8192;
+  if (!Number.isInteger(parsedMaxTokens) || parsedMaxTokens < 1) {
+    throw new Error(
+      `Invalid OPENFROST_OPENROUTER_MAX_TOKENS: ${String(env.OPENFROST_OPENROUTER_MAX_TOKENS)}`,
+    );
+  }
+  const openrouterMaxTokens = Math.min(parsedMaxTokens, 1_000_000);
   return {
     host: '127.0.0.1',
     port,
@@ -40,7 +52,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     provider,
     openaiModel: env.OPENFROST_OPENAI_MODEL ?? 'gpt-4.1-mini',
     geminiModel: env.OPENFROST_GEMINI_MODEL ?? 'gemini-3.8-flash',
-    openrouterModel: env.OPENFROST_OPENROUTER_MODEL ?? 'openrouter/auto',
+    openrouterModel: env.OPENFROST_OPENROUTER_MODEL ?? 'openrouter/free',
+    openrouterMaxTokens,
     routineTickMs,
   };
 }

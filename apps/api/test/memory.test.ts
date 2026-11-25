@@ -355,4 +355,46 @@ describe('memory API', () => {
     });
     expect(missingReject.statusCode).toBe(404);
   });
+
+  it('filters proposals when ?status=pending is passed while keeping full list by default', async () => {
+    const pendingProposal = createProposal('Pending preference.');
+    const approvedProposal = createProposal('Approved preference.');
+    const rejectedProposal = createProposal('Rejected preference.');
+
+    const approve = await app.built.app.inject({
+      method: 'POST',
+      url: `/api/memory/proposals/${approvedProposal.id}/approve`,
+      payload: { fileSha256: null },
+    });
+    expect(approve.statusCode).toBe(200);
+
+    const reject = await app.built.app.inject({
+      method: 'POST',
+      url: `/api/memory/proposals/${rejectedProposal.id}/reject`,
+    });
+    expect(reject.statusCode).toBe(200);
+
+    const allRes = await app.built.app.inject({
+      method: 'GET',
+      url: '/api/memory',
+    });
+    expect(allRes.statusCode).toBe(200);
+    expect((allRes.json() as Snapshot).proposals).toHaveLength(3);
+
+    const pendingRes = await app.built.app.inject({
+      method: 'GET',
+      url: '/api/memory?status=pending',
+    });
+    expect(pendingRes.statusCode).toBe(200);
+    const pendingBody = pendingRes.json() as Snapshot;
+    expect(pendingBody.proposals).toHaveLength(1);
+    expect(pendingBody.proposals[0]?.id).toBe(pendingProposal.id);
+    expect(pendingBody.proposals[0]?.state).toBe('pending');
+
+    const badStatus = await app.built.app.inject({
+      method: 'GET',
+      url: '/api/memory?status=bogus',
+    });
+    expect(badStatus.statusCode).toBe(400);
+  });
 });

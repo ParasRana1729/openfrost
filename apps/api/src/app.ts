@@ -33,7 +33,7 @@ import {
   type OpenDatabaseResult,
   type Store,
 } from '@openfrost/db';
-import { TaskExecutor, type LlmProvider } from '@openfrost/agent';
+import { TaskExecutor, redactLogSecrets, type LlmProvider } from '@openfrost/agent';
 import type { ZodError, ZodIssue } from 'zod';
 import { ActiveProvider } from './activeProvider.js';
 import { EventBus } from './bus.js';
@@ -62,7 +62,12 @@ function buildLogger(): Logger {
       },
     },
     redact: {
-      paths: ['req.headers.cookie', 'req.headers.authorization', 'headers.cookie'],
+      paths: [
+        'req.headers.cookie',
+        'req.headers.authorization',
+        'headers.cookie',
+        'headers.authorization',
+      ],
       censor: '[redacted]',
     },
   });
@@ -108,6 +113,11 @@ export async function buildApp(options: BuildAppOptions, logger?: Logger | false
     });
   }
 
+  const app = Fastify({
+    loggerInstance: log === false ? undefined : (log as Logger),
+    bodyLimit: 1024 * 1024,
+  });
+
   // The executor talks to ActiveProvider, which resolves the owner's active
   // provider (OpenAI, Gemini, or OpenRouter) per run from Settings; the OPENFROST_PROVIDER
   // =fake dev hook overrides routing entirely. Tests may inject a provider.
@@ -121,6 +131,27 @@ export async function buildApp(options: BuildAppOptions, logger?: Logger | false
     provider: builtProvider,
     limits: options.limits ?? DEFAULT_EXECUTION_LIMITS,
     now,
+    onFailure: (failure) => {
+      const knownSecrets =
+        builtProvider instanceof ActiveProvider ? builtProvider.knownSecrets() : [];
+      const safeMessage = redactLogSecrets(failure.message, knownSecrets);
+      const fields = {
+        taskId: failure.taskId,
+        runId: failure.runId,
+        code: failure.code,
+        ...(failure.limitHit ? { limitHit: failure.limitHit } : {}),
+        message: safeMessage,
+      };
+      if (
+        failure.code === 'provider_error' ||
+        failure.code === 'internal' ||
+        failure.code === 'executor'
+      ) {
+        app.log.error(fields, 'background run failed');
+      } else {
+        app.log.warn(fields, 'background run failed');
+      }
+    },
   });
 
   // The routine tick shares the executor's clock so due/missed decisions and
@@ -130,11 +161,6 @@ export async function buildApp(options: BuildAppOptions, logger?: Logger | false
     executor,
     now,
     intervalMs: config.routineTickMs,
-  });
-
-  const app = Fastify({
-    loggerInstance: log === false ? undefined : (log as Logger),
-    bodyLimit: 1024 * 1024,
   });
 
   // The error handler must be registered before any plugin scope so every

@@ -18,12 +18,16 @@ export type ScriptedStep =
       text: string;
       citations?: Array<{ url: string; title?: string }>;
       usage?: ProviderUsage;
+      webSearchSkippedReason?: string;
+      warnings?: string[];
     }
   | {
       type: 'tool_calls';
       calls: Array<{ name: string; argsJson: string }>;
       searches?: number;
       usage?: ProviderUsage;
+      webSearchSkippedReason?: string;
+      warnings?: string[];
     }
   /** An empty tool_calls result, so the loop advances one step. */
   | { type: 'continue' }
@@ -125,6 +129,10 @@ export class FakeProvider implements LlmProvider {
           text: step.text,
           citations: step.citations ?? [],
           usage: step.usage ?? NO_TOKENS,
+          ...(step.webSearchSkippedReason
+            ? { webSearchSkippedReason: step.webSearchSkippedReason }
+            : {}),
+          ...(step.warnings ? { warnings: step.warnings } : {}),
         };
       case 'tool_calls': {
         const substitute = firstInventoryPath(request.messages) ?? 'C:\\no-project-file-inventory';
@@ -140,6 +148,10 @@ export class FakeProvider implements LlmProvider {
           })),
           searches: step.searches ?? 0,
           usage: step.usage ?? NO_TOKENS,
+          ...(step.webSearchSkippedReason
+            ? { webSearchSkippedReason: step.webSearchSkippedReason }
+            : {}),
+          ...(step.warnings ? { warnings: step.warnings } : {}),
         };
       }
       case 'continue':

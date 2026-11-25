@@ -42,6 +42,6 @@ export type SetProviderKeyRequest = z.infer<typeof setProviderKeyRequestSchema>;
 /** Switch the active provider and optionally set its model. */
 export const setProviderConfigRequestSchema = z.strictObject({
   provider: providerIdSchema,
-  model: z.string().min(1).max(100).nullable().optional(),
+  model: z.string().max(100).nullable().optional(),
 });
 export type SetProviderConfigRequest = z.infer<typeof setProviderConfigRequestSchema>;

@@ -163,3 +163,46 @@ describe('dispatch review after recovery', () => {
     expect(resume.json().paused).toBe(false);
   });
 });
+
+describe('background failure logging redaction', () => {
+  it('logs failed background runs without leaking secret material', async () => {
+    const orKey = 'sk-or-v1-secret-openrouter-value-123456';
+    const openaiKey = 'sk-proj-secret-openai-value-123456';
+    const geminiKey = 'AIzaSySecretGeminiKeyValue1234567890';
+    const bearerToken = 'Bearer super-secret-bearer-token-987654';
+    const secretApp = await startApp({
+      steps: [
+        {
+          type: 'error',
+          message:
+            `upstream failed with authorization: ${bearerToken} ` +
+            `openrouter=${orKey} openai=${openaiKey} gemini=${geminiKey}`,
+        },
+      ],
+    });
+    try {
+      const create = await secretApp.built.app.inject({
+        method: 'POST',
+        url: '/api/tasks',
+        payload: { title: 'Log redaction', request: 'trigger provider error' },
+      });
+      expect(create.statusCode).toBe(202);
+      const taskId = create.json().task.id as string;
+
+      await waitFor(
+        () => secretApp.store.tasks.get(taskId)?.state === 'failed',
+      );
+
+      expect(secretApp.logs.lines.length).toBeGreaterThan(0);
+      expect(secretApp.logs.contains('background run failed')).toBe(true);
+      expect(secretApp.logs.contains('provider_error')).toBe(true);
+      expect(secretApp.logs.contains(orKey)).toBe(false);
+      expect(secretApp.logs.contains(openaiKey)).toBe(false);
+      expect(secretApp.logs.contains(geminiKey)).toBe(false);
+      expect(secretApp.logs.contains('super-secret-bearer-token-987654')).toBe(false);
+      expect(secretApp.logs.contains('[redacted]')).toBe(true);
+    } finally {
+      await secretApp.close();
+    }
+  });
+});

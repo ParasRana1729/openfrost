@@ -40,6 +40,8 @@ export type ProviderStepResult =
       text: string;
       citations: ProviderCitation[];
       usage: ProviderUsage;
+      webSearchSkippedReason?: string;
+      warnings?: string[];
     }
   | {
       kind: 'tool_calls';
@@ -47,6 +49,8 @@ export type ProviderStepResult =
       /** Provider-hosted search calls performed during this step. */
       searches: number;
       usage: ProviderUsage;
+      webSearchSkippedReason?: string;
+      warnings?: string[];
     };
 
 export interface ProviderStepRequest {
@@ -88,4 +92,35 @@ export class ProviderMissingError extends Error {
 /** Removes an exact provider credential before errors can be persisted or shown. */
 export function redactSecret(message: string, secret: string): string {
   return secret.length === 0 ? message : message.split(secret).join('[redacted]');
+}
+
+const LOG_SECRET_PATTERNS: ReadonlyArray<[RegExp, string]> = [
+  [/-----BEGIN (?:[A-Z0-9 ]+ )?PRIVATE KEY-----[\s\S]*?-----END (?:[A-Z0-9 ]+ )?PRIVATE KEY-----/g, '[redacted]'],
+  [/-----BEGIN (?:[A-Z0-9 ]+ )?PRIVATE KEY-----/g, '[redacted]'],
+  [/\b(authorization|x-goog-api-key|x-api-key)\b(\s*[:=]\s*["']?)(?:Bearer\s+)?[^\s"',;}{]+/gi, '$1$2[redacted]'],
+  [/\bBearer\s+[A-Za-z0-9._~+/=-]{6,}/gi, 'Bearer [redacted]'],
+  [/\bsk-or-v1-[A-Za-z0-9_-]{8,}/g, '[redacted]'],
+  [/\bsk-[A-Za-z0-9_-]{8,}/g, '[redacted]'],
+  [/\bAIza[0-9A-Za-z_-]{12,}/g, '[redacted]'],
+  [/\bgh[pousr]_[A-Za-z0-9]{16,}/g, '[redacted]'],
+  [/\bAKIA[0-9A-Z]{16}\b/g, '[redacted]'],
+  [/\b(api[_-]?key|secret|password|passwd|access[_-]?token|auth[_-]?token)\b(\s*[:=]\s*["']?)[^\s"',;}{]+/gi, '$1$2[redacted]'],
+];
+
+/** Scrubs both exact known keys and common credential/header patterns before logging. */
+export function redactLogSecrets(
+  message: string,
+  knownSecrets: readonly string[] = [],
+): string {
+  let scrubbed = message;
+  for (const secret of knownSecrets) {
+    const trimmed = secret.trim();
+    if (trimmed.length > 0) {
+      scrubbed = redactSecret(scrubbed, trimmed);
+    }
+  }
+  for (const [pattern, replacement] of LOG_SECRET_PATTERNS) {
+    scrubbed = scrubbed.replace(pattern, replacement);
+  }
+  return scrubbed;
 }

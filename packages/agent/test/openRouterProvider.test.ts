@@ -87,7 +87,7 @@ describe('OpenRouterProvider request shape', () => {
     const headers = new Headers(request?.init.headers);
     expect(headers.has('authorization')).toBe(true);
     expect(request?.body.model).toBe('openrouter/auto');
-    expect(request?.body.max_tokens).toBe(4_000);
+    expect(request?.body.max_tokens).toBe(8_192);
     expect(request?.body.plugins).toEqual([{ id: 'web' }]);
     expect(request?.body.messages).toEqual([
       { role: 'system', content: 'You produce a saved research brief for the OpenFrost owner.' },
@@ -284,10 +284,129 @@ describe('OpenRouterProvider response mapping', () => {
   });
 });
 
-describe('OpenRouterProvider error handling', () => {
-  it('throws ProviderError when finish_reason is length', async () => {
+describe('OpenRouterProvider 402 fallback and truncation handling', () => {
+  it('retries without the web plugin on HTTP 402 when webSearch is true and surfaces a warning', async () => {
+    let attempt = 0;
+    const { fetchImpl, requests } = scriptedFetch(() => {
+      attempt += 1;
+      if (attempt === 1) {
+        return jsonResponse({ error: { code: 402, message: 'Payment Required for web plugin' } }, 402);
+      }
+      return jsonResponse(completion({ role: 'assistant', content: 'Fallback brief body' }));
+    });
+    const provider = new OpenRouterProvider({
+      model: 'openrouter/free',
+      getApiKey: async () => FAKE_KEY,
+      fetchImpl,
+    });
+
+    const result = await provider.step(stepRequest);
+
+    expect(requests).toHaveLength(2);
+    expect(requests[0]?.body.plugins).toEqual([{ id: 'web' }]);
+    expect(requests[1]?.body.plugins).toBeUndefined();
+    expect(result.kind).toBe('final');
+    if (result.kind === 'final') {
+      expect(result.text).toBe('Fallback brief body');
+      expect(result.webSearchSkippedReason).toContain('HTTP 402');
+      expect(result.warnings).toEqual([result.webSearchSkippedReason]);
+    }
+  });
+
+  it('includes an actionable hint when HTTP 402 persists after omitting the web plugin', async () => {
+    const { fetchImpl, requests } = scriptedFetch(() =>
+      jsonResponse(
+        { error: { code: 402, message: `Insufficient credits for ${FAKE_KEY}` } },
+        402,
+      ),
+    );
+    const provider = new OpenRouterProvider({
+      model: 'openai/gpt-4.1',
+      getApiKey: async () => FAKE_KEY,
+      fetchImpl,
+    });
+
+    const err = await provider.step(stepRequest).then(
+      () => null,
+      (e: unknown) => e,
+    );
+    expect(requests).toHaveLength(2);
+    expect(err).toBeInstanceOf(ProviderError);
+    const message = err instanceof Error ? err.message : '';
+    expect(message).toContain('HTTP 402');
+    expect(message).toContain('Switch to a :free model such as openrouter/free in Settings, or add OpenRouter credits.');
+    expect(message).not.toContain(FAKE_KEY);
+  });
+
+  it('does not retry HTTP 402 when webSearch is false and includes the actionable hint', async () => {
+    const { fetchImpl, requests } = scriptedFetch(() =>
+      jsonResponse({ error: { code: 402, message: 'Insufficient credits' } }, 402),
+    );
+    const provider = new OpenRouterProvider({
+      model: 'openai/gpt-4.1',
+      getApiKey: async () => FAKE_KEY,
+      fetchImpl,
+    });
+
+    const err = await provider.step({ ...stepRequest, webSearch: false }).then(
+      () => null,
+      (e: unknown) => e,
+    );
+    expect(requests).toHaveLength(1);
+    expect(err).toBeInstanceOf(ProviderError);
+    expect(err instanceof Error ? err.message : '').toContain(
+      'Switch to a :free model such as openrouter/free in Settings, or add OpenRouter credits.',
+    );
+  });
+
+  it('returns partial text with a warning when finish_reason is length and no tool calls are present', async () => {
     const { fetchImpl } = scriptedFetch(() =>
-      jsonResponse(completion({ role: 'assistant', content: 'trunc' }, 'length')),
+      jsonResponse(completion({ role: 'assistant', content: 'Partial brief content' }, 'length')),
+    );
+    const provider = new OpenRouterProvider({
+      model: 'openrouter/free',
+      getApiKey: async () => FAKE_KEY,
+      maxOutputTokens: 8_192,
+      fetchImpl,
+    });
+
+    const result = await provider.step(stepRequest);
+    expect(result.kind).toBe('final');
+    if (result.kind === 'final') {
+      expect(result.text).toContain('Partial brief content');
+      expect(result.text).toContain('> [!WARNING]\n> Response truncated at max_tokens (8192).');
+      expect(result.warnings).toContain('Response truncated at max_tokens (8192).');
+    }
+  });
+});
+
+describe('OpenRouterProvider error handling', () => {
+  it('throws ProviderError when finish_reason is length with empty text', async () => {
+    const { fetchImpl } = scriptedFetch(() =>
+      jsonResponse(completion({ role: 'assistant', content: '   ' }, 'length')),
+    );
+    const provider = new OpenRouterProvider({
+      model: 'openrouter/auto',
+      getApiKey: async () => FAKE_KEY,
+      fetchImpl,
+    });
+
+    await expect(provider.step(stepRequest)).rejects.toThrowError(ProviderError);
+    await expect(provider.step(stepRequest)).rejects.toThrowError(/max_tokens/);
+  });
+
+  it('throws ProviderError when finish_reason is length with incomplete tool calls', async () => {
+    const { fetchImpl } = scriptedFetch(() =>
+      jsonResponse(
+        completion(
+          {
+            role: 'assistant',
+            content: 'Partial text',
+            tool_calls: [{ id: 'call_1', type: 'function', function: { name: 'fetch_page', arguments: '{"url":' } }],
+          },
+          'length',
+        ),
+      ),
     );
     const provider = new OpenRouterProvider({
       model: 'openrouter/auto',

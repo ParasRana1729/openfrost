@@ -30,13 +30,14 @@ export const makeSettingsRoutes = (
 ): FastifyPluginAsync => async (app) => {
   const configuredModel = (provider: ProviderId): string => {
     const override = ctx.store.state.getValue(modelKey(provider));
+    const trimmed = override?.trim() ?? '';
     const fallback =
       provider === 'gemini'
         ? ctx.config.geminiModel
         : provider === 'openrouter'
           ? ctx.config.openrouterModel
           : ctx.config.openaiModel;
-    return override !== null && override.length > 0 ? override : fallback;
+    return trimmed.length > 0 ? trimmed : fallback;
   };
 
   const activeProviderFromState = (): ProviderId => {
@@ -72,16 +73,20 @@ export const makeSettingsRoutes = (
     }
     const input = setProviderConfigRequestSchema.parse(request.body);
     ctx.store.state.setValue(PROVIDER_KEY, input.provider);
-    if (input.model !== undefined) {
-      if (input.model === null) {
-        ctx.store.state.setValue(modelKey(input.provider), '');
-      } else {
-        ctx.store.state.setValue(modelKey(input.provider), input.model);
-      }
+    const normalizedModel =
+      input.model === undefined
+        ? undefined
+        : input.model === null
+          ? null
+          : input.model.trim().length > 0
+            ? input.model.trim()
+            : null;
+    if (normalizedModel !== undefined) {
+      ctx.store.state.setValue(modelKey(input.provider), normalizedModel ?? '');
     }
     ctx.store.events.append(
       'settings.provider_changed',
-      { payload: { provider: input.provider, model: input.model ?? null } },
+      { payload: { provider: input.provider, model: normalizedModel ?? null } },
       ctx.now(),
     );
     return { ok: true, provider: input.provider };

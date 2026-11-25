@@ -18,7 +18,7 @@ export class LogCapture {
         this.lines.push(line);
       },
     };
-    this.logger = pino(stream as object);
+    this.logger = pino({}, stream);
   }
 
   contains(needle: string): boolean {
