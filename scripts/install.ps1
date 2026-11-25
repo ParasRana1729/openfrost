@@ -33,9 +33,48 @@ function Require-Command {
 }
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$openfrostHome = if (-not [string]::IsNullOrWhiteSpace($env:OPENFROST_HOME)) {
+  $env:OPENFROST_HOME.Trim()
+} else {
+  Join-Path $env:USERPROFILE '.openfrost'
+}
+
+# Prefer OpenFrost's portable tools if present and the active PATH lacks a compatible version.
+$toolsNode = Join-Path $openfrostHome 'tools\node'
+if (Test-Path -LiteralPath (Join-Path $toolsNode 'node.exe') -PathType Leaf) {
+  $currentNode = Get-Command 'node' -ErrorAction SilentlyContinue
+  $needPortableNode = $true
+  if ($currentNode) {
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+      $verOut = (& $currentNode.Source -v 2>$null)
+      if ($LASTEXITCODE -eq 0 -and $verOut -and ($verOut.Trim() -match '^v?(\d+)\.')) {
+        $maj = [int]$Matches[1]
+        if ($maj -ge 24 -and $maj -lt 27) {
+          $needPortableNode = $false
+        }
+      }
+    } finally {
+      $ErrorActionPreference = $prevEap
+    }
+  }
+  if ($needPortableNode) {
+    $env:PATH = "$toolsNode;$env:PATH"
+  }
+}
+foreach ($toolSub in @('tools\pnpm', 'tools\git\cmd', 'tools\mingw64\bin')) {
+  $toolDir = Join-Path $openfrostHome $toolSub
+  if (Test-Path -LiteralPath $toolDir) {
+    $env:PATH = "$env:PATH;$toolDir"
+  }
+}
+
 $nodePath = Require-Command 'node'
+$pnpmBin = $null
 if (-not $SkipBuild) {
-  $null = Require-Command 'pnpm'
+  $pnpmCmdShim = Get-Command 'pnpm.cmd' -ErrorAction SilentlyContinue
+  $pnpmBin = if ($pnpmCmdShim) { $pnpmCmdShim.Source } else { Require-Command 'pnpm' }
 }
 if (-not $SkipCargo) {
   $null = Require-Command 'cargo'
@@ -45,7 +84,7 @@ Push-Location $repoRoot
 try {
   if (-not $SkipBuild) {
     Write-Host 'Building OpenFrost TypeScript workspace (pnpm build)...' -ForegroundColor Cyan
-    & pnpm build
+    & $pnpmBin build
     if ($LASTEXITCODE -ne 0) {
       throw "pnpm build failed with exit code $LASTEXITCODE."
     }
@@ -54,12 +93,6 @@ try {
   $apiEntry = Join-Path $repoRoot 'apps\api\dist\main.js'
   if (-not (Test-Path -LiteralPath $apiEntry -PathType Leaf)) {
     throw "Compiled API entrypoint not found at '$apiEntry'. Run 'pnpm build' first."
-  }
-
-  $openfrostHome = if (-not [string]::IsNullOrWhiteSpace($env:OPENFROST_HOME)) {
-    $env:OPENFROST_HOME.Trim()
-  } else {
-    Join-Path $env:USERPROFILE '.openfrost'
   }
 
   if (-not (Test-Path -LiteralPath $openfrostHome)) {
