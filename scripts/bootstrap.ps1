@@ -174,6 +174,27 @@
         }
       }
 
+      function Invoke-DownloadFile {
+        param(
+          [Parameter(Mandatory = $true)][string]$Uri,
+          [Parameter(Mandatory = $true)][string]$OutFile
+        )
+        $curl = Get-Command curl.exe -ErrorAction SilentlyContinue
+        if ($curl) {
+          & $curl.Source -fL --retry 3 --progress-bar -A 'OpenFrost-Bootstrap' -o $OutFile $Uri
+          if ($LASTEXITCODE -eq 0 -and (Test-Path -LiteralPath $OutFile -PathType Leaf)) {
+            return
+          }
+        }
+        $wc = [System.Net.WebClient]::new()
+        try {
+          $wc.Headers['User-Agent'] = 'OpenFrost-Bootstrap'
+          $wc.DownloadFile($Uri, $OutFile)
+        } finally {
+          $wc.Dispose()
+        }
+      }
+
       function Expand-ZipFast {
         param(
           [Parameter(Mandatory = $true)][string]$ZipPath,
@@ -362,14 +383,16 @@
         $gitTag = Get-LatestGitHubReleaseTag -RepoSlug 'git-for-windows/git'
         if (-not $gitTag) { $gitTag = 'v2.56.1.windows.1' }
         $assetsHtml = (Invoke-WebRequest -Uri "https://github.com/git-for-windows/git/releases/expanded_assets/$gitTag" -UseBasicParsing).Content
-        $pattern = "MinGit-[^""'<>]+-$gitArch\.zip"
-        $match = [regex]::Match($assetsHtml, $pattern)
+        $match = [regex]::Match($assetsHtml, "MinGit-[0-9.]+-$gitArch\.zip")
+        if (-not $match.Success) {
+          $match = [regex]::Match($assetsHtml, "MinGit-[^""'<>]+-$gitArch\.zip")
+        }
         if (-not $match.Success) {
           throw "Could not locate portable MinGit archive ($gitArch) for release $gitTag."
         }
         $zipName = $match.Value
         $zipPath = Join-Path $tempStage $zipName
-        Invoke-WebRequest -Uri "https://github.com/git-for-windows/git/releases/download/$gitTag/$zipName" -OutFile $zipPath -UseBasicParsing
+        Invoke-DownloadFile -Uri "https://github.com/git-for-windows/git/releases/download/$gitTag/$zipName" -OutFile $zipPath
         $gitTarget = Join-Path $toolsDir 'git'
         $gitStage = Join-Path $tempStage 'git-extract'
         Expand-ZipFast -ZipPath $zipPath -Destination $gitStage
@@ -401,7 +424,7 @@
           $expectedHash = $Matches[1].ToLowerInvariant()
           $zipName = $Matches[2]
           $zipPath = Join-Path $tempStage $zipName
-          Invoke-WebRequest -Uri "https://nodejs.org/dist/latest-v24.x/$zipName" -OutFile $zipPath -UseBasicParsing
+          Invoke-DownloadFile -Uri "https://nodejs.org/dist/latest-v24.x/$zipName" -OutFile $zipPath
           $actualHash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
           if ($actualHash -ne $expectedHash) {
             throw "SHA-256 verification failed for $zipName (expected $expectedHash, got $actualHash)."
@@ -479,14 +502,17 @@
           $winlibsTag = Get-LatestGitHubReleaseTag -RepoSlug 'brechtsanders/winlibs_mingw'
           if (-not $winlibsTag) { $winlibsTag = '16.2.0posix-23.1.3-14.0.0-ucrt-r3' }
           $assetsHtml = (Invoke-WebRequest -Uri "https://github.com/brechtsanders/winlibs_mingw/releases/expanded_assets/$winlibsTag" -UseBasicParsing).Content
-          $pattern = "winlibs-x86_64-posix-seh-gcc-[^""'<>]+-ucrt-[^""'<>]+\.zip"
-          $match = [regex]::Match($assetsHtml, $pattern)
+          # Prefer the lean gcc+mingw-w64ucrt zip (without llvm), falling back to any x86_64 posix seh ucrt zip.
+          $match = [regex]::Match($assetsHtml, 'winlibs-x86_64-posix-seh-gcc-[0-9.]+-mingw-w64ucrt-[^"''<>]+\.zip')
+          if (-not $match.Success) {
+            $match = [regex]::Match($assetsHtml, 'winlibs-x86_64-posix-seh-gcc-[^"''<>]*ucrt[^"''<>]*\.zip')
+          }
           if (-not $match.Success) {
             throw "Could not locate portable WinLibs archive for release $winlibsTag."
           }
           $zipName = $match.Value
           $zipPath = Join-Path $tempStage $zipName
-          Invoke-WebRequest -Uri "https://github.com/brechtsanders/winlibs_mingw/releases/download/$winlibsTag/$zipName" -OutFile $zipPath -UseBasicParsing
+          Invoke-DownloadFile -Uri "https://github.com/brechtsanders/winlibs_mingw/releases/download/$winlibsTag/$zipName" -OutFile $zipPath
           $winlibsStage = Join-Path $tempStage 'winlibs-extract'
           Expand-ZipFast -ZipPath $zipPath -Destination $winlibsStage
           $mingwRoot = Join-Path $winlibsStage 'mingw64'
@@ -543,7 +569,7 @@
           "$rustArch-pc-windows-msvc"
         }
         $rustupInit = Join-Path $tempStage 'rustup-init.exe'
-        Invoke-WebRequest -Uri "https://win.rustup.rs/$rustArch" -OutFile $rustupInit -UseBasicParsing
+        Invoke-DownloadFile -Uri "https://win.rustup.rs/$rustArch" -OutFile $rustupInit
         & $rustupInit -y --default-host $rustHostTriple --default-toolchain stable
         if ($LASTEXITCODE -ne 0) {
           throw "rustup-init.exe failed with exit code $LASTEXITCODE."
