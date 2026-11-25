@@ -1,128 +1,200 @@
-use super::theme::{accent_bold, danger, frost_glow, muted, pill, rounded_block, warn, FROST_GLOW};
+use super::tasks::keybind_footer;
+use super::theme::{
+    accent_bold, danger, frost_glow, muted, pill, rounded_block, section_rule, selected_style,
+    warn, ICE_DIM, SURFACE_PILL, SURFACE_SEL, VIOLET,
+};
 use crate::app::{truncate, App};
 use crate::contracts::MemoryScope;
-use ratatui::layout::Rect;
-use ratatui::style::Color;
+use ratatui::layout::{Constraint, Layout, Rect};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Wrap};
 use ratatui::Frame;
 
 pub(super) fn render_memory(app: &mut App, frame: &mut Frame, area: Rect) {
+    let vertical = Layout::vertical([Constraint::Min(2), Constraint::Length(1)]).split(area);
+    let (content_area, footer_area) = (vertical[0], vertical[1]);
+
     let Some(snapshot) = &app.memory.snapshot else {
         frame.render_widget(
-            Paragraph::new(" Loading memory…")
+            Paragraph::new("  Loading memory…")
                 .style(muted())
                 .block(rounded_block("Memory")),
-            area,
+            content_area,
         );
+        frame.render_widget(keybind_footer(&[("R", "reload")]), footer_area);
         return;
     };
+
+    let inner_w = content_area.width.saturating_sub(2);
     let mut lines: Vec<Line> = Vec::new();
     let mut row_index = 0usize;
+    let mut selected_line: Option<usize> = None;
 
-    lines.push(Line::styled(" Proposals awaiting decision", accent_bold()));
+    lines.push(section_rule("Proposals awaiting decision", inner_w));
     if snapshot.proposals.is_empty() {
-        lines.push(Line::styled("   (none)".to_string(), muted()));
-        row_index += 1;
-    }
-    for proposal in &snapshot.proposals {
-        let is_sel = row_index == app.memory.selected;
-        let marker = row_marker(is_sel);
-        let scope = match proposal.scope {
-            MemoryScope::Global => "global".to_string(),
-            MemoryScope::Project => format!(
-                "project {}",
-                snapshot
+        lines.push(Line::styled("   (no pending proposals)", muted()));
+    } else {
+        for proposal in &snapshot.proposals {
+            let is_sel = row_index == app.memory.selected;
+            let marker = row_marker(is_sel);
+            let scope = match proposal.scope {
+                MemoryScope::Global => "global".to_string(),
+                MemoryScope::Project => snapshot
                     .projects
                     .iter()
                     .find(|view| Some(&view.projectId) == proposal.projectId.as_ref())
-                    .map(|view| view.projectName.as_str())
-                    .unwrap_or("?")
-            ),
-        };
-        lines.push(Line::from(vec![
-            Span::styled(marker, if is_sel { accent_bold() } else { muted() }),
-            Span::styled(" proposal ", pill(FROST_GLOW, Color::Rgb(76, 29, 149))),
-            Span::styled(format!(" ({scope}) "), muted()),
-            Span::styled(
-                truncate(proposal.content.as_deref().unwrap_or(""), 90),
-                frost_glow(),
-            ),
-        ]));
-        if is_sel {
-            lines.push(Line::styled(
-                "     a approve • x reject".to_string(),
-                muted(),
-            ));
+                    .map(|view| view.projectName.clone())
+                    .unwrap_or_else(|| "project".to_string()),
+            };
+            if is_sel {
+                selected_line = Some(lines.len());
+            }
+            let line = Line::from(vec![
+                Span::styled(marker, if is_sel { accent_bold() } else { muted() }),
+                Span::styled(" proposal ", pill(VIOLET, SURFACE_SEL)),
+                Span::raw(" "),
+                Span::styled(format!(" {scope} "), pill(ICE_DIM, SURFACE_PILL)),
+                Span::raw(" "),
+                Span::styled(
+                    truncate(proposal.content.as_deref().unwrap_or(""), 84),
+                    frost_glow(),
+                ),
+            ]);
+            lines.push(if is_sel {
+                line.style(selected_style())
+            } else {
+                line
+            });
+            if is_sel {
+                lines.push(Line::styled(
+                    "     a approve · x reject",
+                    Style::default().fg(ICE_DIM),
+                ));
+            }
+            row_index += 1;
         }
-        row_index += 1;
     }
     lines.push(Line::from(""));
 
-    lines.push(Line::styled(" Global memory (owner.md)", accent_bold()));
+    lines.push(section_rule("Global memory · owner.md", inner_w));
     if snapshot.global.externalChange {
         lines.push(Line::styled(
-            "   ▲ file changed outside OpenFrost — press R to reload".to_string(),
+            "   ▲ file changed outside OpenFrost — press R to reload",
             warn(),
         ));
     }
     for problem in &snapshot.global.problems {
-        lines.push(Line::styled(format!("   ✖ {problem}"), danger()));
+        lines.push(Line::styled(format!("   × {problem}"), danger()));
     }
-    for (index, entry) in snapshot.global.entries.iter().enumerate() {
+    if snapshot.global.entries.is_empty() && snapshot.global.problems.is_empty() {
+        lines.push(Line::styled("   (no global memory entries)", muted()));
+    }
+    for entry in &snapshot.global.entries {
         let is_sel = row_index == app.memory.selected;
         let marker = row_marker(is_sel);
-        lines.push(Line::from(vec![
+        if is_sel {
+            selected_line = Some(lines.len());
+        }
+        let line = Line::from(vec![
             Span::styled(marker, if is_sel { accent_bold() } else { muted() }),
             Span::styled(truncate(&entry.content, 100), frost_glow()),
-        ]));
+        ]);
+        lines.push(if is_sel {
+            line.style(selected_style())
+        } else {
+            line
+        });
         if is_sel {
-            lines.push(Line::styled("     e edit • d delete".to_string(), muted()));
+            lines.push(Line::styled(
+                "     e edit · d delete",
+                Style::default().fg(ICE_DIM),
+            ));
         }
-        let _ = index;
         row_index += 1;
     }
     lines.push(Line::from(""));
 
-    for (project_index, view) in snapshot.projects.iter().enumerate() {
-        lines.push(Line::styled(
-            format!(" {} (project memory)", view.projectName),
-            accent_bold(),
+    for view in &snapshot.projects {
+        let is_header_sel = row_index == app.memory.selected;
+        if is_header_sel {
+            selected_line = Some(lines.len());
+        }
+        row_index += 1;
+
+        lines.push(section_rule(
+            &format!("{} · project memory", view.projectName),
+            inner_w,
         ));
-        let _ = project_index;
         if view.externalChange {
             lines.push(Line::styled(
-                "   ▲ file changed outside OpenFrost — press R to reload".to_string(),
+                "   ▲ file changed outside OpenFrost — press R to reload",
                 warn(),
             ));
         }
         for problem in &view.problems {
-            lines.push(Line::styled(format!("   ✖ {problem}"), danger()));
+            lines.push(Line::styled(format!("   × {problem}"), danger()));
+        }
+        if view.entries.is_empty() && view.problems.is_empty() {
+            lines.push(Line::styled("   (no entries)", muted()));
         }
         for entry in &view.entries {
             let is_sel = row_index == app.memory.selected;
             let marker = row_marker(is_sel);
-            lines.push(Line::from(vec![
+            if is_sel {
+                selected_line = Some(lines.len());
+            }
+            let line = Line::from(vec![
                 Span::styled(marker, if is_sel { accent_bold() } else { muted() }),
                 Span::styled(truncate(&entry.content, 100), frost_glow()),
-            ]));
+            ]);
+            lines.push(if is_sel {
+                line.style(selected_style())
+            } else {
+                line
+            });
             if is_sel {
-                lines.push(Line::styled("     e edit • d delete".to_string(), muted()));
+                lines.push(Line::styled(
+                    "     e edit · d delete",
+                    Style::default().fg(ICE_DIM),
+                ));
             }
             row_index += 1;
         }
         lines.push(Line::from(""));
     }
 
-    lines.push(Line::styled(
-        " j/k move • a approve • x reject • e edit • d delete • R reload from disk".to_string(),
-        muted(),
-    ));
+    let inner_height = content_area.height.saturating_sub(2) as usize;
+    let max_scroll = lines.len().saturating_sub(inner_height);
+    let scroll_y = selected_line
+        .map(|idx| idx.saturating_sub(inner_height / 2).min(max_scroll))
+        .unwrap_or(0) as u16;
+
+    let project_entries: usize = snapshot.projects.iter().map(|p| p.entries.len()).sum();
+    let title = format!(
+        "Memory  ({} pending · {} global · {} project)",
+        snapshot.proposals.len(),
+        snapshot.global.entries.len(),
+        project_entries
+    );
+
     frame.render_widget(
         Paragraph::new(lines)
             .wrap(Wrap { trim: false })
-            .block(rounded_block("Memory")),
-        area,
+            .scroll((scroll_y, 0))
+            .block(rounded_block(&title)),
+        content_area,
+    );
+    frame.render_widget(
+        keybind_footer(&[
+            ("j/k", "move"),
+            ("a", "approve"),
+            ("x", "reject"),
+            ("e", "edit"),
+            ("d", "delete"),
+            ("R", "reload"),
+        ]),
+        footer_area,
     );
 }
 

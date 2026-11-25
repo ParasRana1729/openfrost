@@ -22,12 +22,13 @@ use routines::render_routines;
 use settings::render_settings;
 use tasks::render_tasks;
 use theme::{
-    accent_bold, approval, danger, frost_glow, hairline_style, ice_mid, muted, pill, success, warn,
-    AMBER, FROST_GLOW, ICE_BRIGHT, ICE_DIM, ICE_MID, SURFACE_PILL, SURFACE_SEL,
+    accent, accent_bold, approval, danger, frost_glow, hairline, hairline_style, muted, pill,
+    success, warn, AMBER, FROST_GLOW, ICE_BRIGHT, ICE_DIM, ICE_MID, SURFACE_PILL, SURFACE_SEL,
+    VIOLET,
 };
 
 use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Paragraph, Wrap};
 use ratatui::Frame;
@@ -77,7 +78,10 @@ fn render_connecting(app: &App, frame: &mut Frame) {
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(border_color))
-        .title(Span::styled(" ❄ OpenFrost ", accent_bold()));
+        .title(Line::from(vec![
+            Span::styled(" ✦ ", accent()),
+            Span::styled("OpenFrost ", frost_glow().add_modifier(Modifier::BOLD)),
+        ]));
 
     let inner = card_block.inner(card);
     frame.render_widget(card_block, card);
@@ -119,7 +123,10 @@ fn render_connecting(app: &App, frame: &mut Frame) {
 
     let mut lines: Vec<Line<'static>> = vec![
         shimmer_wordmark(app.ticks),
-        Line::styled("Personal AI OS • Local Control Center", muted()),
+        Line::styled(
+            "Personal AI OS · Local Control Center",
+            Style::default().fg(ICE_DIM),
+        ),
         Line::from(""),
     ];
 
@@ -197,8 +204,9 @@ fn render_top_bar(app: &App, frame: &mut Frame, area: Rect) {
     let missed_routines: i64 = app.assistant.routines.iter().map(|r| r.missedCount).sum();
 
     let mut left_spans: Vec<Span<'static>> = vec![
-        Span::styled(" ❄ OpenFrost", accent_bold()),
-        Span::styled("  │  ", hairline_style()),
+        Span::styled(" ✦ ", accent()),
+        Span::styled("OpenFrost", frost_glow().add_modifier(Modifier::BOLD)),
+        Span::styled(" │ ", hairline_style()),
     ];
 
     for (index, tab) in ALL_TABS.iter().enumerate() {
@@ -206,11 +214,22 @@ fn render_top_bar(app: &App, frame: &mut Frame, area: Rect) {
         let num = index + 1;
         if active {
             left_spans.push(Span::styled(
-                format!(" {num} {} ", tab.title()),
-                pill(FROST_GLOW, SURFACE_SEL),
+                format!(" {num} "),
+                Style::default()
+                    .fg(ICE_BRIGHT)
+                    .bg(SURFACE_SEL)
+                    .add_modifier(Modifier::BOLD),
+            ));
+            left_spans.push(Span::styled(
+                format!("{} ", tab.title()),
+                pill(FROST_GLOW, SURFACE_SEL).add_modifier(Modifier::BOLD),
             ));
         } else {
-            left_spans.push(Span::styled(format!(" {num}·{} ", tab.title()), muted()));
+            left_spans.push(Span::styled(
+                format!(" {num} "),
+                Style::default().fg(ICE_DIM),
+            ));
+            left_spans.push(Span::styled(format!("{} ", tab.title()), muted()));
         }
 
         if *tab == Tab::Tasks && pending_approvals > 0 {
@@ -227,30 +246,37 @@ fn render_top_bar(app: &App, frame: &mut Frame, area: Rect) {
     }
 
     // Active project scope badge on the right when space permits.
-    let project_label = app
+    let active_project = app
         .assistant
         .project_idx
         .and_then(|idx| app.assistant.projects.get(idx))
-        .map(|p| p.name.clone())
-        .unwrap_or_else(|| "global".to_string());
+        .map(|p| p.name.clone());
+    let (prefix_style, label_style, project_label) = match active_project {
+        Some(name) => (
+            Style::default().fg(ICE_BRIGHT).bg(SURFACE_PILL),
+            Style::default().fg(FROST_GLOW).bg(SURFACE_PILL),
+            name,
+        ),
+        None => (
+            Style::default().fg(ICE_DIM).bg(SURFACE_PILL),
+            Style::default().fg(ICE_DIM).bg(SURFACE_PILL),
+            "global".to_string(),
+        ),
+    };
 
-    let right_text = format!(" ⌂ {project_label} ");
+    let prefix_text = " ◈ ";
+    let suffix_text = format!("{project_label} ");
     let left_width: usize = left_spans.iter().map(|s| s.width()).sum();
-    let right_width = right_text.chars().count();
+    let right_width = prefix_text.chars().count() + suffix_text.chars().count();
     if (area.width as usize) > left_width + right_width + 2 {
         let pad = (area.width as usize) - left_width - right_width;
         left_spans.push(Span::raw(" ".repeat(pad)));
-        left_spans.push(Span::styled(right_text, pill(ICE_BRIGHT, SURFACE_PILL)));
+        left_spans.push(Span::styled(prefix_text, prefix_style));
+        left_spans.push(Span::styled(suffix_text, label_style));
     }
 
     frame.render_widget(Paragraph::new(Line::from(left_spans)), rows[0]);
-    frame.render_widget(
-        Paragraph::new(Line::styled(
-            "─".repeat(rows[1].width as usize),
-            hairline_style(),
-        )),
-        rows[1],
-    );
+    frame.render_widget(Paragraph::new(hairline(rows[1].width)), rows[1]);
 }
 
 fn render_status_bar(app: &App, frame: &mut Frame, area: Rect) {
@@ -260,14 +286,14 @@ fn render_status_bar(app: &App, frame: &mut Frame, area: Rect) {
         Some(executor) => {
             if executor.dispatchPaused {
                 spans.push(Span::styled(
-                    " PAUSED (Tasks: r to resume) ",
-                    pill(Color::Black, AMBER),
+                    " ‖ PAUSED (Tasks: r to resume) ",
+                    pill(AMBER, SURFACE_SEL).add_modifier(Modifier::BOLD),
                 ));
                 spans.push(Span::raw(" "));
             }
             if executor.busy {
                 spans.extend(mini_owl_spans(app.ticks, true));
-                spans.push(Span::styled(" running ", accent_bold()));
+                spans.push(Span::styled(" running ", accent()));
             } else {
                 spans.extend(mini_owl_spans(app.ticks, false));
                 spans.push(Span::styled(" idle ", muted()));
@@ -279,7 +305,10 @@ fn render_status_bar(app: &App, frame: &mut Frame, area: Rect) {
                 .filter(|task| task.state == TaskState::Queued)
                 .count();
             if queued > 0 {
-                spans.push(Span::styled(format!("• {queued} queued "), ice_mid()));
+                spans.push(Span::styled(
+                    format!("· {queued} queued "),
+                    Style::default().fg(ICE_DIM),
+                ));
             }
         }
         None => {
@@ -291,8 +320,8 @@ fn render_status_bar(app: &App, frame: &mut Frame, area: Rect) {
     let approvals = app.assistant.approvals.len();
     if approvals > 0 {
         spans.push(Span::styled(
-            format!(" • {approvals} approval(s) "),
-            pill(FROST_GLOW, Color::Rgb(76, 29, 149)),
+            format!(" ● {approvals} approval(s) "),
+            pill(VIOLET, SURFACE_SEL),
         ));
     }
 
@@ -306,15 +335,15 @@ fn render_status_bar(app: &App, frame: &mut Frame, area: Rect) {
     }
 
     let hints = match app.tab {
-        Tab::Assistant => "  / commands • Tab scope • Ctrl+P views • Ctrl+C quit",
-        _ => "  Ctrl+P switch view • Ctrl+C quit",
+        Tab::Assistant => "  / commands · Tab scope · Ctrl+P views · Ctrl+C quit",
+        _ => "  Ctrl+P switch view · Ctrl+C quit",
     };
     let used_width: usize = spans.iter().map(|s| s.width()).sum();
     let hint_width = hints.chars().count();
     if (area.width as usize) > used_width + hint_width + 1 {
         let spacer = (area.width as usize) - used_width - hint_width;
         spans.push(Span::raw(" ".repeat(spacer)));
-        spans.push(Span::styled(hints, Style::default().fg(ICE_DIM)));
+        spans.push(Span::styled(hints, muted()));
     } else {
         spans.push(Span::styled(hints, muted()));
     }

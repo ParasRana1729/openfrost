@@ -1,30 +1,30 @@
-//! Cohesive Frost visual theme inspired by Claude Code & Codex CLI.
+//! Cohesive "Glacier Ink" visual theme inspired by Claude Code & Codex CLI.
 //!
-//! Uses a restrained icy-cyan accent palette paired with neutral slate chrome
-//! and semantic status colors so content stays crisp and scannable.
+//! Uses a restrained glacier-blue accent palette paired with quiet dark-slate
+//! chrome and desaturated semantic colors so content stays crisp and scannable.
 
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders};
 
 // ---------------------------------------------------------------------------
-// Palette
+// Palette (Glacier Ink)
 // ---------------------------------------------------------------------------
 
-pub(crate) const ICE_BRIGHT: Color = Color::Rgb(125, 226, 252);
-pub(crate) const ICE_MID: Color = Color::Rgb(56, 189, 248);
-pub(crate) const ICE_DIM: Color = Color::Rgb(92, 142, 170);
-pub(crate) const FROST_GLOW: Color = Color::Rgb(224, 246, 255);
+pub(crate) const FROST_GLOW: Color = Color::Rgb(230, 237, 245);
+pub(crate) const ICE_BRIGHT: Color = Color::Rgb(124, 196, 250);
+pub(crate) const ICE_MID: Color = Color::Rgb(75, 156, 211);
+pub(crate) const ICE_DIM: Color = Color::Rgb(105, 128, 152);
 
-pub(crate) const SLATE_BORDER: Color = Color::Rgb(64, 78, 96);
-pub(crate) const MUTED: Color = Color::Rgb(126, 140, 156);
-pub(crate) const SURFACE_SEL: Color = Color::Rgb(26, 42, 58);
-pub(crate) const SURFACE_PILL: Color = Color::Rgb(20, 34, 48);
+pub(crate) const SLATE_BORDER: Color = Color::Rgb(44, 54, 70);
+pub(crate) const MUTED: Color = Color::Rgb(107, 122, 140);
+pub(crate) const SURFACE_SEL: Color = Color::Rgb(29, 37, 50);
+pub(crate) const SURFACE_PILL: Color = Color::Rgb(20, 25, 34);
 
-pub(crate) const AMBER: Color = Color::Rgb(251, 191, 36);
-pub(crate) const EMERALD: Color = Color::Rgb(74, 222, 128);
-pub(crate) const ROSE: Color = Color::Rgb(248, 113, 113);
-pub(crate) const VIOLET: Color = Color::Rgb(192, 132, 252);
+pub(crate) const EMERALD: Color = Color::Rgb(94, 194, 154);
+pub(crate) const ROSE: Color = Color::Rgb(229, 115, 115);
+pub(crate) const AMBER: Color = Color::Rgb(224, 175, 104);
+pub(crate) const VIOLET: Color = Color::Rgb(179, 157, 219);
 
 // ---------------------------------------------------------------------------
 // Common styles
@@ -55,7 +55,7 @@ pub(crate) fn hairline_style() -> Style {
 }
 
 pub(crate) fn primary_bold() -> Style {
-    Style::default().add_modifier(Modifier::BOLD)
+    Style::default().fg(FROST_GLOW).add_modifier(Modifier::BOLD)
 }
 
 pub(crate) fn selected_style() -> Style {
@@ -66,7 +66,7 @@ pub(crate) fn selected_style() -> Style {
 }
 
 pub(crate) fn pill(fg: Color, bg: Color) -> Style {
-    Style::default().fg(fg).bg(bg).add_modifier(Modifier::BOLD)
+    Style::default().fg(fg).bg(bg)
 }
 
 pub(crate) fn success() -> Style {
@@ -99,7 +99,11 @@ pub(crate) fn rounded_block_focused(title: &str, focused: bool) -> Block<'static
     } else {
         Style::default().fg(SLATE_BORDER)
     };
-    let title_style = if focused { accent_bold() } else { muted() };
+    let title_style = if focused {
+        frost_glow().add_modifier(Modifier::BOLD)
+    } else {
+        muted()
+    };
     Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
@@ -119,7 +123,10 @@ pub(crate) fn section_rule(label: &str, width: u16) -> Line<'static> {
     let fill = total.saturating_sub(used);
     Line::from(vec![
         Span::styled("  ── ", hairline_style()),
-        Span::styled(label.to_string(), ice_mid().add_modifier(Modifier::BOLD)),
+        Span::styled(
+            label.to_string(),
+            Style::default().fg(ICE_DIM).add_modifier(Modifier::BOLD),
+        ),
         Span::styled(" ", hairline_style()),
         Span::styled("─".repeat(fill), hairline_style()),
     ])
