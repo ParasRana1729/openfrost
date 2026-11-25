@@ -3,7 +3,7 @@ import { Tilt } from './Tilt';
 
 export function HeroScene() {
   return (
-    <Tilt className="hero-scene" aria-label="Illustrative OpenFrost workspace with a sample task and saved result">
+    <Tilt className="hero-scene" aria-label="OpenFrost Terminal Control Center preview">
       <div className="hero-crystal-photo">
         <Image
           src="/images/real-snowflake-flickr-alexey-kljatov-6.jpg"
@@ -15,18 +15,28 @@ export function HeroScene() {
         />
       </div>
 
-      <div className="hero-window" data-ui>
-        <div className="hero-window-top"><span>OpenFrost · Control Center</span><span className="hero-window-live"><i /> Local</span></div>
-        <div className="hero-window-title"><span>Local session</span><strong>Ready when<br />you are.</strong></div>
-        <div className="hero-window-queue">
-          <div className="hero-window-row"><span className="hero-row-icon">R</span><span><strong>Compare backup approaches</strong><small>Research brief · Sample</small></span><b>Ready</b></div>
-          <div className="hero-window-row"><span className="hero-row-icon">P</span><span><strong>Northstar project update</strong><small>Markdown · Sample</small></span><b className="hero-saved">Saved</b></div>
+      <div className="hero-window hero-window-tui" data-ui>
+        <div className="hero-window-shot">
+          <Image
+            src="/images/tui-assistant.png"
+            alt="OpenFrost Rust Control Center TUI showing a completed research brief, SSE tool timeline, and rendered Markdown table"
+            width={1908}
+            height={1212}
+            priority
+            unoptimized
+          />
         </div>
-        <div className="hero-window-bottom"><span>One task runs at a time</span><span>View queue <b>↗</b></span></div>
       </div>
 
-      <div className="hero-float-card hero-float-scope" data-ui><span>Project scope</span><strong>Granted folders only</strong></div>
-      <div className="hero-float-card hero-float-artifact" data-ui><span>Saved artifact</span><strong>Research brief.md</strong><p>Sources included</p></div>
+      <div className="hero-float-card hero-float-scope" data-ui>
+        <span>Terminal UI</span>
+        <strong>Frost Owl · Glacier Ink</strong>
+      </div>
+      <div className="hero-float-card hero-float-artifact" data-ui>
+        <span>CLI launcher</span>
+        <strong>openfrost update</strong>
+        <p>Loopback API + DPAPI keys</p>
+      </div>
     </Tilt>
   );
 }
