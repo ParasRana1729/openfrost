@@ -1,86 +1,100 @@
 'use client';
 
-import { useState } from 'react';
+import Image from 'next/image';
+import { type KeyboardEvent, useId, useRef, useState } from 'react';
+import { tuiScreens } from '../lib/content';
 
-const screens = ['Assistant', 'Tasks', 'Projects', 'Settings'] as const;
-type Screen = (typeof screens)[number];
-
-function AssistantScreen() {
-  return (
-    <div className="tour-workspace">
-      <div className="tour-sidebar">
-        <div className="tour-brand">OpenFrost</div>
-        <span className="tour-nav active">Assistant</span>
-        <span className="tour-nav">Tasks</span>
-        <span className="tour-nav">Projects</span>
-        <span className="tour-nav">Memory</span>
-      </div>
-      <div className="tour-main">
-        <h3>What should I work on?</h3>
-        <p>Choose a workflow and describe the result you need.</p>
-        <div className="tour-composer">
-          <p>Compare two approaches to backup for a small Windows project.</p>
-          <div><span>Research brief</span><span className="tour-queue">Queue task</span></div>
-        </div>
-        <p className="tour-foot">The local API runs the task. Model processing uses your configured provider.</p>
-      </div>
-    </div>
-  );
-}
-
-function TasksScreen() {
-  return (
-    <div className="tour-list">
-      <div className="tour-list-title"><h3>Tasks</h3><span>One run at a time</span></div>
-      <div className="tour-task"><span><strong>Compare backup approaches</strong><small>Research brief · just now</small></span><b>Running</b></div>
-      <div className="tour-task"><span><strong>Prepare the project update</strong><small>Project update · today</small></span><b className="done">Completed</b></div>
-      <div className="tour-task"><span><strong>Draft next week’s plan</strong><small>Weekly plan · Friday</small></span><b className="waiting">Queued</b></div>
-      <p>Runs are saved, recoverable, and visible in the task history.</p>
-    </div>
-  );
-}
-
-function ProjectsScreen() {
-  return (
-    <div className="tour-project">
-      <div><h3>Northstar notes</h3><span>Project context</span></div>
-      <p>Only folders you grant are available to this project.</p>
-      <div className="file-row"><span aria-hidden="true">▤</span><span>README.md</span><small>Ready to read</small></div>
-      <div className="file-row"><span aria-hidden="true">▤</span><span>roadmap.md</span><small>Ready to read</small></div>
-      <div className="file-row muted-file"><span aria-hidden="true">▤</span><span>personal.txt</span><small>Outside granted folder</small></div>
-    </div>
-  );
-}
-
-function SettingsScreen() {
-  return (
-    <div className="tour-settings">
-      <h3>Provider settings</h3>
-      <p>One configured model provider is active at a time.</p>
-      <div className="provider-row"><span>OpenRouter</span><b>Active</b></div>
-      <div className="provider-row"><span>OpenAI</span><small>Not configured</small></div>
-      <div className="provider-row"><span>Gemini</span><small>Not configured</small></div>
-      <p className="tour-foot">Provider keys are protected with Windows DPAPI.</p>
-    </div>
-  );
-}
+type ScreenId = (typeof tuiScreens)[number]['id'];
 
 export function ProductTour() {
-  const [screen, setScreen] = useState<Screen>('Assistant');
+  const [selectedId, setSelectedId] = useState<ScreenId>('assistant');
+  const baseId = useId();
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+
+  function selectByIndex(index: number) {
+    const normalized = (index + tuiScreens.length) % tuiScreens.length;
+    const next = tuiScreens[normalized];
+    if (!next) return;
+    setSelectedId(next.id);
+    const btn = tabRefs.current[normalized];
+    btn?.focus();
+    btn?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }
+
+  function onTabKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number) {
+    if (event.key === 'ArrowRight') {
+      event.preventDefault();
+      selectByIndex(index + 1);
+    } else if (event.key === 'ArrowLeft') {
+      event.preventDefault();
+      selectByIndex(index - 1);
+    } else if (event.key === 'Home') {
+      event.preventDefault();
+      selectByIndex(0);
+    } else if (event.key === 'End') {
+      event.preventDefault();
+      selectByIndex(tuiScreens.length - 1);
+    }
+  }
+
   return (
     <div className="product-tour" data-ui>
-      <div className="tour-controls" role="group" aria-label="Choose a product view">
-        {screens.map((name) => (
-          <button key={name} type="button" aria-pressed={screen === name} onClick={() => setScreen(name)}>
-            {name}
-          </button>
-        ))}
+      <div className="tour-controls" role="tablist" aria-label="Control Center TUI screens">
+        {tuiScreens.map((screen, index) => {
+          const selected = screen.id === selectedId;
+          return (
+            <button
+              key={screen.id}
+              ref={(el) => {
+                tabRefs.current[index] = el;
+              }}
+              id={`${baseId}-tab-${screen.id}`}
+              type="button"
+              role="tab"
+              aria-selected={selected}
+              tabIndex={selected ? 0 : -1}
+              onClick={() => {
+                setSelectedId(screen.id);
+                tabRefs.current[index]?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+              }}
+              onKeyDown={(event) => onTabKeyDown(event, index)}
+            >
+              {screen.tabLabel}
+            </button>
+          );
+        })}
       </div>
-      <div className="tour-canvas" aria-live="polite">
-        {screen === 'Assistant' && <AssistantScreen />}
-        {screen === 'Tasks' && <TasksScreen />}
-        {screen === 'Projects' && <ProjectsScreen />}
-        {screen === 'Settings' && <SettingsScreen />}
+
+      <div className="tour-panels">
+        {tuiScreens.map((screen) => {
+          const selected = screen.id === selectedId;
+          return (
+            <div
+              key={screen.id}
+              role="tabpanel"
+              aria-labelledby={`${baseId}-tab-${screen.id}`}
+              hidden={!selected}
+              tabIndex={selected ? 0 : undefined}
+              className="tour-panel"
+            >
+              <figure className="tour-shot-figure">
+                <div className="tour-shot-frame">
+                  <Image
+                    src={screen.imageSrc}
+                    alt={screen.imageAlt}
+                    width={1908}
+                    height={1212}
+                    unoptimized
+                  />
+                </div>
+                <figcaption className="tour-shot-caption">
+                  <strong>{screen.title}</strong>
+                  <span>{screen.caption}</span>
+                </figcaption>
+              </figure>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

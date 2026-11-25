@@ -25,6 +25,34 @@ and approval requests.
 - **Recoverable tasks:** tasks queue durably; one agent run executes at a time,
   with cancellation, bounded limits, and review after interrupted work.
 
+## What’s new & Control Center screenshots
+
+Recent updates on `main` moved the Control Center to a native Rust terminal UI
+(`apps/tui`, Ratatui + Crossterm) over the loopback API:
+
+- **Glacier Ink TUI & Frost Owl:** animated Frost Owl boot screen, conversation-first
+  **Assistant** stream with live SSE execution trees, GFM Markdown tables, bottom
+  `❯` composer, `/` slash commands, `Tab` project scope cycling, `Shift+Tab` mode
+  toggle, and `Ctrl+P` view switcher.
+- **One-command launcher & self-update:** run `openfrost` to auto-start the local
+  API and attach the TUI, manage background runs with `start`, `stop`, `status`,
+  and `logs`, and pull/rebuild anytime with `openfrost update [--check]`.
+- **Loopback trust without login friction:** local passwords, sessions, and CSRF
+  screens are removed; the API binds strictly to `127.0.0.1` with strict `Origin`
+  guards for browser requests.
+- **Model selection & security hardening:** inline model editing (`m` in Settings),
+  Windows DPAPI key storage, provider-key redaction in errors, NAT64 `64:ff9b::/96`
+  SSRF filtering on `fetch_page`, secondary SQLite indexes, and Zod ↔ Rust contract
+  parity tests in CI.
+
+| Assistant stream & rendered report | Frost Owl boot & API startup |
+| --- | --- |
+| ![OpenFrost Assistant TUI stream and Markdown table](docs/screenshots/tui-assistant.png) | ![OpenFrost Frost Owl boot screen](docs/screenshots/tui-splash.png) |
+
+| Tasks queue & export approvals | Provider, model & DPAPI settings |
+| --- | --- |
+| ![OpenFrost Tasks tab and pending export approval](docs/screenshots/tui-tasks.png) | ![OpenFrost Settings tab with Windows DPAPI key status](docs/screenshots/tui-settings.png) |
+
 ## Project status
 
 The core workflows are implemented. Release hardening and validation are in
@@ -71,7 +99,22 @@ Install pnpm if needed:
 npm install --global pnpm@10.34.7
 ```
 
-### Install and run (recommended)
+### Quick install (PowerShell, recommended)
+
+With Git, Node.js 24–26, pnpm 10.34.7, and Rust installed, run one command from
+any Windows PowerShell terminal:
+
+```powershell
+irm https://raw.githubusercontent.com/ParasRana1729/openfrost/main/scripts/bootstrap.ps1 | iex
+```
+
+`scripts/bootstrap.ps1` clones (or fast-forwards) the repository into
+`%USERPROFILE%\.openfrost\source` (override with `OPENFROST_REPO_DIR`), runs
+`pnpm install --frozen-lockfile`, builds the local API, writes
+`%USERPROFILE%\.openfrost\runtime.json`, and installs `openfrost.exe` to your
+Cargo `bin` directory.
+
+### Install from an existing checkout
 
 From the repository root, install dependencies once and install the `openfrost` CLI:
 
@@ -199,9 +242,10 @@ free of paid calls. GitHub Actions runs the TypeScript and Rust checks on
 
 The static marketing and source page lives in `apps/landing`. It runs on port
 3001 during development (`pnpm --filter @openfrost/landing dev`) and exports
-static files into `apps/landing/out` on build. The product has no packaged
-Windows installer yet; the site links to the repository until one is published.
-Set the canonical site URL before deployment so Open Graph links point at the
+static files into `apps/landing/out` on build. It showcases the latest TUI
+Control Center screenshots, interactive workflow preview, and the PowerShell
+`irm | iex` bootstrap command (`scripts/bootstrap.ps1`). Set the canonical site
+URL (`NEXT_PUBLIC_SITE_URL`) before deployment so Open Graph links point at the
 published domain.
 
 ## Repository map
