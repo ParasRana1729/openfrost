@@ -5,8 +5,8 @@
 //! Ratatui `Line`s and `Span`s with the Frost palette.
 
 use crate::ui::theme::{
-    accent_bold, frost_glow, hairline_style, ice_mid, muted, warn, AMBER, FROST_GLOW, ICE_BRIGHT,
-    ICE_DIM,
+    accent_bold, frost_glow, hairline_style, ice_mid, muted, FROST_GLOW, ICE_BRIGHT, ICE_DIM,
+    SURFACE_PILL,
 };
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -30,12 +30,17 @@ pub fn render_markdown(input: &str) -> Vec<Line<'static>> {
             } else {
                 in_code_block = true;
                 let code_lang = trimmed.trim_start_matches('`').trim();
-                let header = if code_lang.is_empty() {
-                    "  ╭── [code] ──────────────────────────────────────────────".to_string()
+                let label = if code_lang.is_empty() {
+                    "[code]".to_string()
                 } else {
-                    format!("  ╭── [{code_lang}] ──────────────────────────────────────────────")
+                    format!("[{code_lang}]")
                 };
-                lines.push(Line::styled(header, ice_mid()));
+                let fill_len = 52usize.saturating_sub(label.chars().count());
+                lines.push(Line::from(vec![
+                    Span::styled("  ╭── ", hairline_style()),
+                    Span::styled(label, ice_mid()),
+                    Span::styled(format!(" {}", "─".repeat(fill_len)), hairline_style()),
+                ]));
             }
             continue;
         }
@@ -43,7 +48,7 @@ pub fn render_markdown(input: &str) -> Vec<Line<'static>> {
         if in_code_block {
             lines.push(Line::from(vec![
                 Span::styled("  │ ", hairline_style()),
-                Span::styled(raw_line.to_string(), Style::default().fg(AMBER)),
+                Span::styled(raw_line.to_string(), frost_glow()),
             ]));
             continue;
         }
@@ -95,12 +100,16 @@ pub fn render_markdown(input: &str) -> Vec<Line<'static>> {
         if let Some(rest) = trimmed.strip_prefix("#### ") {
             lines.push(Line::from(Span::styled(
                 format!("  #### {rest}"),
-                warn().add_modifier(Modifier::BOLD),
+                Style::default().fg(ICE_DIM).add_modifier(Modifier::BOLD),
             )));
             continue;
         }
 
-        // Blockquotes (> quote)
+        // Blockquotes (> quote or bare >)
+        if trimmed == ">" {
+            lines.push(Line::from(Span::styled("  │ ", ice_mid())));
+            continue;
+        }
         if let Some(rest) = trimmed.strip_prefix("> ") {
             let mut spans = vec![Span::styled("  │ ", ice_mid())];
             spans.extend(parse_inline_spans(
@@ -109,6 +118,33 @@ pub fn render_markdown(input: &str) -> Vec<Line<'static>> {
             ));
             lines.push(Line::from(spans));
             continue;
+        }
+
+        // Markdown tables (| col | col |)
+        if trimmed.starts_with('|') && trimmed.matches('|').count() >= 2 {
+            lines.push(render_table_row(trimmed));
+            continue;
+        }
+
+        // Nested bullet lists (2+ spaces before -, *, +)
+        let leading_spaces = raw_line.len() - raw_line.trim_start_matches(' ').len();
+        if leading_spaces >= 2 {
+            let after_indent = raw_line.trim_start_matches(' ').trim_end();
+            let nested_prefixes = ["- ", "* ", "+ "];
+            let mut is_nested = false;
+            for bp in nested_prefixes {
+                if let Some(rest) = after_indent.strip_prefix(bp) {
+                    let indent = " ".repeat(2 + leading_spaces.min(6));
+                    let mut spans = vec![Span::raw(indent), Span::styled("· ", ice_mid())];
+                    spans.extend(parse_inline_spans(rest, Style::default()));
+                    lines.push(Line::from(spans));
+                    is_nested = true;
+                    break;
+                }
+            }
+            if is_nested {
+                continue;
+            }
         }
 
         // Bullet lists (- item, * item, + item)
@@ -165,6 +201,33 @@ pub fn render_markdown(input: &str) -> Vec<Line<'static>> {
     lines
 }
 
+fn render_table_row(row: &str) -> Line<'static> {
+    let is_separator = row.chars().all(|c| matches!(c, '|' | '-' | ':' | ' '));
+    if is_separator {
+        let mut sep = String::from("  ");
+        for ch in row.chars() {
+            match ch {
+                '|' => sep.push('┼'),
+                '-' | ':' => sep.push('─'),
+                _ => sep.push('─'),
+            }
+        }
+        return Line::styled(sep, hairline_style());
+    }
+
+    let mut spans = vec![Span::raw("  ")];
+    let parts: Vec<&str> = row.split('|').collect();
+    for (idx, part) in parts.iter().enumerate() {
+        if idx > 0 {
+            spans.push(Span::styled("│", hairline_style()));
+        }
+        if !part.is_empty() {
+            spans.extend(parse_inline_spans(part, frost_glow()));
+        }
+    }
+    Line::from(spans)
+}
+
 /// Parses inline Markdown formatting: `code`, **bold**, *italic*.
 pub fn parse_inline_spans(text: &str, base_style: Style) -> Vec<Span<'static>> {
     let mut spans = Vec::new();
@@ -187,7 +250,10 @@ pub fn parse_inline_spans(text: &str, base_style: Style) -> Vec<Span<'static>> {
             }
             spans.push(Span::styled(
                 format!(" {code_buf} "),
-                Style::default().fg(ICE_BRIGHT).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(ICE_BRIGHT)
+                    .bg(SURFACE_PILL)
+                    .add_modifier(Modifier::BOLD),
             ));
             continue;
         }
@@ -289,5 +355,16 @@ mod tests {
         assert!(text.contains("code"));
         assert!(text.contains("bold"));
         assert!(text.contains("italic"));
+    }
+
+    #[test]
+    fn renders_tables_and_nested_bullets() {
+        let md = "| Key | Value |\n| --- | --- |\n| Foo | Bar |\n  - Nested item";
+        let lines = render_markdown(md);
+        assert!(lines.iter().any(|l| l.to_string().contains("┼")));
+        assert!(lines.iter().any(|l| l.to_string().contains("Foo")));
+        assert!(lines
+            .iter()
+            .any(|l| l.to_string().contains("· Nested item")));
     }
 }

@@ -2,12 +2,12 @@ use super::mascot::{braille_spinner, compact_owl_lines, frost_spinner, mini_owl_
 use super::theme::{
     accent, accent_bold, approval, danger, frost_glow, hairline, hairline_style, ice_mid, muted,
     pill, primary_bold, rounded_block, rounded_block_focused, section_rule, success, warn, AMBER,
-    FROST_GLOW, ICE_BRIGHT, ICE_DIM, ICE_MID, SLATE_BORDER, SURFACE_PILL, SURFACE_SEL,
+    FROST_GLOW, ICE_BRIGHT, ICE_DIM, ICE_MID, SLATE_BORDER, SURFACE_PILL, SURFACE_SEL, VIOLET,
 };
 use crate::app::{App, ComposerField};
 use crate::contracts::{Event, TaskKind, TaskState};
 use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph, Wrap};
 use ratatui::Frame;
@@ -30,6 +30,71 @@ pub(super) fn render_assistant(app: &mut App, frame: &mut Frame, area: Rect) {
     }
 }
 
+fn humanize_token(raw: &str) -> String {
+    raw.replace(['_', '.'], " ")
+}
+
+fn wrap_text_lines(text: &str, max_width: usize) -> Vec<String> {
+    let width = max_width.max(12);
+    let mut out = Vec::new();
+    for raw_line in text.lines() {
+        if raw_line.is_empty() {
+            out.push(String::new());
+            continue;
+        }
+        let mut current = String::new();
+        let mut current_chars = 0usize;
+        for word in raw_line.split_inclusive(' ') {
+            let w_chars = word.chars().count();
+            if current_chars > 0 && current_chars + w_chars > width {
+                out.push(current.trim_end().to_string());
+                current.clear();
+                current_chars = 0;
+            }
+            if w_chars > width && current_chars == 0 {
+                for ch in word.chars() {
+                    if current_chars >= width {
+                        out.push(std::mem::take(&mut current));
+                        current_chars = 0;
+                    }
+                    current.push(ch);
+                    current_chars += 1;
+                }
+            } else {
+                current.push_str(word);
+                current_chars += w_chars;
+            }
+        }
+        if !current.is_empty() || out.is_empty() {
+            out.push(current.trim_end().to_string());
+        }
+    }
+    if out.is_empty() {
+        out.push(String::new());
+    }
+    out
+}
+
+/// Coalesces back-to-back `run.*` + `task.*` terminal events (`run.failed`
+/// followed immediately by `task.failed`, and similarly for `canceled` /
+/// `interrupted`) so the stream never shows redundant duplicate lines.
+fn coalesce_stream_events(events: &[Event]) -> Vec<&Event> {
+    let mut out = Vec::with_capacity(events.len());
+    for (idx, event) in events.iter().enumerate() {
+        let next_kind = events.get(idx + 1).map(|e| e.kind.as_str());
+        let redundant = matches!(
+            (event.kind.as_str(), next_kind),
+            ("run.failed", Some("task.failed"))
+                | ("run.canceled", Some("task.canceled"))
+                | ("run.interrupted", Some("task.interrupted"))
+        );
+        if !redundant {
+            out.push(event);
+        }
+    }
+    out
+}
+
 /// Formats an execution event into a clean tree-style line inspired by
 /// Claude Code & Codex CLI tool call traces.
 pub(super) fn format_stream_event_branch(event: &Event, is_last: bool) -> Line<'static> {
@@ -41,17 +106,123 @@ pub(super) fn format_stream_event_branch(event: &Event, is_last: bool) -> Line<'
     let branch = if is_last { "  └─ " } else { "  ├─ " };
 
     match event.kind.as_str() {
+        "task.created" => {
+            let kind_detail = event
+                .payload
+                .get("kind")
+                .and_then(|v| v.as_str())
+                .map(|k| format!("  ({})", humanize_token(k)))
+                .unwrap_or_default();
+            Line::from(vec![
+                Span::styled(branch, hairline_style()),
+                Span::styled("· ", ice_mid()),
+                Span::styled("task created", Style::default().fg(ICE_DIM)),
+                Span::styled(kind_detail, muted()),
+                Span::styled(format!("  {time}"), muted()),
+            ])
+        }
         "task.queued" => Line::from(vec![
             Span::styled(branch, hairline_style()),
             Span::styled("◌ ", warn()),
-            Span::styled("queued", Style::default().fg(FROST_GLOW)),
+            Span::styled("queued", frost_glow()),
             Span::styled(format!("  {time}"), muted()),
         ]),
+        "task.requeued" => {
+            let from_state = event
+                .payload
+                .get("fromState")
+                .and_then(|v| v.as_str())
+                .map(|s| format!("  (from {})", humanize_token(s)))
+                .unwrap_or_default();
+            Line::from(vec![
+                Span::styled(branch, hairline_style()),
+                Span::styled("◌ ", warn()),
+                Span::styled("requeued", warn()),
+                Span::styled(from_state, muted()),
+                Span::styled(format!("  {time}"), muted()),
+            ])
+        }
         "run.started" => Line::from(vec![
             Span::styled(branch, hairline_style()),
             Span::styled("◆ ", accent_bold()),
             Span::styled("agent loop", accent_bold()),
             Span::styled("  initializing tools & context", muted()),
+            Span::styled(format!("  {time}"), muted()),
+        ]),
+        "memory.used" => {
+            let global_entries = event.payload.get("globalEntries").and_then(|v| v.as_i64());
+            let project_entries = event.payload.get("projectEntries").and_then(|v| v.as_i64());
+            let entry_count = event.payload.get("entryCount").and_then(|v| v.as_i64());
+            let scope = event.payload.get("scope").and_then(|v| v.as_str());
+            let truncated = event
+                .payload
+                .get("truncated")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            let problems_count = event
+                .payload
+                .get("problems")
+                .and_then(|v| v.as_array())
+                .map(|a| a.len())
+                .unwrap_or(0);
+
+            let mut detail = if let Some(count) = entry_count {
+                let noun = if count == 1 { "entry" } else { "entries" };
+                let scope_part = scope.map(|s| format!(" ({s})")).unwrap_or_default();
+                format!("  {count} {noun}{scope_part}")
+            } else if global_entries.is_some() || project_entries.is_some() {
+                let g = global_entries.unwrap_or(0);
+                let p = project_entries.unwrap_or(0);
+                if g > 0 && p > 0 {
+                    format!("  {g} global, {p} project")
+                } else {
+                    let total = g + p;
+                    let noun = if total == 1 { "entry" } else { "entries" };
+                    format!("  {total} {noun}")
+                }
+            } else {
+                " loaded".to_string()
+            };
+
+            if truncated {
+                detail.push_str(" · truncated");
+            }
+            if problems_count > 0 {
+                let noun = if problems_count == 1 {
+                    "warning"
+                } else {
+                    "warnings"
+                };
+                detail.push_str(&format!(" · {problems_count} {noun}"));
+            }
+
+            Line::from(vec![
+                Span::styled(branch, hairline_style()),
+                Span::styled("◈ ", ice_mid()),
+                Span::styled("memory context", frost_glow()),
+                Span::styled(detail, muted()),
+                Span::styled(format!("  {time}"), muted()),
+            ])
+        }
+        "memory.proposed" => {
+            let scope = event
+                .payload
+                .get("scope")
+                .and_then(|v| v.as_str())
+                .map(|s| format!("  ({s})"))
+                .unwrap_or_default();
+            Line::from(vec![
+                Span::styled(branch, hairline_style()),
+                Span::styled("◈ ", ice_mid()),
+                Span::styled("memory proposed", ice_mid()),
+                Span::styled(scope, muted()),
+                Span::styled(format!("  {time}"), muted()),
+            ])
+        }
+        "memory.proposal_blocked" => Line::from(vec![
+            Span::styled(branch, hairline_style()),
+            Span::styled("× ", warn()),
+            Span::styled("memory proposal blocked", warn()),
             Span::styled(format!("  {time}"), muted()),
         ]),
         "tool.executed" => {
@@ -88,14 +259,20 @@ pub(super) fn format_stream_event_branch(event: &Event, is_last: bool) -> Line<'
                         .unwrap_or_else(|| "done".to_string());
                     format!("read granted project file ({dur})")
                 }
-                "propose_memory" => "proposed durable memory entry".to_string(),
+                "propose_memory" => {
+                    if ok {
+                        "proposed durable memory entry".to_string()
+                    } else {
+                        "memory proposal blocked".to_string()
+                    }
+                }
                 _ => duration.map(|d| format!("{d}ms")).unwrap_or_default(),
             };
 
             let (dot, dot_style) = if ok {
                 ("● ", success())
             } else {
-                ("✖ ", danger())
+                ("× ", danger())
             };
 
             Line::from(vec![
@@ -109,6 +286,30 @@ pub(super) fn format_stream_event_branch(event: &Event, is_last: bool) -> Line<'
                 Span::styled(format!("  {time}"), muted()),
             ])
         }
+        "run.limit_reached" => {
+            let limit_detail = event
+                .payload
+                .get("limitHit")
+                .and_then(|v| v.as_str())
+                .map(|limit| {
+                    let label = match limit {
+                        "max_steps" => "max steps".to_string(),
+                        "wall_clock" => "wall clock".to_string(),
+                        "max_input" => "input limit".to_string(),
+                        "max_output" => "output limit".to_string(),
+                        other => humanize_token(other),
+                    };
+                    format!("  ({label})")
+                })
+                .unwrap_or_default();
+            Line::from(vec![
+                Span::styled(branch, hairline_style()),
+                Span::styled("× ", warn().add_modifier(Modifier::BOLD)),
+                Span::styled("run limit reached", warn().add_modifier(Modifier::BOLD)),
+                Span::styled(limit_detail, muted()),
+                Span::styled(format!("  {time}"), muted()),
+            ])
+        }
         "run.completed" => Line::from(vec![
             Span::styled(branch, hairline_style()),
             Span::styled("✓ ", success()),
@@ -117,15 +318,73 @@ pub(super) fn format_stream_event_branch(event: &Event, is_last: bool) -> Line<'
         ]),
         "task.completed" => Line::from(vec![
             Span::styled(branch, hairline_style()),
-            Span::styled("✔ ", success().add_modifier(Modifier::BOLD)),
+            Span::styled("✓ ", success().add_modifier(Modifier::BOLD)),
             Span::styled("completed", success().add_modifier(Modifier::BOLD)),
             Span::styled("  report saved", muted()),
             Span::styled(format!("  {time}"), muted()),
         ]),
-        "task.failed" | "run.failed" => Line::from(vec![
+        "run.failed" => {
+            let reason = event
+                .payload
+                .get("code")
+                .or_else(|| event.payload.get("reason"))
+                .and_then(|v| v.as_str())
+                .map(|s| format!("  ({})", humanize_token(s)))
+                .unwrap_or_default();
+            Line::from(vec![
+                Span::styled(branch, hairline_style()),
+                Span::styled("× ", danger()),
+                Span::styled("run stopped", danger()),
+                Span::styled(reason, muted()),
+                Span::styled(format!("  {time}"), muted()),
+            ])
+        }
+        "task.failed" => {
+            let code = event
+                .payload
+                .get("code")
+                .and_then(|v| v.as_str())
+                .map(|s| format!("  ({})", humanize_token(s)))
+                .unwrap_or_default();
+            Line::from(vec![
+                Span::styled(branch, hairline_style()),
+                Span::styled("× ", danger().add_modifier(Modifier::BOLD)),
+                Span::styled("task failed", danger().add_modifier(Modifier::BOLD)),
+                Span::styled(code, muted()),
+                Span::styled(format!("  {time}"), muted()),
+            ])
+        }
+        "run.canceled" => Line::from(vec![
             Span::styled(branch, hairline_style()),
-            Span::styled("✖ ", danger().add_modifier(Modifier::BOLD)),
-            Span::styled("failed", danger().add_modifier(Modifier::BOLD)),
+            Span::styled("⊘ ", muted()),
+            Span::styled("run canceled", muted()),
+            Span::styled(format!("  {time}"), muted()),
+        ]),
+        "task.canceled" => {
+            let reason = event
+                .payload
+                .get("reason")
+                .and_then(|v| v.as_str())
+                .map(|s| format!("  ({})", humanize_token(s)))
+                .unwrap_or_default();
+            Line::from(vec![
+                Span::styled(branch, hairline_style()),
+                Span::styled("⊘ ", muted()),
+                Span::styled("task canceled", muted()),
+                Span::styled(reason, muted()),
+                Span::styled(format!("  {time}"), muted()),
+            ])
+        }
+        "run.interrupted" => Line::from(vec![
+            Span::styled(branch, hairline_style()),
+            Span::styled("‖ ", warn()),
+            Span::styled("run interrupted", warn()),
+            Span::styled(format!("  {time}"), muted()),
+        ]),
+        "task.interrupted" => Line::from(vec![
+            Span::styled(branch, hairline_style()),
+            Span::styled("‖ ", warn()),
+            Span::styled("task interrupted", warn()),
             Span::styled(format!("  {time}"), muted()),
         ]),
         "approval.requested" => {
@@ -146,14 +405,26 @@ pub(super) fn format_stream_event_branch(event: &Event, is_last: bool) -> Line<'
         }
         "approval.granted" => Line::from(vec![
             Span::styled(branch, hairline_style()),
-            Span::styled("✔ ", success()),
+            Span::styled("✓ ", success()),
             Span::styled("export approval granted", success()),
             Span::styled(format!("  {time}"), muted()),
         ]),
         "approval.rejected" => Line::from(vec![
             Span::styled(branch, hairline_style()),
-            Span::styled("✖ ", danger()),
+            Span::styled("× ", danger()),
             Span::styled("export approval rejected", danger()),
+            Span::styled(format!("  {time}"), muted()),
+        ]),
+        "approval.canceled" => Line::from(vec![
+            Span::styled(branch, hairline_style()),
+            Span::styled("⊘ ", muted()),
+            Span::styled("export approval canceled", muted()),
+            Span::styled(format!("  {time}"), muted()),
+        ]),
+        "approval.expired" => Line::from(vec![
+            Span::styled(branch, hairline_style()),
+            Span::styled("◌ ", warn()),
+            Span::styled("export approval expired", warn()),
             Span::styled(format!("  {time}"), muted()),
         ]),
         "export.written" => {
@@ -164,7 +435,7 @@ pub(super) fn format_stream_event_branch(event: &Event, is_last: bool) -> Line<'
                 .unwrap_or("file");
             Line::from(vec![
                 Span::styled(branch, hairline_style()),
-                Span::styled("✔ ", success()),
+                Span::styled("✓ ", success()),
                 Span::styled(format!("exported → {file}"), success()),
                 Span::styled(format!("  {time}"), muted()),
             ])
@@ -172,7 +443,7 @@ pub(super) fn format_stream_event_branch(event: &Event, is_last: bool) -> Line<'
         _ => Line::from(vec![
             Span::styled(branch, hairline_style()),
             Span::styled("· ", muted()),
-            Span::styled(event.kind.clone(), muted()),
+            Span::styled(humanize_token(&event.kind), muted()),
             Span::styled(format!("  {time}"), muted()),
         ]),
     }
@@ -197,10 +468,7 @@ fn render_assistant_stream(app: &mut App, frame: &mut Frame, area: Rect) {
     for approval_item in &app.assistant.approvals {
         lines.push(Line::from(vec![
             Span::raw("  "),
-            Span::styled(
-                " APPROVAL PENDING ",
-                pill(FROST_GLOW, Color::Rgb(76, 29, 149)),
-            ),
+            Span::styled(" APPROVAL PENDING ", pill(VIOLET, SURFACE_SEL)),
             Span::raw(" "),
             Span::styled(
                 format!(
@@ -224,11 +492,11 @@ fn render_assistant_stream(app: &mut App, frame: &mut Frame, area: Rect) {
     {
         lines.push(Line::from(vec![
             Span::raw("  "),
-            Span::styled(" MISSED ROUTINE ", pill(Color::Black, AMBER)),
+            Span::styled(" MISSED ROUTINE ", pill(AMBER, SURFACE_SEL)),
             Span::raw(" "),
             Span::styled(routine.routine.name.clone(), primary_bold()),
             Span::styled(
-                format!("  ({} missed • /routines)", routine.missedCount),
+                format!("  ({} missed · /routines)", routine.missedCount),
                 muted(),
             ),
         ]));
@@ -250,10 +518,10 @@ fn render_assistant_stream(app: &mut App, frame: &mut Frame, area: Rect) {
                 "awaiting approval",
                 approval().add_modifier(Modifier::BOLD),
             ),
-            TaskState::Completed => ("✔", "completed", success().add_modifier(Modifier::BOLD)),
-            TaskState::Failed => ("✖", "failed", danger().add_modifier(Modifier::BOLD)),
+            TaskState::Completed => ("✓", "completed", success().add_modifier(Modifier::BOLD)),
+            TaskState::Failed => ("×", "failed", danger().add_modifier(Modifier::BOLD)),
             TaskState::Canceled => ("⊘", "canceled", muted()),
-            TaskState::Interrupted => ("⏸", "interrupted", warn()),
+            TaskState::Interrupted => ("‖", "interrupted", warn()),
         };
 
         let project_name = task
@@ -275,39 +543,51 @@ fn render_assistant_stream(app: &mut App, frame: &mut Frame, area: Rect) {
             TaskKind::WeeklyPlan => "weekly plan",
         };
 
-        // Claude/Codex-style user prompt header (`❯ ...`)
+        // Claude/Codex-style user prompt header with left accent rail + surface band
         let prompt_text = if !task.request.is_empty() {
-            task.request.clone()
+            task.request.as_str()
         } else {
-            task.title.clone()
+            task.title.as_str()
         };
-        for (idx, prompt_line) in prompt_text.lines().enumerate() {
-            if idx == 0 {
-                lines.push(Line::from(vec![
-                    Span::styled("  ❯ ", accent_bold()),
-                    Span::styled(
-                        prompt_line.to_string(),
-                        frost_glow().add_modifier(Modifier::BOLD),
-                    ),
-                ]));
+        let band_width = (area.width as usize).saturating_sub(4).max(20);
+        let content_width = band_width.saturating_sub(4).max(12);
+        let wrapped_prompt = wrap_text_lines(prompt_text, content_width);
+        let band_bg = Style::default().bg(SURFACE_PILL);
+        for (idx, prompt_line) in wrapped_prompt.into_iter().enumerate() {
+            let prefix = if idx == 0 { " ❯ " } else { "   " };
+            let text_style = if idx == 0 {
+                frost_glow().add_modifier(Modifier::BOLD).bg(SURFACE_PILL)
             } else {
-                lines.push(Line::from(vec![
-                    Span::raw("    "),
-                    Span::styled(prompt_line.to_string(), frost_glow()),
-                ]));
-            }
+                frost_glow().bg(SURFACE_PILL)
+            };
+            let prefix_style = if idx == 0 {
+                accent_bold().bg(SURFACE_PILL)
+            } else {
+                band_bg
+            };
+            let used = 3 + prompt_line.chars().count();
+            let pad = band_width.saturating_sub(used);
+            lines.push(Line::from(vec![
+                Span::raw("  "),
+                Span::styled("▌", accent()),
+                Span::styled(prefix, prefix_style),
+                Span::styled(prompt_line, text_style),
+                Span::styled(" ".repeat(pad), band_bg),
+            ]));
         }
+        lines.push(Line::from(""));
         lines.push(Line::from(vec![
             Span::raw("    "),
             Span::styled(format!("{state_icon} {state_label}"), state_style),
-            Span::styled(format!("  •  {kind_str}  •  {project_name}"), muted()),
+            Span::styled(format!("  ·  {kind_str}  ·  {project_name}"), muted()),
         ]));
 
-        // Live execution tree
-        if !detail.events.is_empty() {
+        // Live execution tree (with redundant run.* + task.* pairs coalesced)
+        let visible_events = coalesce_stream_events(&detail.events);
+        if !visible_events.is_empty() {
             lines.push(Line::from(""));
-            let last_idx = detail.events.len().saturating_sub(1);
-            for (idx, event) in detail.events.iter().enumerate() {
+            let last_idx = visible_events.len().saturating_sub(1);
+            for (idx, event) in visible_events.iter().enumerate() {
                 let is_last = idx == last_idx && task.state != TaskState::Running;
                 lines.push(format_stream_event_branch(event, is_last));
             }
@@ -360,10 +640,22 @@ fn render_assistant_stream(app: &mut App, frame: &mut Frame, area: Rect) {
             ));
         } else if let Some(err) = &task.error {
             lines.push(Line::from(""));
-            lines.push(Line::from(vec![
-                Span::styled("  ✖ ", danger().add_modifier(Modifier::BOLD)),
-                Span::styled(err.clone(), danger()),
-            ]));
+            let err_width = (area.width as usize).saturating_sub(8).max(20);
+            for (idx, err_line) in wrap_text_lines(err, err_width).into_iter().enumerate() {
+                if idx == 0 {
+                    lines.push(Line::from(vec![
+                        Span::styled("  │ ", danger()),
+                        Span::styled("× ", danger().add_modifier(Modifier::BOLD)),
+                        Span::styled(err_line, danger()),
+                    ]));
+                } else {
+                    lines.push(Line::from(vec![
+                        Span::styled("  │   ", danger()),
+                        Span::styled(err_line, danger()),
+                    ]));
+                }
+            }
+            lines.push(Line::from(""));
         }
     }
 
@@ -421,7 +713,7 @@ fn render_welcome_canvas(app: &mut App, frame: &mut Frame, area: Rect) {
 
     // Centered hero card inspired by Claude Code's welcome box.
     let card_width = 76u16.min(area.width.saturating_sub(4));
-    let card_height = 9u16.min(area.height.saturating_sub(1));
+    let card_height = 10u16.min(area.height.saturating_sub(1));
 
     if card_width >= 36 && card_height >= 6 {
         let top_pad = if area.height > card_height + 6 && !app.assistant.slash_help_open {
@@ -440,7 +732,7 @@ fn render_welcome_canvas(app: &mut App, frame: &mut Frame, area: Rect) {
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
             .border_style(Style::default().fg(SLATE_BORDER))
-            .title(Span::styled(" ❄ OpenFrost v0.1 ", accent_bold()));
+            .title(Span::styled(" ✦ OpenFrost v0.1 ", accent_bold()));
         let inner = hero_block.inner(card);
         frame.render_widget(hero_block, card);
 
@@ -462,45 +754,47 @@ fn render_welcome_canvas(app: &mut App, frame: &mut Frame, area: Rect) {
 
         let info_rect = Rect {
             x: cols[1].x + 1,
-            y: cols[1].y,
+            y: cols[1].y + usize::from(inner.height >= 8) as u16,
             width: cols[1].width.saturating_sub(2),
-            height: cols[1].height,
+            height: cols[1]
+                .height
+                .saturating_sub(usize::from(inner.height >= 8) as u16),
         };
-        let rule_w = (info_rect.width as usize).saturating_sub(1).min(48);
+        let rule_w = (info_rect.width as usize).saturating_sub(1).min(52);
         let hero_lines = vec![
             Line::from(vec![
                 Span::styled("Welcome back", frost_glow().add_modifier(Modifier::BOLD)),
-                Span::styled("  •  Personal AI OS", muted()),
+                Span::styled("  ·  Personal AI OS", muted()),
             ]),
             Line::from(vec![
                 Span::styled("Provider  ", muted()),
-                Span::styled(provider_name, warn().add_modifier(Modifier::BOLD)),
-                Span::styled("  •  ", hairline_style()),
-                Span::styled(model_name, accent()),
+                Span::styled(provider_name, frost_glow().add_modifier(Modifier::BOLD)),
+                Span::styled("  ·  ", hairline_style()),
+                Span::styled(model_name, ice_mid()),
             ]),
             Line::from(vec![
                 Span::styled("Scope     ", muted()),
                 Span::styled(project_name, frost_glow()),
-                Span::styled("  •  ", hairline_style()),
-                Span::styled(mode_name, ice_mid()),
+                Span::styled("  ·  ", hairline_style()),
+                Span::styled(mode_name, accent()),
             ]),
             Line::styled("─".repeat(rule_w), hairline_style()),
             Line::from(vec![
-                Span::styled("Type a request below, or ", muted()),
+                Span::styled("Type below, or ", muted()),
                 Span::styled("/", accent_bold()),
-                Span::styled(" for commands  •  ", muted()),
+                Span::styled(" commands  ·  ", muted()),
                 Span::styled("Tab", accent()),
-                Span::styled(" scope  •  ", muted()),
+                Span::styled(" scope  ·  ", muted()),
                 Span::styled("Shift+Tab", accent()),
                 Span::styled(" mode", muted()),
             ]),
             Line::from(vec![
                 Span::styled("Shift+Enter", accent()),
-                Span::styled(" newline  •  ", muted()),
+                Span::styled(" newline  ·  ", muted()),
                 Span::styled("Ctrl+A", accent()),
-                Span::styled(" constraints & URLs  •  ", muted()),
+                Span::styled(" options  ·  ", muted()),
                 Span::styled("Ctrl+P", accent()),
-                Span::styled(" jump view", muted()),
+                Span::styled(" views", muted()),
             ]),
         ];
         frame.render_widget(
@@ -521,10 +815,7 @@ fn render_welcome_canvas(app: &mut App, frame: &mut Frame, area: Rect) {
             for approval_item in &app.assistant.approvals {
                 extra_lines.push(Line::from(vec![
                     Span::raw("  "),
-                    Span::styled(
-                        " APPROVAL PENDING ",
-                        pill(FROST_GLOW, Color::Rgb(76, 29, 149)),
-                    ),
+                    Span::styled(" APPROVAL PENDING ", pill(VIOLET, SURFACE_SEL)),
                     Span::raw(" "),
                     Span::styled(
                         format!(
@@ -545,11 +836,11 @@ fn render_welcome_canvas(app: &mut App, frame: &mut Frame, area: Rect) {
             {
                 extra_lines.push(Line::from(vec![
                     Span::raw("  "),
-                    Span::styled(" MISSED ROUTINE ", pill(Color::Black, AMBER)),
+                    Span::styled(" MISSED ROUTINE ", pill(AMBER, SURFACE_SEL)),
                     Span::raw(" "),
                     Span::styled(routine.routine.name.clone(), primary_bold()),
                     Span::styled(
-                        format!("  ({} missed • /routines)", routine.missedCount),
+                        format!("  ({} missed · /routines)", routine.missedCount),
                         muted(),
                     ),
                 ]));
@@ -632,28 +923,33 @@ fn render_assistant_composer(app: &mut App, frame: &mut Frame, area: Rect) {
     // Top hairline rule
     frame.render_widget(Paragraph::new(hairline(rows[0].width)), rows[0]);
 
-    // Input row: ` ❯ ` gutter + borderless TextArea
+    // Input row: subtle dark surface band (`SURFACE_PILL`) with ` ❯ ` gutter + borderless TextArea
+    let input_bg = Style::default().bg(SURFACE_PILL);
     let input_cols = Layout::horizontal([Constraint::Length(4), Constraint::Min(4)]).split(rows[1]);
     let prompt_gutter = Paragraph::new(Line::from(vec![
-        Span::raw(" "),
-        Span::styled("❯", accent_bold()),
-        Span::raw(" "),
-    ]));
+        Span::styled(" ", input_bg),
+        Span::styled("❯", accent_bold().bg(SURFACE_PILL)),
+        Span::styled("  ", input_bg),
+    ]))
+    .style(input_bg);
     frame.render_widget(prompt_gutter, input_cols[0]);
 
-    app.assistant.request.set_block(Block::default());
     app.assistant
         .request
-        .set_cursor_line_style(Style::default());
+        .set_block(Block::default().style(input_bg));
+    app.assistant
+        .request
+        .set_style(Style::default().fg(FROST_GLOW).bg(SURFACE_PILL));
+    app.assistant.request.set_cursor_line_style(input_bg);
     app.assistant
         .request
         .set_placeholder_text("Ask anything, or type / for commands…");
     app.assistant
         .request
-        .set_placeholder_style(Style::default().fg(ICE_DIM));
+        .set_placeholder_style(Style::default().fg(ICE_DIM).bg(SURFACE_PILL));
     frame.render_widget(&app.assistant.request, input_cols[1]);
 
-    // Bottom hairline rule with right-aligned mode/scope pill
+    // Bottom hairline rule with subtle right-aligned mode/scope text (no background block)
     let project_name = app
         .assistant
         .project_idx
@@ -665,16 +961,21 @@ fn render_assistant_composer(app: &mut App, frame: &mut Frame, area: Rect) {
     } else {
         "research brief"
     };
-    let badge = format!(" {mode_name} • {project_name} • Ctrl+A options ");
-    let badge_w = badge.chars().count();
+    let meta_text = format!(" {mode_name} · {project_name} · Ctrl+A options ");
+    let meta_w = meta_text.chars().count();
     let total_w = rows[2].width as usize;
 
-    if total_w > badge_w + 4 {
-        let rule_len = total_w - badge_w - 1;
+    if total_w > meta_w + 4 {
+        let rule_len = total_w - meta_w - 2;
         let line = Line::from(vec![
             Span::styled("─".repeat(rule_len), hairline_style()),
-            Span::styled(badge, pill(ICE_BRIGHT, SURFACE_PILL)),
-            Span::styled("─", hairline_style()),
+            Span::raw(" "),
+            Span::styled(mode_name, ice_mid()),
+            Span::styled(" · ", muted()),
+            Span::styled(project_name, Style::default().fg(ICE_DIM)),
+            Span::styled(" · Ctrl+A options", muted()),
+            Span::raw(" "),
+            Span::styled("─".repeat(2), hairline_style()),
         ]);
         frame.render_widget(Paragraph::new(line), rows[2]);
     } else {
@@ -707,6 +1008,7 @@ fn render_slash_autocomplete(app: &App, frame: &mut Frame, stream_area: Rect) {
         .min(matches.len().saturating_sub(1));
     let start = selected.saturating_sub(max_visible.saturating_sub(1));
     let end = (start + max_visible).min(matches.len());
+    let inner_w = popup_width.saturating_sub(2) as usize;
 
     let mut lines: Vec<Line<'static>> = Vec::with_capacity(max_visible + 1);
     for (offset, spec) in matches[start..end].iter().enumerate() {
@@ -736,17 +1038,19 @@ fn render_slash_autocomplete(app: &App, frame: &mut Frame, stream_area: Rect) {
 
         let cmd_col = format!("{:<10}", spec.name);
         let args_col = format!("{:<15}", spec.args_hint);
+        let used_w = 3 + 10 + 15 + spec.description.chars().count();
+        let pad_w = inner_w.saturating_sub(used_w).max(1);
         lines.push(Line::from(vec![
             Span::styled(marker, cmd_style),
             Span::styled(cmd_col, cmd_style),
             Span::styled(args_col, args_style),
             Span::styled(spec.description, desc_style),
-            Span::styled(" ", row_bg),
+            Span::styled(" ".repeat(pad_w), row_bg),
         ]));
     }
 
     lines.push(Line::styled(
-        "  ↑↓ select • Tab complete • Enter run • Esc close",
+        "  ↑↓ select · Tab complete · Enter run · Esc close",
         muted(),
     ));
 
@@ -893,7 +1197,7 @@ fn render_activity(app: &mut App, frame: &mut Frame, area: Rect) {
     let mut approval_lines: Vec<Line> = Vec::new();
     for approval_item in app.assistant.approvals.iter().take(3) {
         approval_lines.push(Line::from(vec![
-            Span::styled(" approval ", pill(FROST_GLOW, Color::Rgb(76, 29, 149))),
+            Span::styled(" approval ", pill(VIOLET, SURFACE_SEL)),
             Span::raw(" "),
             Span::styled(
                 format!(
@@ -931,7 +1235,7 @@ fn render_activity(app: &mut App, frame: &mut Frame, area: Rect) {
         .take(3)
     {
         routine_lines.push(Line::from(vec![
-            Span::styled(" missed ", pill(Color::Black, AMBER)),
+            Span::styled(" missed ", pill(AMBER, SURFACE_SEL)),
             Span::raw(" "),
             Span::raw(routine.routine.name.clone()),
             Span::styled(
@@ -970,7 +1274,7 @@ fn render_activity(app: &mut App, frame: &mut Frame, area: Rect) {
                     format!("{} ", &event.createdAt[11..19.min(event.createdAt.len())]),
                     muted(),
                 ),
-                Span::styled(event.kind.clone(), accent()),
+                Span::styled(humanize_token(&event.kind), accent()),
                 Span::raw(task_part),
             ])
         })
@@ -981,4 +1285,91 @@ fn render_activity(app: &mut App, frame: &mut Frame, area: Rect) {
             .block(rounded_block("Recent activity")),
         activity_area,
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::{json, Map, Value};
+
+    fn make_event(id: i64, kind: &str, payload: Value) -> Event {
+        let map = match payload {
+            Value::Object(m) => m,
+            _ => Map::new(),
+        };
+        Event {
+            id,
+            kind: kind.to_string(),
+            taskId: Some("task-1".to_string()),
+            runId: Some("run-1".to_string()),
+            payload: map,
+            createdAt: "2026-11-25T10:15:30Z".to_string(),
+        }
+    }
+
+    #[test]
+    fn formats_known_events_without_raw_dots_or_emoji_glitches() {
+        let cases = vec![
+            (
+                make_event(1, "task.created", json!({ "kind": "research_brief" })),
+                "task created",
+            ),
+            (
+                make_event(
+                    2,
+                    "memory.used",
+                    json!({ "globalEntries": 2, "projectEntries": 1, "truncated": false }),
+                ),
+                "2 global, 1 project",
+            ),
+            (
+                make_event(
+                    3,
+                    "memory.used",
+                    json!({ "entryCount": 3, "scope": "project", "truncated": true }),
+                ),
+                "3 entries (project) · truncated",
+            ),
+            (
+                make_event(4, "run.limit_reached", json!({ "limitHit": "max_steps" })),
+                "run limit reached",
+            ),
+            (
+                make_event(5, "run.failed", json!({ "code": "provider_error" })),
+                "run stopped",
+            ),
+            (
+                make_event(6, "task.failed", json!({ "code": "provider_error" })),
+                "task failed",
+            ),
+            (make_event(7, "task.completed", json!({})), "✓ completed"),
+        ];
+
+        for (event, expected_substr) in cases {
+            let rendered = format_stream_event_branch(&event, false).to_string();
+            assert!(
+                rendered.contains(expected_substr),
+                "expected `{expected_substr}` in `{rendered}`"
+            );
+            for forbidden in ['❄', '✖', '✔', '⏸'] {
+                assert!(
+                    !rendered.contains(forbidden),
+                    "unexpected emoji glyph `{forbidden}` in `{rendered}`"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn coalesces_redundant_terminal_run_and_task_events() {
+        let events = vec![
+            make_event(1, "task.created", json!({})),
+            make_event(2, "run.started", json!({})),
+            make_event(3, "run.failed", json!({})),
+            make_event(4, "task.failed", json!({ "code": "provider_error" })),
+        ];
+        let coalesced = coalesce_stream_events(&events);
+        let kinds: Vec<&str> = coalesced.iter().map(|e| e.kind.as_str()).collect();
+        assert_eq!(kinds, vec!["task.created", "run.started", "task.failed"]);
+    }
 }
