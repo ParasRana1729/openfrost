@@ -17,7 +17,7 @@ pub(super) fn keybind_footer(hints: &[(&str, &str)]) -> Line<'static> {
     let mut spans: Vec<Span<'static>> = vec![Span::raw(" ")];
     for (idx, (key, label)) in hints.iter().enumerate() {
         if idx > 0 {
-            spans.push(Span::styled("  ·  ", hairline_style()));
+            spans.push(Span::styled(" · ", hairline_style()));
         }
         spans.push(Span::styled((*key).to_string(), ice_mid()));
         spans.push(Span::styled(format!(" {label}"), muted()));
@@ -249,9 +249,22 @@ fn render_task_detail(app: &mut App, frame: &mut Frame, area: Rect) {
         hints.push(("g", "grant"));
         hints.push(("d", "reject"));
     }
-    hints.push(("c", "cancel"));
-    hints.push(("r", "retry"));
-    if has_exportable_artifact {
+    if matches!(
+        detail.task.state,
+        TaskState::Queued
+            | TaskState::Running
+            | TaskState::AwaitingApproval
+            | TaskState::Interrupted
+    ) {
+        hints.push(("c", "cancel"));
+    }
+    if matches!(
+        detail.task.state,
+        TaskState::Failed | TaskState::Canceled | TaskState::Interrupted
+    ) {
+        hints.push(("r", "retry"));
+    }
+    if has_exportable_artifact && !pending_approval {
         hints.push(("e", "export"));
     }
     hints.push(("j/k", "scroll"));
