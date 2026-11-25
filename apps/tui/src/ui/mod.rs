@@ -286,7 +286,7 @@ fn render_status_bar(app: &App, frame: &mut Frame, area: Rect) {
         Some(executor) => {
             if executor.dispatchPaused {
                 spans.push(Span::styled(
-                    " ‖ PAUSED (Tasks: r to resume) ",
+                    " ‖ PAUSED (Tasks: R to resume) ",
                     pill(AMBER, SURFACE_SEL).add_modifier(Modifier::BOLD),
                 ));
                 spans.push(Span::raw(" "));
@@ -349,4 +349,44 @@ fn render_status_bar(app: &App, frame: &mut Frame, area: Rect) {
     }
 
     frame.render_widget(Line::from(spans), area);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::api::ApiClient;
+    use crate::contracts::ExecutorStatus;
+    use ratatui::backend::TestBackend;
+    use ratatui::Terminal;
+    use tokio::sync::mpsc;
+
+    #[test]
+    fn status_bar_paused_hint_uses_uppercase_r() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let api = ApiClient::new("http://127.0.0.1:0").unwrap();
+        let mut app = App::new(tx, api);
+        app.screen = Screen::Main;
+        app.tasks.executor = Some(ExecutorStatus {
+            busy: false,
+            activeTaskId: None,
+            dispatchPaused: true,
+        });
+
+        let backend = TestBackend::new(100, 20);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|frame| render(&mut app, frame)).unwrap();
+
+        let content: String = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|c| c.symbol())
+            .collect();
+        assert!(
+            content.contains("PAUSED (Tasks: R to resume)"),
+            "expected uppercase R resume hint in status bar, got: {content}"
+        );
+        assert!(!content.contains("Tasks: r to resume"));
+    }
 }
