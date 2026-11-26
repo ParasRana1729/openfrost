@@ -41,7 +41,7 @@ background execution, not a replacement for Windows or a collection of personas.
 - One assistant; projects scope its context without creating separate identities.
 - One local terminal UI (TUI) Control Center (`apps/tui`) for conversation, tasks, results, memory, routines, and approvals over the loopback API, plus a static landing page (`apps/landing`).
 - One globally active run, with a persistent queue, finite limits, and cancellation.
-- Owner-chosen model provider (OpenAI, Gemini, or OpenRouter) with a DPAPI-protected key; SQLite + Drizzle for local state.
+- Owner-chosen model provider (OpenAI, Gemini, OpenRouter, or AMD Token Factory) with a DPAPI-protected key; SQLite + Drizzle for local state.
 - Inspectable, editable, owner-approved global preferences and project memory.
 - Public web research, granted text-file reads, approved export of new reports,
   and owner-approved memory.

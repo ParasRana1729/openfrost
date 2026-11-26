@@ -196,12 +196,16 @@ describe('memory Markdown file format', () => {
 describe('memory secret exclusion', () => {
   const fakeOpenAiKey = ['sk', 'proj', 'abcdefghijklmnopqrstuvwxyz'].join('-');
   const fakeGoogleKey = ['AIza', 'SyA1234567890abcdefghijklmnopqrstu'].join('');
+  const fakeTokenFactoryKey = ['rc', 'abcdefghijklmnopqrstuvwxyz'].join('-');
 
   it('flags provider key shapes without echoing the value', () => {
     const finding = findSecretMaterial(`Remember ${fakeOpenAiKey}`);
     expect(finding?.reason).toContain('OpenAI-style');
     expect(finding?.reason).not.toContain(fakeOpenAiKey);
     expect(findSecretMaterial(`key=${fakeGoogleKey}`)?.reason).toContain('Google API key');
+    expect(findSecretMaterial(`key=${fakeTokenFactoryKey}`)?.reason).toContain(
+      'AMD Token Factory API key',
+    );
     expect(findSecretMaterial('Bearer abcdefghijklmnop')?.reason).toContain('bearer');
     expect(findSecretMaterial('api_key = super-secret-value')?.reason).toContain(
       'credential assignment',

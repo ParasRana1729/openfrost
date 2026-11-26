@@ -1730,7 +1730,60 @@ does not close S07's one-working-week owner-use gate.
 - **Limitations / Not Run:**
   - No paid-provider model or web-search calls.
   - S07 owner-use gate remains open.
-- **Next steps:**
+  - Next steps:
   - Full verification suite run by `@verifier`.
   - Open PR from `feat/remove-local-auth`, verify Windows CI, and merge upon owner authorization.
+
+## S09a — Provider choice: add AMD Token Factory
+
+- **Status:** Implemented locally on `feat/amd-tokenfactory-provider` (pending verification and real-key evaluation)
+- **Depends on:** S09
+
+Owner-approved spec change (2026-11-26): the built-in provider set extends
+from three to four (`openai`, `gemini`, `openrouter`, `tokenfactory`) to add
+AMD Radeon Token Factory (`https://developer.amd.com.cn/radeon/tokenfactory`),
+one active at a time, each with its own DPAPI-protected key and configured model.
+Still no per-task provider selection and no plugin system — four built-in
+adapters only.
+
+### Acceptance criteria
+
+- [x] The owner can choose `tokenfactory` as the active provider in Settings
+      (API and TUI); the choice and its model persist and take effect on the
+      next run without a restart.
+- [x] Token Factory's `rc-` key is stored DPAPI-protected under its own
+      purpose (`provider-key:tokenfactory`), never echoed or logged, and
+      scrubbed by log and memory secret redaction patterns.
+- [x] `TokenFactoryProvider` uses `POST https://developer.amd.com.cn/radeon/api/v1/chat/completions`
+      with function calling mapped to the shared tool seam, honest
+      `webSearchSkippedReason` reporting for web-grounded runs (since Token
+      Factory has no hosted search plugin), quota/rate-limit hints, truncation
+      and content-filter handling, and key redaction.
+- [x] Injected-transport tests, API settings tests, shared Zod <-> Rust
+      contract parity fixtures, and TUI form/settings tests cover `tokenfactory`
+      without real API keys or paid calls.
+- [ ] Real-model evaluation with an owner `rc-` key on AMD Token Factory.
+
+### Handoff
+
+- Implemented: `TokenFactoryProvider` (`packages/agent/src/tokenFactoryProvider.ts`)
+  over `POST https://developer.amd.com.cn/radeon/api/v1/chat/completions`,
+  sharing the OpenAI-compatible Chat Completions helper
+  (`packages/agent/src/chatCompletions.ts`) with `OpenRouterProvider`. Default
+  model `Qwen3.8-27B` via `OPENFROST_TOKENFACTORY_MODEL` and token cap `8192`
+  via `OPENFROST_TOKENFACTORY_MAX_TOKENS`. `ProviderId` and `AssistantSettings`
+  contracts, shared JSON fixtures, `ActiveProvider`, `/api/settings` routes,
+  Windows DPAPI key storage (`provider-key:tokenfactory`), `rc-` secret
+  redaction in `packages/agent` and `packages/domain` memory guards, Rust TUI
+  contracts/settings/model presets, landing copy, spec, one-pager, and
+  `AGENTS.md` all updated.
+- Verification: `pnpm lint`, `pnpm test` (**510 passed**: 248 domain, 65 db,
+  134 agent, 63 api), and `pnpm build` pass; inside `apps/tui`, `cargo fmt
+  --all -- --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`
+  (**145 passed**), and `cargo build` pass.
+- Not run/verified: a real-model call against AMD Token Factory using an owner
+  `rc-` API key.
+- Known limitations: AMD Token Factory does not expose a hosted web-search
+  plugin, so research briefs set `webSearchSkippedReason` and rely on
+  `startingUrls` and `fetch_page`.
 

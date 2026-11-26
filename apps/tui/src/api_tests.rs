@@ -206,8 +206,8 @@ const IDLE_EXECUTOR: &str =
     r#""executor": { "busy": false, "activeTaskId": null, "dispatchPaused": false }"#;
 const SETTINGS_JSON: &str = r#"{
     "provider": "openrouter", "model": "free/model",
-    "models": { "openai": "gpt-4o-mini", "gemini": "gemini-2.0-flash", "openrouter": "free/model" },
-    "hasProviderKey": true, "hasOpenAIKey": false, "hasGeminiKey": false, "hasOpenRouterKey": true,
+    "models": { "openai": "gpt-4o-mini", "gemini": "gemini-2.0-flash", "openrouter": "free/model", "tokenfactory": "Qwen3.8-27B" },
+    "hasProviderKey": true, "hasOpenAIKey": false, "hasGeminiKey": false, "hasOpenRouterKey": true, "hasTokenFactoryKey": false,
     "executionLimits": { "maxSteps": 12, "maxWallClockMs": 600000, "maxInputChars": 20000, "maxOutputChars": 100000 },
     "onboardingCompletedAt": null
 }"#;

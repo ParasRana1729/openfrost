@@ -121,5 +121,6 @@ describe('shared Rust / Zod contract fixtures', () => {
     expect(domain.setProviderConfigRequestSchema.safeParse({ provider: 'openai', model: null }).success).toBe(true);
     expect(domain.setProviderConfigRequestSchema.safeParse({ provider: 'openrouter', model: '' }).success).toBe(true);
     expect(domain.setProviderConfigRequestSchema.safeParse({ provider: 'openrouter', model: '   ' }).success).toBe(true);
+    expect(domain.setProviderConfigRequestSchema.safeParse({ provider: 'tokenfactory', model: 'Qwen3.8-27B' }).success).toBe(true);
   });
 });

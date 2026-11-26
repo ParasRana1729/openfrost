@@ -1,8 +1,10 @@
 use super::mascot::{braille_spinner, compact_owl_lines, frost_spinner, mini_owl_spans};
 use super::theme::{
-    accent, accent_bold, approval, danger, frost_glow, hairline, hairline_style, ice_mid, muted,
-    pill, primary_bold, rounded_block, rounded_block_focused, section_rule, success, warn, AMBER,
-    FROST_GLOW, ICE_BRIGHT, ICE_DIM, ICE_MID, SLATE_BORDER, SURFACE_PILL, SURFACE_SEL, VIOLET,
+    accent, accent_bold, approval, danger, display_width, frost_glow, hairline, hairline_style,
+    ice_mid, muted, pill, primary_bold, rounded_block, rounded_block_focused, section_rule,
+    success, truncate_display_width, visual_line_count, warn, wrap_styled_spans, wrap_text_lines,
+    AMBER, FROST_GLOW, ICE_BRIGHT, ICE_DIM, ICE_MID, SLATE_BORDER, SURFACE_PILL, SURFACE_SEL,
+    VIOLET,
 };
 use crate::app::{App, ComposerField};
 use crate::contracts::{Event, TaskKind, TaskState};
@@ -24,55 +26,14 @@ pub(super) fn render_assistant(app: &mut App, frame: &mut Frame, area: Rect) {
         let composer_height = prompt_lines + 2;
         let vertical =
             Layout::vertical([Constraint::Min(6), Constraint::Length(composer_height)]).split(area);
-        render_assistant_stream(app, frame, vertical[0]);
-        render_assistant_composer(app, frame, vertical[1]);
+        let scroll_badge = render_assistant_stream(app, frame, vertical[0]);
+        render_assistant_composer(app, frame, vertical[1], scroll_badge);
         render_slash_autocomplete(app, frame, vertical[0]);
     }
 }
 
 fn humanize_token(raw: &str) -> String {
     raw.replace(['_', '.'], " ")
-}
-
-fn wrap_text_lines(text: &str, max_width: usize) -> Vec<String> {
-    let width = max_width.max(12);
-    let mut out = Vec::new();
-    for raw_line in text.lines() {
-        if raw_line.is_empty() {
-            out.push(String::new());
-            continue;
-        }
-        let mut current = String::new();
-        let mut current_chars = 0usize;
-        for word in raw_line.split_inclusive(' ') {
-            let w_chars = word.chars().count();
-            if current_chars > 0 && current_chars + w_chars > width {
-                out.push(current.trim_end().to_string());
-                current.clear();
-                current_chars = 0;
-            }
-            if w_chars > width && current_chars == 0 {
-                for ch in word.chars() {
-                    if current_chars >= width {
-                        out.push(std::mem::take(&mut current));
-                        current_chars = 0;
-                    }
-                    current.push(ch);
-                    current_chars += 1;
-                }
-            } else {
-                current.push_str(word);
-                current_chars += w_chars;
-            }
-        }
-        if !current.is_empty() || out.is_empty() {
-            out.push(current.trim_end().to_string());
-        }
-    }
-    if out.is_empty() {
-        out.push(String::new());
-    }
-    out
 }
 
 /// Coalesces back-to-back `run.*` + `task.*` terminal events (`run.failed`
@@ -465,27 +426,42 @@ pub(super) fn format_stream_event_branch(event: &Event, is_last: bool) -> Line<'
     }
 }
 
-fn render_assistant_stream(app: &mut App, frame: &mut Frame, area: Rect) {
-    if area.height < 2 || area.width < 10 {
-        return;
+/// Formats an execution event and wraps it cleanly within `max_width` using
+/// a tree-rail continuation indent (`  │    ` or `       `).
+pub(super) fn format_stream_event_branch_wrapped(
+    event: &Event,
+    is_last: bool,
+    max_width: usize,
+) -> Vec<Line<'static>> {
+    let line = format_stream_event_branch(event, is_last);
+    if max_width == 0 || line.spans.len() < 2 {
+        return vec![line];
     }
+    let first_prefix = line.spans[..2].to_vec();
+    let cont_prefix = vec![Span::styled(
+        if is_last { "       " } else { "  │    " },
+        hairline_style(),
+    )];
+    wrap_styled_spans(&line.spans[2..], &first_prefix, &cont_prefix, max_width)
+}
 
-    // When idle (no active task detail), render the Claude/Codex welcome hero
-    // with the Frost Owl mascot plus any actionable alerts or inline /help.
-    if app.assistant.active_task_detail.is_none() {
-        render_welcome_canvas(app, frame, area);
-        return;
-    }
+fn append_callout_lines(
+    lines: &mut Vec<Line<'static>>,
+    approvals: &[crate::contracts::ApprovalView],
+    routines: &[crate::contracts::RoutineView],
+    width: u16,
+    blank_between: bool,
+) {
+    let wrap_w = (width as usize).saturating_sub(1).max(1);
+    let cont_prefix = vec![Span::raw("    ")];
 
-    let mut lines: Vec<Line<'static>> = Vec::new();
-    lines.push(Line::from(""));
-
-    // Pending export approvals callout
-    for approval_item in &app.assistant.approvals {
-        lines.push(Line::from(vec![
+    for approval_item in approvals {
+        let first_prefix = vec![
             Span::raw("  "),
             Span::styled(" APPROVAL PENDING ", pill(VIOLET, SURFACE_SEL)),
             Span::raw(" "),
+        ];
+        let body = vec![
             Span::styled(
                 format!(
                     "{} → {}",
@@ -494,30 +470,65 @@ fn render_assistant_stream(app: &mut App, frame: &mut Frame, area: Rect) {
                 primary_bold(),
             ),
             Span::styled("  (/tasks to review)", muted()),
-        ]));
-        lines.push(Line::from(""));
+        ];
+        lines.extend(wrap_styled_spans(
+            &body,
+            &first_prefix,
+            &cont_prefix,
+            wrap_w,
+        ));
+        if blank_between {
+            lines.push(Line::from(""));
+        }
     }
 
-    // Missed routines callout
-    for routine in app
-        .assistant
-        .routines
-        .iter()
-        .filter(|r| r.missedCount > 0)
-        .take(2)
-    {
-        lines.push(Line::from(vec![
+    for routine in routines.iter().filter(|r| r.missedCount > 0).take(2) {
+        let first_prefix = vec![
             Span::raw("  "),
             Span::styled(" MISSED ROUTINE ", pill(AMBER, SURFACE_SEL)),
             Span::raw(" "),
+        ];
+        let body = vec![
             Span::styled(routine.routine.name.clone(), primary_bold()),
             Span::styled(
                 format!("  ({} missed · /routines)", routine.missedCount),
                 muted(),
             ),
-        ]));
-        lines.push(Line::from(""));
+        ];
+        lines.extend(wrap_styled_spans(
+            &body,
+            &first_prefix,
+            &cont_prefix,
+            wrap_w,
+        ));
+        if blank_between {
+            lines.push(Line::from(""));
+        }
     }
+}
+
+fn render_assistant_stream(app: &mut App, frame: &mut Frame, area: Rect) -> Option<(u16, usize)> {
+    if area.height < 2 || area.width < 10 {
+        return None;
+    }
+
+    // When idle (no active task detail), render the Claude/Codex welcome hero
+    // with the Frost Owl mascot plus any actionable alerts or inline /help.
+    if app.assistant.active_task_detail.is_none() {
+        return render_welcome_canvas(app, frame, area);
+    }
+
+    let mut lines: Vec<Line<'static>> = Vec::new();
+    lines.push(Line::from(""));
+
+    // Pending export approvals & missed routines callouts
+    append_callout_lines(
+        &mut lines,
+        &app.assistant.approvals,
+        &app.assistant.routines,
+        area.width,
+        true,
+    );
 
     if app.assistant.slash_help_open {
         append_slash_help_lines(&mut lines, area.width);
@@ -565,8 +576,9 @@ fn render_assistant_stream(app: &mut App, frame: &mut Frame, area: Rect) {
         } else {
             task.title.as_str()
         };
-        let band_width = (area.width as usize).saturating_sub(4).max(20);
-        let content_width = band_width.saturating_sub(4).max(12);
+        let max_band = (area.width as usize).saturating_sub(3);
+        let band_width = (area.width as usize).saturating_sub(4).min(max_band).max(1);
+        let content_width = band_width.saturating_sub(4).max(1);
         let wrapped_prompt = wrap_text_lines(prompt_text, content_width);
         let band_bg = Style::default().bg(SURFACE_PILL);
         for (idx, prompt_line) in wrapped_prompt.into_iter().enumerate() {
@@ -581,7 +593,7 @@ fn render_assistant_stream(app: &mut App, frame: &mut Frame, area: Rect) {
             } else {
                 band_bg
             };
-            let used = 3 + prompt_line.chars().count();
+            let used = 3 + display_width(&prompt_line);
             let pad = band_width.saturating_sub(used);
             lines.push(Line::from(vec![
                 Span::raw("  "),
@@ -592,20 +604,31 @@ fn render_assistant_stream(app: &mut App, frame: &mut Frame, area: Rect) {
             ]));
         }
         lines.push(Line::from(""));
-        lines.push(Line::from(vec![
-            Span::raw("    "),
+        let status_prefix = vec![Span::raw("    ")];
+        let status_spans = vec![
             Span::styled(format!("{state_icon} {state_label}"), state_style),
             Span::styled(format!("  ·  {kind_str}  ·  {project_name}"), muted()),
-        ]));
+        ];
+        lines.extend(wrap_styled_spans(
+            &status_spans,
+            &status_prefix,
+            &status_prefix,
+            (area.width as usize).saturating_sub(1).max(1),
+        ));
 
         // Live execution tree (with redundant run.* + task.* pairs coalesced)
         let visible_events = coalesce_stream_events(&detail.events);
         if !visible_events.is_empty() {
             lines.push(Line::from(""));
+            let event_wrap_w = (area.width as usize).saturating_sub(1).max(1);
             let last_idx = visible_events.len().saturating_sub(1);
             for (idx, event) in visible_events.iter().enumerate() {
                 let is_last = idx == last_idx && task.state != TaskState::Running;
-                lines.push(format_stream_event_branch(event, is_last));
+                lines.extend(format_stream_event_branch_wrapped(
+                    event,
+                    is_last,
+                    event_wrap_w,
+                ));
             }
         }
 
@@ -614,7 +637,10 @@ fn render_assistant_stream(app: &mut App, frame: &mut Frame, area: Rect) {
             lines.push(Line::from(""));
             lines.push(section_rule("Generated Report", area.width));
             lines.push(Line::from(""));
-            lines.extend(crate::markdown::render_markdown(&artifact.markdown));
+            lines.extend(crate::markdown::render_markdown_for_width(
+                &artifact.markdown,
+                area.width as usize,
+            ));
             lines.push(Line::from(""));
         } else if task.state == TaskState::Running {
             let provider_name = app
@@ -646,49 +672,61 @@ fn render_assistant_stream(app: &mut App, frame: &mut Frame, area: Rect) {
             };
 
             lines.push(Line::from(""));
-            let mut active_spans = vec![Span::raw("  ")];
-            active_spans.extend(mini_owl_spans(app.ticks, true));
-            active_spans.push(Span::styled(
+            let wrap_w = (area.width as usize).saturating_sub(1).max(1);
+            let mut active_prefix = vec![Span::raw("  ")];
+            active_prefix.extend(mini_owl_spans(app.ticks, true));
+            active_prefix.push(Span::styled(
                 format!(" {} ", frost_spinner(app.ticks)),
                 accent_bold(),
             ));
-            active_spans.push(Span::styled(status_msg, accent_bold()));
-            lines.push(Line::from(active_spans));
-            lines.push(Line::styled(
-                "          Evidence-first loop: bounded tools gather facts before synthesis (/cancel to abort)",
-                muted(),
+            let hint_indent = if wrap_w >= 36 { "          " } else { "    " };
+            let cont_indent = vec![Span::raw(hint_indent)];
+            lines.extend(wrap_styled_spans(
+                &[Span::styled(status_msg, accent_bold())],
+                &active_prefix,
+                &cont_indent,
+                wrap_w,
+            ));
+            lines.extend(wrap_styled_spans(
+                &[Span::styled(
+                    "Evidence-first loop: bounded tools gather facts before synthesis (/cancel to abort)",
+                    muted(),
+                )],
+                &cont_indent,
+                &cont_indent,
+                wrap_w,
             ));
         } else if let Some(err) = &task.error {
             lines.push(Line::from(""));
-            let err_width = (area.width as usize).saturating_sub(8).max(20);
-            for (idx, err_line) in wrap_text_lines(err, err_width).into_iter().enumerate() {
-                if idx == 0 {
-                    lines.push(Line::from(vec![
-                        Span::styled("  │ ", danger()),
-                        Span::styled("× ", danger().add_modifier(Modifier::BOLD)),
-                        Span::styled(err_line, danger()),
-                    ]));
-                } else {
-                    lines.push(Line::from(vec![
-                        Span::styled("  │   ", danger()),
-                        Span::styled(err_line, danger()),
-                    ]));
-                }
-            }
+            let wrap_w = (area.width as usize).saturating_sub(1).max(1);
+            let err_first = vec![
+                Span::styled("  │ ", danger()),
+                Span::styled("× ", danger().add_modifier(Modifier::BOLD)),
+            ];
+            let err_cont = vec![Span::styled("  │   ", danger())];
+            lines.extend(wrap_styled_spans(
+                &[Span::styled(err.clone(), danger())],
+                &err_first,
+                &err_cont,
+                wrap_w,
+            ));
             if is_openrouter_credits_error(err) {
-                lines.push(Line::from(vec![
-                    Span::styled("  │   ", hairline_style()),
-                    Span::styled(
+                let tip_prefix = vec![Span::styled("  │   ", hairline_style())];
+                lines.extend(wrap_styled_spans(
+                    &[Span::styled(
                         "Tip: press Tab 6 (Settings) -> m to switch to openrouter/free or check credits",
                         muted(),
-                    ),
-                ]));
+                    )],
+                    &tip_prefix,
+                    &tip_prefix,
+                    wrap_w,
+                ));
             }
             lines.push(Line::from(""));
         }
     }
 
-    let total_lines = lines.len();
+    let total_lines = visual_line_count(&lines, area.width);
     let visible_height = area.height as usize;
     let max_scroll = total_lines.saturating_sub(visible_height);
     let scroll_y = (app.assistant.stream_scroll as usize).min(max_scroll) as u16;
@@ -701,21 +739,14 @@ fn render_assistant_stream(app: &mut App, frame: &mut Frame, area: Rect) {
         area,
     );
 
-    // Subtle scroll position badge in top-right when scrolled.
-    if total_lines > visible_height && area.width > 20 {
-        let badge = format!(" [{}/{}] ", scroll_y + 1, total_lines);
-        let badge_w = badge.chars().count() as u16;
-        let badge_area = Rect {
-            x: area.x + area.width.saturating_sub(badge_w + 1),
-            y: area.y,
-            width: badge_w,
-            height: 1,
-        };
-        frame.render_widget(Paragraph::new(Span::styled(badge, muted())), badge_area);
+    if total_lines > visible_height {
+        Some((scroll_y + 1, total_lines))
+    } else {
+        None
     }
 }
 
-fn render_welcome_canvas(app: &mut App, frame: &mut Frame, area: Rect) {
+fn render_welcome_canvas(app: &mut App, frame: &mut Frame, area: Rect) -> Option<(u16, usize)> {
     let provider_name = app
         .settings
         .settings
@@ -781,33 +812,33 @@ fn render_welcome_canvas(app: &mut App, frame: &mut Frame, area: Rect) {
             frame.render_widget(Paragraph::new(compact_owl_lines(app.ticks)), owl_rect);
         }
 
-        let info_rect = Rect {
-            x: cols[1].x + 1,
-            y: cols[1].y + usize::from(inner.height >= 8) as u16,
-            width: cols[1].width.saturating_sub(2),
-            height: cols[1]
-                .height
-                .saturating_sub(usize::from(inner.height >= 8) as u16),
+        let info_w = cols[1].width.saturating_sub(2) as usize;
+        let p_budget = info_w.saturating_sub(15);
+        let prov_shown = truncate_display_width(&provider_name, (p_budget / 2).max(4));
+        let model_shown = truncate_display_width(
+            &model_name,
+            info_w
+                .saturating_sub(10 + display_width(&prov_shown) + 5)
+                .max(4),
+        );
+
+        let mode_w = display_width(mode_name);
+        let proj_budget = info_w.saturating_sub(10 + 5 + mode_w);
+        let (proj_shown, mode_shown) = if proj_budget >= 6 {
+            (
+                truncate_display_width(&project_name, proj_budget),
+                mode_name.to_string(),
+            )
+        } else {
+            let half = info_w.saturating_sub(15) / 2;
+            (
+                truncate_display_width(&project_name, half.max(4)),
+                truncate_display_width(mode_name, half.max(4)),
+            )
         };
-        let rule_w = (info_rect.width as usize).saturating_sub(1).min(52);
-        let hero_lines = vec![
-            Line::from(vec![
-                Span::styled("Welcome back", frost_glow().add_modifier(Modifier::BOLD)),
-                Span::styled("  ·  Personal AI OS", muted()),
-            ]),
-            Line::from(vec![
-                Span::styled("Provider  ", muted()),
-                Span::styled(provider_name, frost_glow().add_modifier(Modifier::BOLD)),
-                Span::styled("  ·  ", hairline_style()),
-                Span::styled(model_name, ice_mid()),
-            ]),
-            Line::from(vec![
-                Span::styled("Scope     ", muted()),
-                Span::styled(project_name, frost_glow()),
-                Span::styled("  ·  ", hairline_style()),
-                Span::styled(mode_name, accent()),
-            ]),
-            Line::styled("─".repeat(rule_w), hairline_style()),
+
+        let rule_w = info_w.saturating_sub(1).min(52);
+        let shortcut_row_1 = if info_w >= 58 {
             Line::from(vec![
                 Span::styled("Type below, or ", muted()),
                 Span::styled("/", accent_bold()),
@@ -816,7 +847,27 @@ fn render_welcome_canvas(app: &mut App, frame: &mut Frame, area: Rect) {
                 Span::styled(" scope  ·  ", muted()),
                 Span::styled("Shift+Tab", accent()),
                 Span::styled(" mode", muted()),
-            ]),
+            ])
+        } else if info_w >= 43 {
+            Line::from(vec![
+                Span::styled("/", accent_bold()),
+                Span::styled(" commands  ·  ", muted()),
+                Span::styled("Tab", accent()),
+                Span::styled(" scope  ·  ", muted()),
+                Span::styled("Shift+Tab", accent()),
+                Span::styled(" mode", muted()),
+            ])
+        } else {
+            Line::from(vec![
+                Span::styled("/", accent_bold()),
+                Span::styled(" cmds · ", muted()),
+                Span::styled("Tab", accent()),
+                Span::styled(" scope · ", muted()),
+                Span::styled("S-Tab", accent()),
+                Span::styled(" mode", muted()),
+            ])
+        };
+        let shortcut_row_2 = if info_w >= 55 {
             Line::from(vec![
                 Span::styled("Shift+Enter", accent()),
                 Span::styled(" newline  ·  ", muted()),
@@ -824,8 +875,60 @@ fn render_welcome_canvas(app: &mut App, frame: &mut Frame, area: Rect) {
                 Span::styled(" options  ·  ", muted()),
                 Span::styled("Ctrl+P", accent()),
                 Span::styled(" views", muted()),
+            ])
+        } else if info_w >= 41 {
+            Line::from(vec![
+                Span::styled("S-Enter", accent()),
+                Span::styled(" newline · ", muted()),
+                Span::styled("Ctrl+A", accent()),
+                Span::styled(" opt · ", muted()),
+                Span::styled("Ctrl+P", accent()),
+                Span::styled(" views", muted()),
+            ])
+        } else {
+            Line::from(vec![
+                Span::styled("Ctrl+A", accent()),
+                Span::styled(" opt · ", muted()),
+                Span::styled("Ctrl+P", accent()),
+                Span::styled(" views", muted()),
+            ])
+        };
+
+        let hero_lines = vec![
+            Line::from(vec![
+                Span::styled("Welcome back", frost_glow().add_modifier(Modifier::BOLD)),
+                Span::styled("  ·  Personal AI OS", muted()),
             ]),
+            Line::from(vec![
+                Span::styled("Provider  ", muted()),
+                Span::styled(prov_shown, frost_glow().add_modifier(Modifier::BOLD)),
+                Span::styled("  ·  ", hairline_style()),
+                Span::styled(model_shown, ice_mid()),
+            ]),
+            Line::from(vec![
+                Span::styled("Scope     ", muted()),
+                Span::styled(proj_shown, frost_glow()),
+                Span::styled("  ·  ", hairline_style()),
+                Span::styled(mode_shown, accent()),
+            ]),
+            Line::styled("─".repeat(rule_w), hairline_style()),
+            shortcut_row_1,
+            shortcut_row_2,
         ];
+
+        let hero_w = cols[1].width.saturating_sub(2);
+        let needed_rows = visual_line_count(&hero_lines, hero_w);
+        let top_offset = if inner.height >= 8 && needed_rows < inner.height as usize {
+            1u16
+        } else {
+            0u16
+        };
+        let info_rect = Rect {
+            x: cols[1].x + 1,
+            y: cols[1].y + top_offset,
+            width: hero_w,
+            height: cols[1].height.saturating_sub(top_offset),
+        };
         frame.render_widget(
             Paragraph::new(hero_lines).wrap(Wrap { trim: false }),
             info_rect,
@@ -841,53 +944,37 @@ fn render_welcome_canvas(app: &mut App, frame: &mut Frame, area: Rect) {
                 height: (area.y + area.height).saturating_sub(below_y),
             };
             let mut extra_lines: Vec<Line<'static>> = Vec::new();
-            for approval_item in &app.assistant.approvals {
-                extra_lines.push(Line::from(vec![
-                    Span::raw("  "),
-                    Span::styled(" APPROVAL PENDING ", pill(VIOLET, SURFACE_SEL)),
-                    Span::raw(" "),
-                    Span::styled(
-                        format!(
-                            "{} → {}",
-                            approval_item.approval.filename, approval_item.approval.destinationPath
-                        ),
-                        primary_bold(),
-                    ),
-                    Span::styled("  (/tasks to review)", muted()),
-                ]));
-            }
-            for routine in app
-                .assistant
-                .routines
-                .iter()
-                .filter(|r| r.missedCount > 0)
-                .take(2)
-            {
-                extra_lines.push(Line::from(vec![
-                    Span::raw("  "),
-                    Span::styled(" MISSED ROUTINE ", pill(AMBER, SURFACE_SEL)),
-                    Span::raw(" "),
-                    Span::styled(routine.routine.name.clone(), primary_bold()),
-                    Span::styled(
-                        format!("  ({} missed · /routines)", routine.missedCount),
-                        muted(),
-                    ),
-                ]));
-            }
+            append_callout_lines(
+                &mut extra_lines,
+                &app.assistant.approvals,
+                &app.assistant.routines,
+                below_area.width,
+                false,
+            );
             if app.assistant.slash_help_open {
                 append_slash_help_lines(&mut extra_lines, below_area.width);
             }
             if !extra_lines.is_empty() {
-                let scroll_y = app.assistant.stream_scroll;
+                let total_lines = visual_line_count(&extra_lines, below_area.width);
+                let visible_height = below_area.height as usize;
+                let max_scroll = total_lines.saturating_sub(visible_height);
+                let scroll_y = (app.assistant.stream_scroll as usize).min(max_scroll) as u16;
+                app.assistant.stream_scroll = scroll_y;
                 frame.render_widget(
                     Paragraph::new(extra_lines)
                         .wrap(Wrap { trim: false })
                         .scroll((scroll_y, 0)),
                     below_area,
                 );
+                if total_lines > visible_height {
+                    return Some((scroll_y + 1, total_lines));
+                }
+                return None;
             }
         }
     }
+    app.assistant.stream_scroll = 0;
+    None
 }
 
 fn append_slash_help_lines(lines: &mut Vec<Line<'static>>, width: u16) {
@@ -924,20 +1011,36 @@ fn append_slash_help_lines(lines: &mut Vec<Line<'static>>, width: u16) {
             "Toggle advanced composer (constraints & starting URLs)",
         ),
     ];
+    let wrap_w = (width as usize).saturating_sub(1).max(1);
+    let cont_w = if wrap_w >= 44 { 24 } else { 4 };
+    let cont_prefix = vec![Span::raw(" ".repeat(cont_w))];
     for (cmd, desc) in items {
-        lines.push(Line::from(vec![
-            Span::styled(
-                format!("  {cmd:<22}"),
-                Style::default().fg(ICE_BRIGHT).add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(desc, muted()),
-        ]));
+        let cmd_text = if wrap_w >= 44 {
+            format!("  {cmd:<22}")
+        } else {
+            format!("  {cmd}  ")
+        };
+        let first_prefix = vec![Span::styled(
+            cmd_text,
+            Style::default().fg(ICE_BRIGHT).add_modifier(Modifier::BOLD),
+        )];
+        lines.extend(wrap_styled_spans(
+            &[Span::styled(desc, muted())],
+            &first_prefix,
+            &cont_prefix,
+            wrap_w,
+        ));
     }
     lines.push(Line::from(""));
 }
 
 /// Renders the Claude Code / Codex CLI hairline prompt input at the bottom.
-fn render_assistant_composer(app: &mut App, frame: &mut Frame, area: Rect) {
+fn render_assistant_composer(
+    app: &mut App,
+    frame: &mut Frame,
+    area: Rect,
+    scroll_badge: Option<(u16, usize)>,
+) {
     if area.height < 3 || area.width < 8 {
         return;
     }
@@ -949,8 +1052,31 @@ fn render_assistant_composer(app: &mut App, frame: &mut Frame, area: Rect) {
     ])
     .split(area);
 
-    // Top hairline rule
-    frame.render_widget(Paragraph::new(hairline(rows[0].width)), rows[0]);
+    // Top hairline rule (with optional right-aligned scroll indicator)
+    let top_rule = if let Some((line_no, total_lines)) = scroll_badge {
+        let badge = format!(" [{line_no}/{total_lines}] ");
+        let badge_w = display_width(&badge);
+        let total_w = rows[0].width as usize;
+        if total_w >= badge_w + 4 {
+            let left_len = total_w - badge_w - 2;
+            Line::from(vec![
+                Span::styled("─".repeat(left_len), hairline_style()),
+                Span::styled(badge, Style::default().fg(ICE_DIM)),
+                Span::styled("──", hairline_style()),
+            ])
+        } else if total_w >= badge_w {
+            let left_len = total_w - badge_w;
+            Line::from(vec![
+                Span::styled("─".repeat(left_len), hairline_style()),
+                Span::styled(badge, Style::default().fg(ICE_DIM)),
+            ])
+        } else {
+            hairline(rows[0].width)
+        }
+    } else {
+        hairline(rows[0].width)
+    };
+    frame.render_widget(Paragraph::new(top_rule), rows[0]);
 
     // Input row: subtle dark surface band (`SURFACE_PILL`) with ` ❯ ` gutter + borderless TextArea
     let input_bg = Style::default().bg(SURFACE_PILL);
@@ -1066,22 +1192,41 @@ fn render_slash_autocomplete(app: &App, frame: &mut Frame, stream_area: Rect) {
         };
 
         let cmd_col = format!("{:<10}", spec.name);
-        let args_col = format!("{:<15}", spec.args_hint);
-        let used_w = 3 + 10 + 15 + spec.description.chars().count();
-        let pad_w = inner_w.saturating_sub(used_w).max(1);
-        lines.push(Line::from(vec![
-            Span::styled(marker, cmd_style),
-            Span::styled(cmd_col, cmd_style),
-            Span::styled(args_col, args_style),
-            Span::styled(spec.description, desc_style),
-            Span::styled(" ".repeat(pad_w), row_bg),
-        ]));
+        if inner_w > 28 {
+            let args_col = format!("{:<15}", spec.args_hint);
+            let desc_budget = inner_w - 28;
+            let desc_shown = truncate_display_width(spec.description, desc_budget);
+            let used_w = 28 + display_width(&desc_shown);
+            let pad_w = inner_w.saturating_sub(used_w);
+            lines.push(Line::from(vec![
+                Span::styled(marker, cmd_style),
+                Span::styled(cmd_col, cmd_style),
+                Span::styled(args_col, args_style),
+                Span::styled(desc_shown, desc_style),
+                Span::styled(" ".repeat(pad_w), row_bg),
+            ]));
+        } else {
+            let desc_budget = inner_w.saturating_sub(13);
+            let desc_shown = truncate_display_width(spec.description, desc_budget);
+            let used_w = 13 + display_width(&desc_shown);
+            let pad_w = inner_w.saturating_sub(used_w);
+            lines.push(Line::from(vec![
+                Span::styled(marker, cmd_style),
+                Span::styled(cmd_col, cmd_style),
+                Span::styled(desc_shown, desc_style),
+                Span::styled(" ".repeat(pad_w), row_bg),
+            ]));
+        }
     }
 
-    lines.push(Line::styled(
-        "  ↑↓ select · Tab complete · Enter run · Esc close",
-        muted(),
-    ));
+    let footer_hint = if inner_w >= 50 {
+        "  ↑↓ select · Tab complete · Enter run · Esc close".to_string()
+    } else if inner_w >= 26 {
+        truncate_display_width("  ↑↓ move · Tab · Enter · Esc", inner_w)
+    } else {
+        truncate_display_width("  ↑↓ · Tab · Esc", inner_w)
+    };
+    lines.push(Line::styled(footer_hint, muted()));
 
     let popup_block = Block::default()
         .borders(Borders::ALL)
@@ -1255,22 +1400,6 @@ fn render_select_row(frame: &mut Frame, area: Rect, label: &str, value: &str, fo
 }
 
 fn render_activity(app: &mut App, frame: &mut Frame, area: Rect) {
-    let chunks = Layout::vertical([
-        Constraint::Length(app.assistant.approvals.len().min(3) as u16 * 2 + 2),
-        Constraint::Length(
-            app.assistant
-                .routines
-                .iter()
-                .map(|r| r.missedCount)
-                .sum::<i64>()
-                .min(3) as u16
-                + 2,
-        ),
-        Constraint::Min(3),
-    ])
-    .split(area);
-    let (approval_area, routine_area, activity_area) = (chunks[0], chunks[1], chunks[2]);
-
     // Pending export approvals.
     let mut approval_lines: Vec<Line> = Vec::new();
     for approval_item in app.assistant.approvals.iter().take(3) {
@@ -1298,10 +1427,6 @@ fn render_activity(app: &mut App, frame: &mut Frame, area: Rect) {
             muted(),
         ));
     }
-    frame.render_widget(
-        Paragraph::new(approval_lines).block(rounded_block("Approvals")),
-        approval_area,
-    );
 
     // Missed routines.
     let mut routine_lines: Vec<Line> = Vec::new();
@@ -1331,8 +1456,33 @@ fn render_activity(app: &mut App, frame: &mut Frame, area: Rect) {
             muted(),
         ));
     }
+
+    let inner_w = area.width.saturating_sub(2);
+    let approval_h = (visual_line_count(&approval_lines, inner_w) as u16 + 2)
+        .min((area.height / 2).max(3))
+        .max(3);
+    let routine_h = (visual_line_count(&routine_lines, inner_w) as u16 + 2)
+        .min(area.height.saturating_sub(approval_h + 3).max(3))
+        .max(3);
+
+    let chunks = Layout::vertical([
+        Constraint::Length(approval_h),
+        Constraint::Length(routine_h),
+        Constraint::Min(3),
+    ])
+    .split(area);
+    let (approval_area, routine_area, activity_area) = (chunks[0], chunks[1], chunks[2]);
+
     frame.render_widget(
-        Paragraph::new(routine_lines).block(rounded_block("Routines")),
+        Paragraph::new(approval_lines)
+            .wrap(Wrap { trim: false })
+            .block(rounded_block("Approvals")),
+        approval_area,
+    );
+    frame.render_widget(
+        Paragraph::new(routine_lines)
+            .wrap(Wrap { trim: false })
+            .block(rounded_block("Routines")),
         routine_area,
     );
 
@@ -1639,5 +1789,267 @@ mod tests {
             .collect();
         assert!(rendered.contains("Continuing without hosted web search (openrouter)…"));
         assert!(!rendered.contains("from web_search_skipped evidence"));
+    }
+
+    #[test]
+    fn markdown_report_renders_without_scroll_badge_overlap_and_places_badge_on_composer_hairline()
+    {
+        use crate::api::ApiClient;
+        use crate::app::{Screen, Tab};
+        use crate::contracts::{Task, TaskDetail, TaskDetailArtifact};
+        use ratatui::backend::TestBackend;
+        use ratatui::Terminal;
+        use tokio::sync::mpsc;
+
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let api = ApiClient::new("http://127.0.0.1:0").unwrap();
+        let mut app = App::new(tx, api);
+        app.screen = Screen::Main;
+        app.tab = Tab::Assistant;
+
+        let mut md = String::from(
+            "# Q4 GPU Vendor Comparison\n\n\
+             ## Key Takeaways\n\n\
+             | Vendor | Flagship | Reference |\n\
+             | :--- | :---: | ---: |\n\
+             | NVIDIA | Blackwell B200 | [investor.nvidia.com](https://investor.nvidia.com/news) |\n\
+             | AMD | Instinct MI325X | [amd.com](https://www.amd.com/en/products/accelerators) |\n\n\
+             ## Sources\n\n",
+        );
+        for i in 1..=25 {
+            md.push_str(&format!(
+                "{i}. [Source {i}](https://example.com/articles/deep-dive-{i}) — detailed benchmark notes.\n"
+            ));
+        }
+
+        app.assistant.active_task_detail = Some(TaskDetail {
+            task: Task {
+                id: "t-md".to_string(),
+                title: "GPU Comparison".to_string(),
+                request: "Compare GPU vendors with sources".to_string(),
+                constraints: None,
+                startingUrls: None,
+                projectId: None,
+                kind: TaskKind::ResearchBrief,
+                exportArgs: None,
+                routineId: None,
+                state: TaskState::Completed,
+                attemptCount: 1,
+                lastRunId: None,
+                resultArtifactId: Some("a-1".to_string()),
+                error: None,
+                createdAt: "2026-11-26T00:00:00Z".to_string(),
+                updatedAt: "2026-11-26T00:00:00Z".to_string(),
+            },
+            runs: vec![],
+            events: vec![make_event(1, "task.completed", json!({}))],
+            artifact: Some(TaskDetailArtifact {
+                id: "a-1".to_string(),
+                markdown: md,
+            }),
+            approval: None,
+        });
+        app.assistant.stream_scroll = 10;
+
+        let backend = TestBackend::new(90, 24);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        // First render at scroll 0 to verify headings, table, and links render cleanly.
+        app.assistant.stream_scroll = 0;
+        terminal
+            .draw(|frame| crate::ui::render(&mut app, frame))
+            .unwrap();
+        let top_text: String = {
+            let buf = terminal.backend().buffer();
+            (0..24)
+                .map(|y| {
+                    (0..90)
+                        .map(|x| buf.cell((x, y)).unwrap().symbol())
+                        .collect::<String>()
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+        assert!(!top_text.contains("# Q4 GPU Vendor Comparison"));
+        assert!(!top_text.contains("## Key Takeaways"));
+        assert!(top_text.contains("Q4 GPU Vendor Comparison"));
+        assert!(top_text.contains("investor.nvidia.com"));
+        assert!(!top_text.contains("https://investor.nvidia.com/news"));
+        assert!(top_text.contains("─┼─"));
+
+        // Now scroll down and verify [11/N] appears on the composer top hairline,
+        // NOT overlapping stream row 0.
+        app.assistant.stream_scroll = 10;
+        terminal
+            .draw(|frame| crate::ui::render(&mut app, frame))
+            .unwrap();
+
+        let buf = terminal.backend().buffer();
+        let row_str = |y: u16| -> String {
+            (0..90)
+                .map(|x| buf.cell((x, y)).unwrap().symbol())
+                .collect::<String>()
+        };
+
+        // Top bar is rows 0..1; stream starts at row 2; status bar is row 23;
+        // composer occupies rows 20..22 (top hairline on row 20).
+        let stream_top_row = row_str(2);
+        assert!(
+            !stream_top_row.contains("[11/"),
+            "scroll badge must NOT overlap stream row 0: {stream_top_row}"
+        );
+        let composer_top_hairline = row_str(20);
+        assert!(
+            composer_top_hairline.contains("[11/"),
+            "expected scroll badge on composer top hairline (row 20): {composer_top_hairline}"
+        );
+        assert!(composer_top_hairline.contains('─'));
+    }
+
+    #[test]
+    fn stream_scroll_clamps_to_visual_wrapped_lines_and_reaches_true_bottom() {
+        use crate::api::ApiClient;
+        use crate::app::{Screen, Tab};
+        use crate::contracts::{Task, TaskDetail, TaskDetailArtifact};
+        use ratatui::backend::TestBackend;
+        use ratatui::Terminal;
+        use tokio::sync::mpsc;
+
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let api = ApiClient::new("http://127.0.0.1:0").unwrap();
+        let mut app = App::new(tx, api);
+        app.screen = Screen::Main;
+        app.tab = Tab::Assistant;
+
+        let long_request = "Explain the architectural trade-offs between SQLite WAL checkpoints and PostgreSQL MVCC vacuuming across heavy concurrent analytical workloads";
+        let md = "Intro line.\n\nTAIL_SENTINEL_MARKER_END";
+        app.assistant.active_task_detail = Some(TaskDetail {
+            task: Task {
+                id: "t-wrap".to_string(),
+                title: "Wrap scroll".to_string(),
+                request: long_request.to_string(),
+                constraints: None,
+                startingUrls: None,
+                projectId: None,
+                kind: TaskKind::ResearchBrief,
+                exportArgs: None,
+                routineId: None,
+                state: TaskState::Completed,
+                attemptCount: 1,
+                lastRunId: None,
+                resultArtifactId: Some("a-2".to_string()),
+                error: None,
+                createdAt: "2026-11-26T00:00:00Z".to_string(),
+                updatedAt: "2026-11-26T00:00:00Z".to_string(),
+            },
+            runs: vec![],
+            events: vec![make_event(
+                1,
+                "tool.executed",
+                json!({ "tool": "web_search_skipped", "ok": false, "reason": "long reason that wraps on narrow panes cleanly" }),
+            )],
+            artifact: Some(TaskDetailArtifact {
+                id: "a-2".to_string(),
+                markdown: md.to_string(),
+            }),
+            approval: None,
+        });
+        app.assistant.stream_scroll = u16::MAX;
+
+        let backend = TestBackend::new(40, 16);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| crate::ui::render(&mut app, frame))
+            .unwrap();
+
+        let rendered: String = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|c| c.symbol())
+            .collect();
+        assert!(
+            rendered.contains("TAIL_SENTINEL_MARKER_END"),
+            "scrolling to bottom must reach TAIL_SENTINEL_MARKER_END in 40x16: {rendered}"
+        );
+        assert!(app.assistant.stream_scroll < u16::MAX);
+    }
+
+    #[test]
+    fn narrow_viewport_40x16_does_not_panic_or_wrap_section_rule_or_prompt_band() {
+        use crate::api::ApiClient;
+        use crate::app::{Screen, Tab};
+        use crate::contracts::{Task, TaskDetail, TaskDetailArtifact};
+        use ratatui::backend::TestBackend;
+        use ratatui::Terminal;
+        use tokio::sync::mpsc;
+
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let api = ApiClient::new("http://127.0.0.1:0").unwrap();
+        let mut app = App::new(tx, api);
+        app.screen = Screen::Main;
+        app.tab = Tab::Assistant;
+        app.assistant.slash_help_open = true;
+
+        // First test welcome canvas on 40x16
+        let backend = TestBackend::new(40, 16);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| crate::ui::render(&mut app, frame))
+            .unwrap();
+
+        // Next test active task stream with prompt band + section_rule on 40x16
+        app.assistant.slash_help_open = false;
+        app.assistant.active_task_detail = Some(TaskDetail {
+            task: Task {
+                id: "t-narrow".to_string(),
+                title: "Narrow test".to_string(),
+                request: "Short prompt band check on narrow pane".to_string(),
+                constraints: None,
+                startingUrls: None,
+                projectId: None,
+                kind: TaskKind::ResearchBrief,
+                exportArgs: None,
+                routineId: None,
+                state: TaskState::Completed,
+                attemptCount: 1,
+                lastRunId: None,
+                resultArtifactId: Some("a-3".to_string()),
+                error: None,
+                createdAt: "2026-11-26T00:00:00Z".to_string(),
+                updatedAt: "2026-11-26T00:00:00Z".to_string(),
+            },
+            runs: vec![],
+            events: vec![],
+            artifact: Some(TaskDetailArtifact {
+                id: "a-3".to_string(),
+                markdown: "Body text".to_string(),
+            }),
+            approval: None,
+        });
+        terminal
+            .draw(|frame| crate::ui::render(&mut app, frame))
+            .unwrap();
+
+        let buf = terminal.backend().buffer();
+        let row_str = |y: u16| -> String {
+            (0..40)
+                .map(|x| buf.cell((x, y)).unwrap().symbol())
+                .collect::<String>()
+        };
+        let rule_rows: Vec<usize> = (0..16)
+            .filter(|&y| row_str(y as u16).contains("── Generated"))
+            .collect();
+        assert_eq!(
+            rule_rows.len(),
+            1,
+            "Generated Report rule should occupy exactly 1 row"
+        );
+        let next_row = row_str((rule_rows[0] + 1) as u16);
+        assert!(
+            next_row.trim().is_empty(),
+            "section_rule must not wrap onto the following row: `{next_row}`"
+        );
     }
 }

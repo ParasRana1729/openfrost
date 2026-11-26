@@ -3,13 +3,14 @@ import {
   GeminiProvider,
   OpenAIProvider,
   OpenRouterProvider,
+  TokenFactoryProvider,
   PROJECT_FILE_INVENTORY_HEADING,
   RECENT_UPDATES_HEADING,
   type LlmProvider,
   type ProviderStepRequest,
   type ProviderStepResult,
 } from '@openfrost/agent';
-import type { ProviderId } from '@openfrost/domain';
+import { providerIdSchema, type ProviderId } from '@openfrost/domain';
 import {
   providerKeyExists,
   readProviderKey,
@@ -22,8 +23,28 @@ import {
   fakeWeeklyPlanScript,
 } from './fakeProviderScript.js';
 
-const ACTIVE_PROVIDER_KEY = 'provider.active';
-const modelKey = (provider: ProviderId): string => `provider.model.${provider}`;
+export const ACTIVE_PROVIDER_KEY = 'provider.active';
+export const providerModelKey = (provider: ProviderId): string => `provider.model.${provider}`;
+
+/** Maps a stored `appState` value to a valid `ProviderId`, defaulting to `'openai'`. */
+export function parseStoredProvider(value: string | null | undefined): ProviderId {
+  const parsed = providerIdSchema.safeParse(value);
+  return parsed.success ? parsed.data : 'openai';
+}
+
+/** Resolves the configured default model for one built-in provider. */
+export function defaultModelForProvider(config: ApiConfig, provider: ProviderId): string {
+  switch (provider) {
+    case 'openai':
+      return config.openaiModel;
+    case 'gemini':
+      return config.geminiModel;
+    case 'openrouter':
+      return config.openrouterModel;
+    case 'tokenfactory':
+      return config.tokenfactoryModel;
+  }
+}
 
 export interface ActiveProviderDeps {
   config: ApiConfig;
@@ -58,16 +79,10 @@ export class ActiveProvider implements LlmProvider {
   /** Which provider the next run would use, plus its effective model. */
   current(): { provider: ProviderId; model: string } {
     const provider = this.#activeProvider();
-    const override = this.#deps.store.state.getValue(modelKey(provider));
+    const override = this.#deps.store.state.getValue(providerModelKey(provider));
     const trimmed = override?.trim() ?? '';
     const model =
-      trimmed.length > 0
-        ? trimmed
-        : provider === 'gemini'
-          ? this.#deps.config.geminiModel
-          : provider === 'openrouter'
-            ? this.#deps.config.openrouterModel
-            : this.#deps.config.openaiModel;
+      trimmed.length > 0 ? trimmed : defaultModelForProvider(this.#deps.config, provider);
     return { provider, model };
   }
 
@@ -117,8 +132,7 @@ export class ActiveProvider implements LlmProvider {
   }
 
   #activeProvider(): ProviderId {
-    const value = this.#deps.store.state.getValue(ACTIVE_PROVIDER_KEY);
-    return value === 'gemini' || value === 'openrouter' ? value : 'openai';
+    return parseStoredProvider(this.#deps.store.state.getValue(ACTIVE_PROVIDER_KEY));
   }
 
   #adapterFor(provider: ProviderId, model: string): LlmProvider {
@@ -129,16 +143,29 @@ export class ActiveProvider implements LlmProvider {
     if (cached) {
       return cached;
     }
-    const adapter =
-      provider === 'gemini'
-        ? new GeminiProvider({ model, getApiKey: () => this.#key(provider) })
-        : provider === 'openrouter'
-          ? new OpenRouterProvider({
-              model,
-              maxOutputTokens: this.#deps.config.openrouterMaxTokens,
-              getApiKey: () => this.#key(provider),
-            })
-          : new OpenAIProvider({ model, getApiKey: () => this.#key(provider) });
+    let adapter: LlmProvider;
+    switch (provider) {
+      case 'gemini':
+        adapter = new GeminiProvider({ model, getApiKey: () => this.#key(provider) });
+        break;
+      case 'openrouter':
+        adapter = new OpenRouterProvider({
+          model,
+          maxOutputTokens: this.#deps.config.openrouterMaxTokens,
+          getApiKey: () => this.#key(provider),
+        });
+        break;
+      case 'tokenfactory':
+        adapter = new TokenFactoryProvider({
+          model,
+          maxOutputTokens: this.#deps.config.tokenfactoryMaxTokens,
+          getApiKey: () => this.#key(provider),
+        });
+        break;
+      case 'openai':
+        adapter = new OpenAIProvider({ model, getApiKey: () => this.#key(provider) });
+        break;
+    }
     this.#adapters.set(cacheKey, adapter);
     return adapter;
   }
@@ -155,5 +182,3 @@ export class ActiveProvider implements LlmProvider {
     return key;
   }
 }
-
-export { ACTIVE_PROVIDER_KEY, modelKey };

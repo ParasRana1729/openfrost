@@ -75,12 +75,22 @@ maybeDescribe('provider key storage', () => {
     expect(await readProviderKey(home, 'gemini')).toBe(geminiKey);
   });
 
+  it('stores and reads a tokenfactory DPAPI key independently', async () => {
+    const tokenfactoryKey = 'rc-realshape-00000000000000000000';
+    await saveProviderKey(home, 'tokenfactory', tokenfactoryKey);
+    expect(providerKeyExists(home, 'tokenfactory')).toBe(true);
+    expect(await readProviderKey(home, 'tokenfactory')).toBe(tokenfactoryKey);
+  });
+
   it('cannot decrypt one provider blob under another purpose', async () => {
     // Purpose-bound entropy: each provider blob carries its own label.
     await expect(readProviderKey(home, 'gemini')).resolves.toBeDefined();
     const openaiBlob = readFileSync(providerKeyPath(home, 'openai'));
     const { open } = await import('../src/index.js');
     await expect(open(openaiBlob, 'provider-key:gemini')).rejects.toThrowError(
+      SecretFormatError,
+    );
+    await expect(open(openaiBlob, 'provider-key:tokenfactory')).rejects.toThrowError(
       SecretFormatError,
     );
   });
@@ -91,6 +101,8 @@ maybeDescribe('provider key storage', () => {
     expect(removeProviderKey(home, 'openai')).toBe(false);
     expect(providerKeyExists(home, 'gemini')).toBe(true);
     expect(removeProviderKey(home, 'gemini')).toBe(true);
+    expect(providerKeyExists(home, 'tokenfactory')).toBe(true);
+    expect(removeProviderKey(home, 'tokenfactory')).toBe(true);
   });
 });
 

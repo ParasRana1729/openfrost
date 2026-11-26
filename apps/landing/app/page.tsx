@@ -35,7 +35,7 @@ const faqs = [
   ],
   [
     'Which providers are supported?',
-    'OpenAI, Gemini, and OpenRouter adapters are included. One configured provider is active at a time, and you can switch providers or edit the active model inline in the Settings tab.',
+    'OpenAI, Gemini, OpenRouter, and AMD Token Factory adapters are included. One configured provider is active at a time, and you can switch providers or edit the active model inline in the Settings tab.',
   ],
   [
     'What happens when I close the TUI?',

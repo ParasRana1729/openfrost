@@ -15,7 +15,7 @@ it does not close S07.** The pnpm workspace,
 shared Zod contracts, SQLite persistence, DPAPI secret storage, loopback
 API/TUI (with local auth removed in favor of loopback binding and strict Origin
 guards), the bounded single-run executor, the research-brief workflow
-(OpenAI, Gemini, and OpenRouter adapters with hosted web search and an
+(OpenAI, Gemini, OpenRouter, and AMD Token Factory adapters with hosted web search on supported providers and an
 SSRF-hardened fetch tool), the project-update workflow (project CRUD with
 explicitly granted folder roots, canonical-path checks, bounded text/Markdown
 reads, evidence-backed saved updates), the approval-bound export workflow
@@ -184,7 +184,7 @@ from verified work instead of reconstructing earlier conversations.
 
 Do not add Telegram, native/mobile clients, remote access, agent teams, cloud
 workers, plugin/MCP infrastructure, per-task provider or model selection, a
-provider/plugin system beyond the three built-in adapters (OpenAI, Gemini,
-OpenRouter), arbitrary shell, browser/OS computer use, self-directed work, or an
+provider/plugin system beyond the four built-in adapters (OpenAI, Gemini,
+OpenRouter, AMD Token Factory), arbitrary shell, browser/OS computer use, self-directed work, or an
 autostart/backup subsystem to v0.1. If a requested change needs one of these,
 discuss a spec change first.

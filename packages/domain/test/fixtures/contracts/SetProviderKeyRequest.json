@@ -19,5 +19,12 @@
       "provider": "openrouter",
       "key": "fixture-only-not-a-real-key"
     }
+  },
+  {
+    "name": "tokenfactory",
+    "value": {
+      "provider": "tokenfactory",
+      "key": "fixture-only-not-a-real-key"
+    }
   }
 ]

@@ -12,7 +12,7 @@ S07's one-working-week owner-use gate remains open.** The workspace,
 shared Zod contracts, SQLite persistence, DPAPI secret storage, authenticated
 loopback API, Rust Ratatui + Crossterm TUI Control Center (`apps/tui`), bounded
 single-run executor, the research-brief workflow
-(OpenAI, Gemini, and OpenRouter adapters with hosted web search, an
+(OpenAI, Gemini, OpenRouter, and AMD Token Factory adapters with hosted web search on supported providers, an
 SSRF-hardened fetch tool, saved Markdown reports), the project-update workflow
 (project CRUD with explicitly granted folder roots, canonical-path checks,
 bounded text/Markdown reads, evidence-backed saved updates), the
@@ -72,7 +72,7 @@ is no cloud failover or promise of uninterrupted 24/7 execution.
 | Assistant | One persistent assistant; projects organize context, not personalities. |
 | Interface | Local terminal UI (TUI) for conversation, tasks, results, memory, and approvals, over the same loopback API; a static web landing page describes the product. |
 | Hosting | Native Windows runtime; no Docker, cloud database, or hosted worker. |
-| Models | Owner-chosen provider: OpenAI, Gemini (Google AI), or OpenRouter, one active at a time with its own DPAPI-protected key and configured model; no per-task provider selection. |
+| Models | Owner-chosen provider: OpenAI, Gemini (Google AI), OpenRouter, or AMD Token Factory (`tokenfactory`), one active at a time with its own DPAPI-protected key and configured model; no per-task provider selection. |
 | First workflows | Research briefs, project updates, weekly planning. |
 | Execution | One active agent run globally; additional tasks queue visibly. |
 | Tools | Public web search/fetch, granted-folder reads, and narrowly scoped report export. |
@@ -264,7 +264,7 @@ apps/landing       Next.js: static product landing page (no API dependency)
 apps/api           Fastify: auth, API, SSE, one task worker, routine tick
 packages/domain    Shared Zod contracts (source of truth for API payloads)
 packages/db        better-sqlite3 + Drizzle, migrations, DPAPI integration
-packages/agent     AI SDK loop, provider adapters (OpenAI, Gemini, OpenRouter), bounded tools, policy enforcement
+packages/agent     AI SDK loop, provider adapters (OpenAI, Gemini, OpenRouter, AMD Token Factory), bounded tools, policy enforcement
 ```
 
 `packages/domain` remains the source of truth for API contracts. The TUI
@@ -311,7 +311,7 @@ reset user data implicitly during setup, upgrades, or recovery.
 - Email, calendars, payments, external publishing, or broad connector catalogs.
 - A plugin marketplace, untrusted scripts, MCP integrations, or a workflow builder.
 - Voice, avatars, local model hosting, vector search, per-task provider or
-  model selection, or a provider/plugin system (the three built-in adapters
+  model selection, or a provider/plugin system (the four built-in adapters
   are the whole surface).
 - Self-directed proactive work, automatic sign-in installation, or a backup subsystem.
 
