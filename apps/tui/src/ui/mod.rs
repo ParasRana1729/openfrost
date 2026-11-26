@@ -37,44 +37,13 @@ use crate::app::{App, Screen, Tab, ALL_TABS};
 use crate::contracts::{TaskKind, TaskState};
 
 pub(super) fn wrapped_line_count(line: &Line<'_>, width: u16) -> usize {
-    let w = (width as usize).max(1);
-    let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
-    if text.is_empty() {
-        return 1;
-    }
-    let mut rows = 0usize;
-    let mut utf8_buf = [0u8; 4];
-    for subline in text.split('\n') {
-        rows += 1;
-        if subline.is_empty() {
-            continue;
-        }
-        let mut col = 0usize;
-        for token in subline.split_inclusive(char::is_whitespace) {
-            let token_w = Span::raw(token).width();
-            if col > 0 && col + token_w > w {
-                rows += 1;
-                col = 0;
-            }
-            if token_w > w {
-                for ch in token.chars() {
-                    let ch_str = ch.encode_utf8(&mut utf8_buf);
-                    let ch_w = Span::raw(&*ch_str).width();
-                    if col + ch_w > w && col > 0 {
-                        rows += 1;
-                        col = 0;
-                    }
-                    col += ch_w;
-                }
-            } else {
-                col += token_w;
-            }
-        }
-    }
-    rows.max(1)
+    theme::visual_line_count(std::slice::from_ref(line), width.max(1)).max(1)
 }
 
 pub(super) fn wrapped_lines_count(lines: &[Line<'_>], width: u16) -> usize {
+    if lines.is_empty() {
+        return 0;
+    }
     lines.iter().map(|l| wrapped_line_count(l, width)).sum()
 }
 
