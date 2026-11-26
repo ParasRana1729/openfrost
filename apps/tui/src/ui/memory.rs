@@ -1,8 +1,9 @@
 use super::tasks::keybind_footer;
 use super::theme::{
-    accent_bold, danger, frost_glow, muted, pill, rounded_block, section_rule, selected_style,
-    warn, ICE_DIM, SURFACE_PILL, SURFACE_SEL, VIOLET,
+    accent_bold, danger, frost_glow, hairline_style, muted, pill, rounded_block, section_rule,
+    selected_style, warn, ICE_DIM, SURFACE_PILL, SURFACE_SEL, VIOLET,
 };
+use super::wrapped_line_count;
 use crate::app::{truncate, App, MemoryState};
 use crate::contracts::{MemoryProposalState, MemoryScope};
 use ratatui::layout::{Constraint, Layout, Rect};
@@ -26,10 +27,17 @@ pub(super) fn render_memory(app: &mut App, frame: &mut Frame, area: Rect) {
         return;
     };
 
-    let inner_w = content_area.width.saturating_sub(2);
+    let inner_w = content_area.width.saturating_sub(2).max(1);
+    let inner_w_usize = inner_w as usize;
     let mut lines: Vec<Line> = Vec::new();
+    let mut visual_rows: usize = 0;
     let mut row_index = 0usize;
-    let mut selected_line: Option<usize> = None;
+    let mut selected_range: Option<(usize, usize)> = None;
+
+    let push_line = |lines: &mut Vec<Line<'_>>, visual_rows: &mut usize, line: Line<'static>| {
+        *visual_rows += line_visual_rows(&line, inner_w);
+        lines.push(line);
+    };
 
     let pending_proposals: Vec<_> = snapshot
         .proposals
@@ -42,14 +50,22 @@ pub(super) fn render_memory(app: &mut App, frame: &mut Frame, area: Rect) {
         .filter(|proposal| proposal.state != MemoryProposalState::Pending)
         .count();
 
-    lines.push(section_rule("Proposals awaiting decision", inner_w));
+    push_line(
+        &mut lines,
+        &mut visual_rows,
+        section_rule("Proposals awaiting decision", inner_w),
+    );
     if pending_proposals.is_empty() {
         let empty_msg = if decided_count > 0 {
             format!("   (no pending proposals · {decided_count} decided in history)")
         } else {
             "   (no pending proposals)".to_string()
         };
-        lines.push(Line::styled(empty_msg, muted()));
+        push_line(
+            &mut lines,
+            &mut visual_rows,
+            Line::styled(empty_msg, muted()),
+        );
     } else {
         for proposal in &pending_proposals {
             let is_sel = row_index == app.memory.selected;
@@ -63,128 +79,225 @@ pub(super) fn render_memory(app: &mut App, frame: &mut Frame, area: Rect) {
                     .map(|view| view.projectName.clone())
                     .unwrap_or_else(|| "project".to_string()),
             };
-            if is_sel {
-                selected_line = Some(lines.len());
-            }
-            let line = Line::from(vec![
+            let sel_start = visual_rows;
+            let content_text = proposal.content.as_deref().unwrap_or("");
+            let prefix_w = 3 + 10 + 1 + scope.chars().count() + 2 + 1;
+            let first_w = inner_w_usize.saturating_sub(prefix_w);
+            let cont_w = inner_w_usize.saturating_sub(5).max(8);
+
+            let badge_spans = vec![
                 Span::styled(marker, if is_sel { accent_bold() } else { muted() }),
                 Span::styled(" proposal ", pill(VIOLET, SURFACE_SEL)),
                 Span::raw(" "),
                 Span::styled(format!(" {scope} "), pill(ICE_DIM, SURFACE_PILL)),
-                Span::raw(" "),
-                Span::styled(
-                    truncate(proposal.content.as_deref().unwrap_or(""), 84),
-                    frost_glow(),
-                ),
-            ]);
-            lines.push(if is_sel {
-                line.style(selected_style())
+            ];
+
+            if first_w >= 12 {
+                let wrapped = wrap_text_lines(content_text, first_w, cont_w);
+                for (chunk_idx, chunk) in wrapped.into_iter().enumerate() {
+                    let line = if chunk_idx == 0 {
+                        let mut spans = badge_spans.clone();
+                        spans.push(Span::raw(" "));
+                        spans.push(Span::styled(chunk, frost_glow()));
+                        Line::from(spans)
+                    } else {
+                        Line::from(vec![Span::raw("     "), Span::styled(chunk, frost_glow())])
+                    };
+                    push_line(
+                        &mut lines,
+                        &mut visual_rows,
+                        if is_sel {
+                            line.style(selected_style())
+                        } else {
+                            line
+                        },
+                    );
+                }
             } else {
-                line
-            });
+                let header_line = Line::from(badge_spans);
+                push_line(
+                    &mut lines,
+                    &mut visual_rows,
+                    if is_sel {
+                        header_line.style(selected_style())
+                    } else {
+                        header_line
+                    },
+                );
+                let body_w = inner_w_usize.saturating_sub(3).max(8);
+                for chunk in wrap_text_lines(content_text, body_w, body_w) {
+                    let line =
+                        Line::from(vec![Span::raw("   "), Span::styled(chunk, frost_glow())]);
+                    push_line(
+                        &mut lines,
+                        &mut visual_rows,
+                        if is_sel {
+                            line.style(selected_style())
+                        } else {
+                            line
+                        },
+                    );
+                }
+            }
             if is_sel {
-                lines.push(Line::styled(
-                    "     a approve · x reject",
-                    Style::default().fg(ICE_DIM),
-                ));
+                push_line(
+                    &mut lines,
+                    &mut visual_rows,
+                    Line::styled("     a approve · x reject", Style::default().fg(ICE_DIM)),
+                );
+                selected_range = Some((sel_start, visual_rows));
             }
             row_index += 1;
         }
     }
-    lines.push(Line::from(""));
+    push_line(&mut lines, &mut visual_rows, Line::from(""));
 
-    lines.push(section_rule("Global memory · owner.md", inner_w));
+    push_line(
+        &mut lines,
+        &mut visual_rows,
+        section_rule("Global memory · owner.md", inner_w),
+    );
     if snapshot.global.externalChange {
-        lines.push(Line::styled(
-            "   ▲ file changed outside OpenFrost — press R to reload",
-            warn(),
-        ));
+        push_line(
+            &mut lines,
+            &mut visual_rows,
+            Line::styled(
+                "   ▲ file changed outside OpenFrost — press R to reload",
+                warn(),
+            ),
+        );
     }
     for problem in &snapshot.global.problems {
-        lines.push(Line::styled(format!("   × {problem}"), danger()));
+        push_line(
+            &mut lines,
+            &mut visual_rows,
+            Line::styled(format!("   × {problem}"), danger()),
+        );
     }
     if snapshot.global.entries.is_empty() && snapshot.global.problems.is_empty() {
-        lines.push(Line::styled("   (no global memory entries)", muted()));
+        push_line(
+            &mut lines,
+            &mut visual_rows,
+            Line::styled("   (no global memory entries)", muted()),
+        );
     }
     for entry in &snapshot.global.entries {
         let is_sel = row_index == app.memory.selected;
-        let marker = row_marker(is_sel);
+        let sel_start = visual_rows;
+        push_entry_lines(
+            &mut lines,
+            &mut visual_rows,
+            &entry.content,
+            is_sel,
+            inner_w,
+        );
         if is_sel {
-            selected_line = Some(lines.len());
-        }
-        let line = Line::from(vec![
-            Span::styled(marker, if is_sel { accent_bold() } else { muted() }),
-            Span::styled(truncate(&entry.content, 100), frost_glow()),
-        ]);
-        lines.push(if is_sel {
-            line.style(selected_style())
-        } else {
-            line
-        });
-        if is_sel {
-            lines.push(Line::styled(
-                "     e edit · d delete",
-                Style::default().fg(ICE_DIM),
-            ));
+            push_line(
+                &mut lines,
+                &mut visual_rows,
+                Line::styled("     e edit · d delete", Style::default().fg(ICE_DIM)),
+            );
+            selected_range = Some((sel_start, visual_rows));
         }
         row_index += 1;
     }
-    lines.push(Line::from(""));
+    push_line(&mut lines, &mut visual_rows, Line::from(""));
 
     for view in &snapshot.projects {
         let is_header_sel = row_index == app.memory.selected;
-        if is_header_sel {
-            selected_line = Some(lines.len());
-        }
+        let header_start = visual_rows;
         row_index += 1;
 
-        lines.push(section_rule(
-            &format!("{} · project memory", view.projectName),
-            inner_w,
-        ));
+        let raw_label = format!("{} · project memory", view.projectName);
+        let max_label = inner_w_usize.saturating_sub(8).max(8);
+        let header_label = if raw_label.chars().count() > max_label {
+            truncate(&raw_label, max_label.saturating_sub(1))
+        } else {
+            raw_label
+        };
+
+        if is_header_sel {
+            let prefix_len = 3 + header_label.chars().count() + 1;
+            let fill = inner_w_usize.saturating_sub(prefix_len + 2);
+            push_line(
+                &mut lines,
+                &mut visual_rows,
+                Line::from(vec![
+                    Span::styled(" ▸ ", accent_bold()),
+                    Span::styled(header_label, accent_bold()),
+                    Span::styled(" ", hairline_style()),
+                    Span::styled("─".repeat(fill), hairline_style()),
+                ])
+                .style(selected_style()),
+            );
+            selected_range = Some((header_start, visual_rows));
+        } else {
+            push_line(
+                &mut lines,
+                &mut visual_rows,
+                section_rule(&header_label, inner_w),
+            );
+        }
+
         if view.externalChange {
-            lines.push(Line::styled(
-                "   ▲ file changed outside OpenFrost — press R to reload",
-                warn(),
-            ));
+            push_line(
+                &mut lines,
+                &mut visual_rows,
+                Line::styled(
+                    "   ▲ file changed outside OpenFrost — press R to reload",
+                    warn(),
+                ),
+            );
         }
         for problem in &view.problems {
-            lines.push(Line::styled(format!("   × {problem}"), danger()));
+            push_line(
+                &mut lines,
+                &mut visual_rows,
+                Line::styled(format!("   × {problem}"), danger()),
+            );
         }
         if view.entries.is_empty() && view.problems.is_empty() {
-            lines.push(Line::styled("   (no entries)", muted()));
+            push_line(
+                &mut lines,
+                &mut visual_rows,
+                Line::styled("   (no entries)", muted()),
+            );
         }
         for entry in &view.entries {
             let is_sel = row_index == app.memory.selected;
-            let marker = row_marker(is_sel);
+            let sel_start = visual_rows;
+            push_entry_lines(
+                &mut lines,
+                &mut visual_rows,
+                &entry.content,
+                is_sel,
+                inner_w,
+            );
             if is_sel {
-                selected_line = Some(lines.len());
-            }
-            let line = Line::from(vec![
-                Span::styled(marker, if is_sel { accent_bold() } else { muted() }),
-                Span::styled(truncate(&entry.content, 100), frost_glow()),
-            ]);
-            lines.push(if is_sel {
-                line.style(selected_style())
-            } else {
-                line
-            });
-            if is_sel {
-                lines.push(Line::styled(
-                    "     e edit · d delete",
-                    Style::default().fg(ICE_DIM),
-                ));
+                push_line(
+                    &mut lines,
+                    &mut visual_rows,
+                    Line::styled("     e edit · d delete", Style::default().fg(ICE_DIM)),
+                );
+                selected_range = Some((sel_start, visual_rows));
             }
             row_index += 1;
         }
-        lines.push(Line::from(""));
+        push_line(&mut lines, &mut visual_rows, Line::from(""));
     }
 
     let inner_height = content_area.height.saturating_sub(2) as usize;
-    let max_scroll = lines.len().saturating_sub(inner_height);
-    let scroll_y = selected_line
-        .map(|idx| idx.saturating_sub(inner_height / 2).min(max_scroll))
-        .unwrap_or(0) as u16;
+    let max_scroll = visual_rows.saturating_sub(inner_height);
+    let scroll_y = match selected_range {
+        Some((start, end)) => {
+            let mut s = start.saturating_sub(inner_height / 2);
+            if end.saturating_sub(start) <= inner_height && end > s + inner_height {
+                s = end.saturating_sub(inner_height);
+            }
+            s.min(max_scroll)
+        }
+        None => 0,
+    } as u16;
 
     let project_entries: usize = snapshot.projects.iter().map(|p| p.entries.len()).sum();
     let title = if decided_count > 0 {
@@ -236,6 +349,114 @@ fn row_marker(is_sel: bool) -> &'static str {
         " ▸ "
     } else {
         "   "
+    }
+}
+
+fn line_visual_rows(line: &Line<'_>, width: u16) -> usize {
+    wrapped_line_count(line, width)
+}
+
+fn wrap_text_lines(text: &str, first_w: usize, cont_w: usize) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut first = true;
+    for raw_line in text.lines() {
+        let max_w = if first { first_w } else { cont_w }.max(1);
+        let mut current = String::new();
+        let mut current_w = 0usize;
+        for word in raw_line.split_whitespace() {
+            let word_w = word.chars().count();
+            if current_w == 0 {
+                if word_w <= max_w {
+                    current.push_str(word);
+                    current_w = word_w;
+                } else {
+                    for ch in word.chars() {
+                        let line_limit = if first && out.is_empty() {
+                            first_w
+                        } else {
+                            cont_w
+                        }
+                        .max(1);
+                        if current_w >= line_limit {
+                            out.push(std::mem::take(&mut current));
+                            current_w = 0;
+                            first = false;
+                        }
+                        current.push(ch);
+                        current_w += 1;
+                    }
+                }
+            } else {
+                let line_limit = if first && out.is_empty() {
+                    first_w
+                } else {
+                    cont_w
+                }
+                .max(1);
+                if current_w + 1 + word_w <= line_limit {
+                    current.push(' ');
+                    current.push_str(word);
+                    current_w += 1 + word_w;
+                } else {
+                    out.push(std::mem::take(&mut current));
+                    first = false;
+                    let next_limit = cont_w.max(1);
+                    if word_w <= next_limit {
+                        current.push_str(word);
+                        current_w = word_w;
+                    } else {
+                        current_w = 0;
+                        for ch in word.chars() {
+                            if current_w >= next_limit {
+                                out.push(std::mem::take(&mut current));
+                                current_w = 0;
+                            }
+                            current.push(ch);
+                            current_w += 1;
+                        }
+                    }
+                }
+            }
+        }
+        if !current.is_empty() || raw_line.is_empty() {
+            out.push(current);
+            first = false;
+        }
+    }
+    if out.is_empty() {
+        out.push(String::new());
+    }
+    out
+}
+
+fn push_entry_lines(
+    lines: &mut Vec<Line<'static>>,
+    visual_rows: &mut usize,
+    content: &str,
+    is_sel: bool,
+    inner_w: u16,
+) {
+    let body_w = (inner_w as usize).saturating_sub(3).max(8);
+    let marker = row_marker(is_sel);
+    for (idx, chunk) in wrap_text_lines(content, body_w, body_w)
+        .into_iter()
+        .enumerate()
+    {
+        let line = if idx == 0 {
+            Line::from(vec![
+                Span::styled(marker, if is_sel { accent_bold() } else { muted() }),
+                Span::styled(chunk, frost_glow()),
+            ])
+        } else {
+            Line::from(vec![Span::raw("   "), Span::styled(chunk, frost_glow())])
+        };
+        let styled = if is_sel {
+            line.style(selected_style())
+        } else {
+            line
+        };
+        *visual_rows += line_visual_rows(&styled, inner_w);
+        lines.push(styled);
     }
 }
 
@@ -384,5 +605,110 @@ mod tests {
         assert!(rendered.contains("Include release dates in summaries"));
         assert!(rendered.contains("a approve · x reject"));
         assert!(!rendered.contains("3 pending"));
+    }
+
+    #[test]
+    fn render_memory_scrolls_to_bottom_when_entries_wrap_and_highlights_project_header() {
+        use crate::contracts::ProjectMemoryView;
+
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let api = ApiClient::new("http://127.0.0.1:0").unwrap();
+        let mut app = App::new(tx, api);
+        app.screen = Screen::Main;
+        app.tab = Tab::Memory;
+
+        let long_entries: Vec<&str> = vec![
+            "First wrapped memory entry with plenty of words so that it wraps across multiple visual rows on a narrow terminal",
+            "Second wrapped memory entry with plenty of words so that it wraps across multiple visual rows on a narrow terminal",
+            "Third wrapped memory entry with plenty of words so that it wraps across multiple visual rows on a narrow terminal",
+            "Fourth wrapped memory entry with plenty of words so that it wraps across multiple visual rows on a narrow terminal",
+        ];
+        let mut snapshot = make_snapshot(vec![], long_entries);
+        snapshot.projects.push(ProjectMemoryView {
+            scope: MemoryScope::Project,
+            projectId: "proj-1".into(),
+            projectName: "Alpha".into(),
+            path: "alpha.md".into(),
+            exists: true,
+            sha256: Some("sha-proj".into()),
+            entries: vec![MemoryEntry {
+                id: "pe-1".into(),
+                scope: MemoryScope::Project,
+                projectId: Some("proj-1".into()),
+                content: "Final project entry at the very bottom".into(),
+                source: MemorySource {
+                    kind: "manual".into(),
+                    taskId: None,
+                    artifactId: None,
+                    label: "manual".into(),
+                },
+                createdAt: "2026-11-25T00:00:00Z".into(),
+                updatedAt: "2026-11-25T00:00:00Z".into(),
+            }],
+            problems: vec![],
+            externalChange: false,
+        });
+        app.memory.snapshot = Some(snapshot);
+        app.memory.rebuild_rows();
+
+        // Select the last entry (ProjectEntry) in a short 60x14 viewport where earlier items wrap.
+        app.memory.selected = app.memory.rows.len() - 1;
+        let backend = TestBackend::new(60, 14);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| crate::ui::render(&mut app, frame))
+            .unwrap();
+
+        let rendered: String = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|c| c.symbol())
+            .collect();
+        assert!(
+            rendered.contains("Final project entry at the very bottom"),
+            "expected wrapped scroll to reach final entry, got:\n{rendered}"
+        );
+        assert!(
+            rendered.contains("e edit · d delete"),
+            "expected action hint for final entry, got:\n{rendered}"
+        );
+
+        // Now select MemRow::ProjectHeader (right before the final ProjectEntry) and verify visible marker.
+        let header_idx = app.memory.rows.len() - 2;
+        app.memory.selected = header_idx;
+        terminal
+            .draw(|frame| crate::ui::render(&mut app, frame))
+            .unwrap();
+        let header_rendered: String = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|c| c.symbol())
+            .collect();
+        assert!(
+            header_rendered.contains("▸ Alpha · project memory"),
+            "expected visible '▸' indicator on selected ProjectHeader, got:\n{header_rendered}"
+        );
+    }
+
+    #[test]
+    fn render_memory_does_not_truncate_long_entries_at_100_cols() {
+        let long_text = "Prefer concise engineering summaries with explicit metrics, reproducible verification commands, and clear risk callouts at the very end TAIL_MARKER_VISIBLE";
+        let snapshot = make_snapshot(
+            vec![make_proposal(
+                "p1",
+                MemoryProposalState::Pending,
+                Some(long_text),
+            )],
+            vec![long_text],
+        );
+        let rendered = render_memory_to_string(snapshot);
+        assert!(
+            rendered.contains("TAIL_MARKER_VISIBLE"),
+            "expected full wrapped text without hardcoded 84/100 char truncation, got:\n{rendered}"
+        );
     }
 }

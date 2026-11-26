@@ -36,6 +36,48 @@ use ratatui::Frame;
 use crate::app::{App, Screen, Tab, ALL_TABS};
 use crate::contracts::{TaskKind, TaskState};
 
+pub(super) fn wrapped_line_count(line: &Line<'_>, width: u16) -> usize {
+    let w = (width as usize).max(1);
+    let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
+    if text.is_empty() {
+        return 1;
+    }
+    let mut rows = 0usize;
+    let mut utf8_buf = [0u8; 4];
+    for subline in text.split('\n') {
+        rows += 1;
+        if subline.is_empty() {
+            continue;
+        }
+        let mut col = 0usize;
+        for token in subline.split_inclusive(char::is_whitespace) {
+            let token_w = Span::raw(token).width();
+            if col > 0 && col + token_w > w {
+                rows += 1;
+                col = 0;
+            }
+            if token_w > w {
+                for ch in token.chars() {
+                    let ch_str = ch.encode_utf8(&mut utf8_buf);
+                    let ch_w = Span::raw(&*ch_str).width();
+                    if col + ch_w > w && col > 0 {
+                        rows += 1;
+                        col = 0;
+                    }
+                    col += ch_w;
+                }
+            } else {
+                col += token_w;
+            }
+        }
+    }
+    rows.max(1)
+}
+
+pub(super) fn wrapped_lines_count(lines: &[Line<'_>], width: u16) -> usize {
+    lines.iter().map(|l| wrapped_line_count(l, width)).sum()
+}
+
 fn kind_label(kind: &TaskKind) -> &'static str {
     match kind {
         TaskKind::ResearchBrief => "brief",
@@ -197,24 +239,42 @@ fn render_main(app: &mut App, frame: &mut Frame) {
     render_status_bar(app, frame, status);
 }
 
-fn render_top_bar(app: &App, frame: &mut Frame, area: Rect) {
-    let rows = Layout::vertical([Constraint::Length(1), Constraint::Length(1)]).split(area);
-
-    let pending_approvals = app.assistant.approvals.len();
-    let missed_routines: i64 = app.assistant.routines.iter().map(|r| r.missedCount).sum();
-
-    let mut left_spans: Vec<Span<'static>> = vec![
-        Span::styled(" ✦ ", accent()),
-        Span::styled("OpenFrost", frost_glow().add_modifier(Modifier::BOLD)),
-        Span::styled(" │ ", hairline_style()),
-    ];
+fn build_top_bar_tabs(
+    app: &App,
+    pending_approvals: usize,
+    missed_routines: i64,
+    compact_spacing: bool,
+    active_title_only: bool,
+) -> Vec<Span<'static>> {
+    let mut left_spans: Vec<Span<'static>> = if compact_spacing {
+        vec![
+            Span::styled(" ✦ ", accent()),
+            Span::styled("│ ", hairline_style()),
+        ]
+    } else {
+        vec![
+            Span::styled(" ✦ ", accent()),
+            Span::styled("OpenFrost", frost_glow().add_modifier(Modifier::BOLD)),
+            Span::styled(" │ ", hairline_style()),
+        ]
+    };
 
     for (index, tab) in ALL_TABS.iter().enumerate() {
         let active = *tab == app.tab;
         let num = index + 1;
+        let num_text = if compact_spacing {
+            format!("{num}")
+        } else {
+            format!(" {num} ")
+        };
+        let show_title = !active_title_only || active;
         if active {
             left_spans.push(Span::styled(
-                format!(" {num} "),
+                if compact_spacing {
+                    format!(" {num} ")
+                } else {
+                    num_text
+                },
                 Style::default()
                     .fg(ICE_BRIGHT)
                     .bg(SURFACE_SEL)
@@ -226,10 +286,16 @@ fn render_top_bar(app: &App, frame: &mut Frame, area: Rect) {
             ));
         } else {
             left_spans.push(Span::styled(
-                format!(" {num} "),
+                if show_title {
+                    format!("{num_text} ")
+                } else {
+                    format!("{num} ")
+                },
                 Style::default().fg(ICE_DIM),
             ));
-            left_spans.push(Span::styled(format!("{} ", tab.title()), muted()));
+            if show_title {
+                left_spans.push(Span::styled(format!("{} ", tab.title()), muted()));
+            }
         }
 
         if *tab == Tab::Tasks && pending_approvals > 0 {
@@ -245,7 +311,32 @@ fn render_top_bar(app: &App, frame: &mut Frame, area: Rect) {
         }
     }
 
-    // Active project scope badge on the right when space permits.
+    left_spans
+}
+
+fn render_top_bar(app: &App, frame: &mut Frame, area: Rect) {
+    let rows = Layout::vertical([Constraint::Length(1), Constraint::Length(1)]).split(area);
+
+    let pending_approvals = app.assistant.approvals.len();
+    let missed_routines: i64 = app.assistant.routines.iter().map(|r| r.missedCount).sum();
+
+    let total_w = area.width as usize;
+    // Reserve at least 8 cells for a truncated badge (" ◈ x… " + 1 gap) when choosing density.
+    let min_badge_reserve = 8usize;
+
+    let mut left_spans = build_top_bar_tabs(app, pending_approvals, missed_routines, false, false);
+    let full_w: usize = left_spans.iter().map(|s| s.width()).sum();
+    if full_w + min_badge_reserve > total_w {
+        let compact = build_top_bar_tabs(app, pending_approvals, missed_routines, true, false);
+        let compact_w: usize = compact.iter().map(|s| s.width()).sum();
+        if compact_w + min_badge_reserve <= total_w {
+            left_spans = compact;
+        } else {
+            left_spans = build_top_bar_tabs(app, pending_approvals, missed_routines, true, true);
+        }
+    }
+
+    // Active project scope badge on the right when space permits (truncated when tight).
     let active_project = app
         .assistant
         .project_idx
@@ -265,11 +356,21 @@ fn render_top_bar(app: &App, frame: &mut Frame, area: Rect) {
     };
 
     let prefix_text = " ◈ ";
-    let suffix_text = format!("{project_label} ");
     let left_width: usize = left_spans.iter().map(|s| s.width()).sum();
-    let right_width = prefix_text.chars().count() + suffix_text.chars().count();
-    if (area.width as usize) > left_width + right_width + 2 {
-        let pad = (area.width as usize) - left_width - right_width;
+    let avail_badge = total_w.saturating_sub(left_width + 1);
+    let badge_overhead = 4usize; // " ◈ " (3) + trailing " " (1)
+    if avail_badge > badge_overhead {
+        let max_label = avail_badge - badge_overhead;
+        let shown_label = if project_label.chars().count() <= max_label {
+            project_label
+        } else if max_label <= 1 {
+            project_label.chars().take(max_label).collect()
+        } else {
+            crate::app::truncate(&project_label, max_label - 1)
+        };
+        let suffix_text = format!("{shown_label} ");
+        let right_width = prefix_text.chars().count() + suffix_text.chars().count();
+        let pad = total_w.saturating_sub(left_width + right_width);
         left_spans.push(Span::raw(" ".repeat(pad)));
         left_spans.push(Span::styled(prefix_text, prefix_style));
         left_spans.push(Span::styled(suffix_text, label_style));
@@ -277,6 +378,16 @@ fn render_top_bar(app: &App, frame: &mut Frame, area: Rect) {
 
     frame.render_widget(Paragraph::new(Line::from(left_spans)), rows[0]);
     frame.render_widget(Paragraph::new(hairline(rows[1].width)), rows[1]);
+}
+
+fn fit_status_hints(segments: &[&str], max_width: usize) -> String {
+    for len in (1..=segments.len()).rev() {
+        let candidate = format!("  {}", segments[..len].join(" · "));
+        if candidate.chars().count() <= max_width {
+            return candidate;
+        }
+    }
+    String::new()
 }
 
 fn render_status_bar(app: &App, frame: &mut Frame, area: Rect) {
@@ -325,27 +436,75 @@ fn render_status_bar(app: &App, frame: &mut Frame, area: Rect) {
         ));
     }
 
+    let hint_segments: &[&str] = match app.tab {
+        Tab::Assistant => &["/ commands", "Tab scope", "Ctrl+P views", "Ctrl+C quit"],
+        _ => &["Ctrl+P switch view", "Ctrl+C quit"],
+    };
+
+    let total_w = area.width as usize;
+    let base_width: usize = spans.iter().map(|s| s.width()).sum();
+
     if let Some(notice) = &app.notice {
         let style = if notice.is_error {
             danger().add_modifier(Modifier::BOLD)
         } else {
             success()
         };
-        spans.push(Span::styled(format!(" │ {}", notice.message), style));
-    }
-
-    let hints = match app.tab {
-        Tab::Assistant => "  / commands · Tab scope · Ctrl+P views · Ctrl+C quit",
-        _ => "  Ctrl+P switch view · Ctrl+C quit",
-    };
-    let used_width: usize = spans.iter().map(|s| s.width()).sum();
-    let hint_width = hints.chars().count();
-    if (area.width as usize) > used_width + hint_width + 1 {
-        let spacer = (area.width as usize) - used_width - hint_width;
-        spans.push(Span::raw(" ".repeat(spacer)));
-        spans.push(Span::styled(hints, muted()));
+        let full_notice = format!(" │ {}", notice.message);
+        let full_notice_w = full_notice.chars().count();
+        let remaining_after_full = total_w.saturating_sub(base_width + full_notice_w);
+        let hints_with_full = fit_status_hints(hint_segments, remaining_after_full);
+        if base_width + full_notice_w <= total_w {
+            spans.push(Span::styled(full_notice, style));
+            if !hints_with_full.is_empty() {
+                let used = base_width + full_notice_w;
+                let spacer = total_w.saturating_sub(used + hints_with_full.chars().count());
+                if spacer > 0 {
+                    spans.push(Span::raw(" ".repeat(spacer)));
+                }
+                spans.push(Span::styled(hints_with_full, muted()));
+            }
+        } else {
+            // Reserve space for at least the shortest clean hint when the bar is wide enough.
+            let min_hint =
+                fit_status_hints(&hint_segments[..1], total_w.saturating_sub(base_width));
+            let min_hint_w = min_hint.chars().count();
+            let notice_budget = if total_w >= base_width + min_hint_w + 14 {
+                total_w.saturating_sub(base_width + min_hint_w)
+            } else {
+                total_w.saturating_sub(base_width)
+            };
+            if notice_budget >= 5 {
+                let msg_budget = notice_budget - 3; // " │ "
+                let shown_msg = if msg_budget <= 1 {
+                    notice.message.chars().take(msg_budget).collect()
+                } else {
+                    crate::app::truncate(&notice.message, msg_budget - 1)
+                };
+                let notice_text = format!(" │ {shown_msg}");
+                let notice_w = notice_text.chars().count();
+                spans.push(Span::styled(notice_text, style));
+                let rem = total_w.saturating_sub(base_width + notice_w);
+                let hints = fit_status_hints(hint_segments, rem);
+                if !hints.is_empty() {
+                    let spacer = rem.saturating_sub(hints.chars().count());
+                    if spacer > 0 {
+                        spans.push(Span::raw(" ".repeat(spacer)));
+                    }
+                    spans.push(Span::styled(hints, muted()));
+                }
+            }
+        }
     } else {
-        spans.push(Span::styled(hints, muted()));
+        let avail = total_w.saturating_sub(base_width);
+        let hints = fit_status_hints(hint_segments, avail);
+        if !hints.is_empty() {
+            let spacer = avail.saturating_sub(hints.chars().count());
+            if spacer > 0 {
+                spans.push(Span::raw(" ".repeat(spacer)));
+            }
+            spans.push(Span::styled(hints, muted()));
+        }
     }
 
     frame.render_widget(Line::from(spans), area);
@@ -388,5 +547,99 @@ mod tests {
             "expected uppercase R resume hint in status bar, got: {content}"
         );
         assert!(!content.contains("Tasks: r to resume"));
+    }
+
+    #[test]
+    fn top_bar_truncates_long_project_badge_instead_of_dropping() {
+        use crate::contracts::Project;
+
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let api = ApiClient::new("http://127.0.0.1:0").unwrap();
+        let mut app = App::new(tx, api);
+        app.screen = Screen::Main;
+        app.assistant.projects = vec![Project {
+            id: "p1".into(),
+            name: "VeryLongActiveProjectScopeNameThatExceedsWidth".into(),
+            instructions: None,
+            grants: vec![],
+            createdAt: "2026-11-25T00:00:00Z".into(),
+            updatedAt: "2026-11-25T00:00:00Z".into(),
+        }];
+        app.assistant.project_idx = Some(0);
+
+        for width in [100u16, 80u16] {
+            let backend = TestBackend::new(width, 20);
+            let mut terminal = Terminal::new(backend).unwrap();
+            terminal.draw(|frame| render(&mut app, frame)).unwrap();
+            let top_row: String = (0..width)
+                .map(|x| terminal.backend().buffer().cell((x, 0)).unwrap().symbol())
+                .collect();
+            assert!(
+                top_row.contains("◈ Very"),
+                "expected truncated project badge at width {width}, got: '{top_row}'"
+            );
+            assert!(
+                top_row.contains('…'),
+                "expected ellipsis in truncated project badge at width {width}, got: '{top_row}'"
+            );
+        }
+    }
+
+    #[test]
+    fn status_bar_narrow_width_truncates_notice_and_avoids_mid_word_hint_clip() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let api = ApiClient::new("http://127.0.0.1:0").unwrap();
+        let mut app = App::new(tx, api);
+        app.screen = Screen::Main;
+        app.tab = Tab::Assistant;
+        app.tasks.executor = Some(ExecutorStatus {
+            busy: false,
+            activeTaskId: None,
+            dispatchPaused: false,
+        });
+        app.set_notice(
+            "This is a very long status notice that would otherwise push hints past the edge",
+            false,
+        );
+
+        let backend = TestBackend::new(80, 20);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|frame| render(&mut app, frame)).unwrap();
+
+        let status_row: String = (0..80)
+            .map(|x| terminal.backend().buffer().cell((x, 19)).unwrap().symbol())
+            .collect();
+        assert!(
+            status_row.contains("/ commands"),
+            "expected clean '/ commands' hint at 80 cols, got: '{status_row}'"
+        );
+        assert!(
+            status_row.contains('…'),
+            "expected notice truncation ellipsis at 80 cols, got: '{status_row}'"
+        );
+        assert!(
+            !status_row.contains("Ctrl+P vi"),
+            "did not expect mid-word clipped hint, got: '{status_row}'"
+        );
+
+        // Without notice on a narrow 50-col terminal, hints drop cleanly at separator boundaries.
+        app.notice = None;
+        let backend_narrow = TestBackend::new(50, 20);
+        let mut terminal_narrow = Terminal::new(backend_narrow).unwrap();
+        terminal_narrow
+            .draw(|frame| render(&mut app, frame))
+            .unwrap();
+        let narrow_row: String = (0..50)
+            .map(|x| {
+                terminal_narrow
+                    .backend()
+                    .buffer()
+                    .cell((x, 19))
+                    .unwrap()
+                    .symbol()
+            })
+            .collect();
+        assert!(narrow_row.contains("/ commands · Tab scope"));
+        assert!(!narrow_row.contains("Ctrl+P vi"));
     }
 }
