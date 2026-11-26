@@ -18,6 +18,12 @@
     }
   },
   {
+    "name": "tokenfactory-omitted",
+    "value": {
+      "provider": "tokenfactory"
+    }
+  },
+  {
     "name": "model",
     "value": {
       "provider": "openai",

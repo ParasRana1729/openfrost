@@ -228,6 +228,7 @@ export type DeleteMemoryEntryRequest = z.infer<
 const SECRET_PATTERNS: ReadonlyArray<{ category: string; pattern: RegExp }> = [
   { category: 'an OpenAI-style API key', pattern: /\bsk-[A-Za-z0-9_-]{16,}/ },
   { category: 'a Google API key', pattern: /\bAIza[0-9A-Za-z_-]{20,}/ },
+  { category: 'an AMD Token Factory API key', pattern: /\brc-[A-Za-z0-9_-]{16,}/ },
   { category: 'a GitHub token', pattern: /\bgh[pousr]_[A-Za-z0-9]{20,}/ },
   { category: 'an AWS access key', pattern: /\bAKIA[0-9A-Z]{16}\b/ },
   {

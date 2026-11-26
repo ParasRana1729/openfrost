@@ -12,11 +12,14 @@ import {
   removeProviderKey,
   saveProviderKey,
 } from '@openfrost/db';
-import type { ActiveProvider } from '../activeProvider.js';
+import {
+  ACTIVE_PROVIDER_KEY,
+  defaultModelForProvider,
+  parseStoredProvider,
+  providerModelKey,
+  type ActiveProvider,
+} from '../activeProvider.js';
 import type { AppContext } from '../types.js';
-
-const PROVIDER_KEY = 'provider.active';
-const modelKey = (provider: ProviderId): string => `provider.model.${provider}`;
 
 /**
  * Owner settings. Each provider has its own DPAPI-protected key and a
@@ -29,21 +32,13 @@ export const makeSettingsRoutes = (
   activeProvider?: ActiveProvider,
 ): FastifyPluginAsync => async (app) => {
   const configuredModel = (provider: ProviderId): string => {
-    const override = ctx.store.state.getValue(modelKey(provider));
+    const override = ctx.store.state.getValue(providerModelKey(provider));
     const trimmed = override?.trim() ?? '';
-    const fallback =
-      provider === 'gemini'
-        ? ctx.config.geminiModel
-        : provider === 'openrouter'
-          ? ctx.config.openrouterModel
-          : ctx.config.openaiModel;
-    return trimmed.length > 0 ? trimmed : fallback;
+    return trimmed.length > 0 ? trimmed : defaultModelForProvider(ctx.config, provider);
   };
 
-  const activeProviderFromState = (): ProviderId => {
-    const value = ctx.store.state.getValue(PROVIDER_KEY);
-    return value === 'gemini' || value === 'openrouter' ? value : 'openai';
-  };
+  const activeProviderFromState = (): ProviderId =>
+    parseStoredProvider(ctx.store.state.getValue(ACTIVE_PROVIDER_KEY));
 
   app.get('/settings', async () => {
     const fakeHook = ctx.config.provider === 'fake';
@@ -55,11 +50,13 @@ export const makeSettingsRoutes = (
         openai: configuredModel('openai'),
         gemini: configuredModel('gemini'),
         openrouter: configuredModel('openrouter'),
+        tokenfactory: configuredModel('tokenfactory'),
       },
       hasProviderKey: providerKeyExists(ctx.config.homeDir, active),
       hasOpenAIKey: providerKeyExists(ctx.config.homeDir, 'openai'),
       hasGeminiKey: providerKeyExists(ctx.config.homeDir, 'gemini'),
       hasOpenRouterKey: providerKeyExists(ctx.config.homeDir, 'openrouter'),
+      hasTokenFactoryKey: providerKeyExists(ctx.config.homeDir, 'tokenfactory'),
       executionLimits: ctx.executor.limits,
       onboardingCompletedAt: ctx.store.state.getValue('onboarding.completedAt'),
     });
@@ -72,7 +69,7 @@ export const makeSettingsRoutes = (
       });
     }
     const input = setProviderConfigRequestSchema.parse(request.body);
-    ctx.store.state.setValue(PROVIDER_KEY, input.provider);
+    ctx.store.state.setValue(ACTIVE_PROVIDER_KEY, input.provider);
     const normalizedModel =
       input.model === undefined
         ? undefined
@@ -82,7 +79,7 @@ export const makeSettingsRoutes = (
             ? input.model.trim()
             : null;
     if (normalizedModel !== undefined) {
-      ctx.store.state.setValue(modelKey(input.provider), normalizedModel ?? '');
+      ctx.store.state.setValue(providerModelKey(input.provider), normalizedModel ?? '');
     }
     ctx.store.events.append(
       'settings.provider_changed',

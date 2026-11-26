@@ -1369,11 +1369,13 @@ mod tests {
                 openai: "gpt-4o-mini".into(),
                 gemini: "gemini-2.0-flash".into(),
                 openrouter: "openrouter/auto".into(),
+                tokenfactory: "Qwen3.8-27B".into(),
             },
             hasProviderKey: true,
             hasOpenAIKey: false,
             hasGeminiKey: false,
             hasOpenRouterKey: true,
+            hasTokenFactoryKey: false,
             executionLimits: ExecutionLimits {
                 maxSteps: 12,
                 maxWallClockMs: 600_000,

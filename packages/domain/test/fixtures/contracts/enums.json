@@ -47,7 +47,8 @@
   "ProviderId": [
     "openai",
     "gemini",
-    "openrouter"
+    "openrouter",
+    "tokenfactory"
   ],
   "RoutineState": [
     "active",

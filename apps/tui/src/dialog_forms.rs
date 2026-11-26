@@ -182,7 +182,21 @@ impl Form {
                 "gemini-2.0-flash".into(),
                 "(reset to default)".into(),
             ],
+            "tokenfactory" => vec![
+                "(custom)".into(),
+                "Qwen3.8-27B".into(),
+                "DeepSeek-V4.1-Flash".into(),
+                "GLM-5.3-Flash".into(),
+                "Gemma-4-31B-IT".into(),
+                "(reset to default)".into(),
+            ],
             _ => vec!["(custom)".into(), "(reset to default)".into()],
+        };
+        let model_hint = match provider {
+            "tokenfactory" => {
+                "e.g. Qwen3.8-27B or DeepSeek-V4.1-Flash; leave blank to reset to default"
+            }
+            _ => "e.g. openrouter/free for free tier; leave blank to reset to default",
         };
         let preset_selected = presets
             .iter()
@@ -195,12 +209,7 @@ impl Form {
         Self::new(
             format!("Set model \u{2014} {provider}"),
             vec![
-                Self::text(
-                    "Model",
-                    current_model,
-                    false,
-                    Some("e.g. openrouter/free for free tier; leave blank to reset to default"),
-                ),
+                Self::text("Model", current_model, false, Some(model_hint)),
                 Self::select("Preset", presets, preset_selected),
             ],
             FormKind::EditModel {
@@ -560,6 +569,13 @@ mod tests {
         form.handle_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE));
         assert_eq!(form.values()[0], "x");
         assert_eq!(form.select_index(1), 0);
+
+        let mut tf_form = Form::edit_model("tokenfactory", "Qwen3.8-27B");
+        assert_eq!(tf_form.values()[0], "Qwen3.8-27B");
+        assert_eq!(tf_form.select_index(1), 1);
+        tf_form.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
+        tf_form.handle_key(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE));
+        assert_eq!(tf_form.values()[0], "DeepSeek-V4.1-Flash");
     }
 
     #[test]

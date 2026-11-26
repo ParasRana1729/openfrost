@@ -64,7 +64,7 @@ pub(super) fn render_settings(app: &mut App, frame: &mut Frame, area: Rect) {
         provider_line
     });
     lines.push(Line::styled(
-        "     Enter to cycle openai → gemini → openrouter · m to edit model",
+        "     Enter to cycle openai → gemini → openrouter → tokenfactory · m to edit model",
         Style::default().fg(ICE_DIM),
     ));
     lines.push(Line::from(""));

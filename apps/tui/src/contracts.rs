@@ -111,6 +111,7 @@ pub enum ProviderId {
     Openai,
     Gemini,
     Openrouter,
+    Tokenfactory,
 }
 
 // ---------------------------------------------------------------------------
@@ -579,6 +580,7 @@ pub struct AssistantSettings {
     pub hasOpenAIKey: bool,
     pub hasGeminiKey: bool,
     pub hasOpenRouterKey: bool,
+    pub hasTokenFactoryKey: bool,
     pub executionLimits: ExecutionLimits,
     pub onboardingCompletedAt: Option<String>,
 }
@@ -588,6 +590,7 @@ pub struct ProviderModels {
     pub openai: String,
     pub gemini: String,
     pub openrouter: String,
+    pub tokenfactory: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1036,6 +1039,12 @@ mod tests {
                     model: None,
                 })
                 .unwrap(),
+                // tokenfactory-omitted
+                serde_json::to_value(SetProviderConfigRequest::<String> {
+                    provider: "tokenfactory".into(),
+                    model: None,
+                })
+                .unwrap(),
                 // model
                 serde_json::to_value(SetProviderConfigRequest::<String> {
                     provider: "openai".into(),
@@ -1072,6 +1081,12 @@ mod tests {
                 // openrouter
                 serde_json::to_value(SetProviderKeyRequest {
                     provider: "openrouter".into(),
+                    key: "fixture-only-not-a-real-key".into(),
+                })
+                .unwrap(),
+                // tokenfactory
+                serde_json::to_value(SetProviderKeyRequest {
+                    provider: "tokenfactory".into(),
                     key: "fixture-only-not-a-real-key".into(),
                 })
                 .unwrap(),
@@ -1189,7 +1204,7 @@ mod tests {
         );
         variants!(RiskTier, [Auto, Telegram, Local]);
         variants!(MemoryScope, [Global, Project]);
-        variants!(ProviderId, [Openai, Gemini, Openrouter]);
+        variants!(ProviderId, [Openai, Gemini, Openrouter, Tokenfactory]);
         variants!(RoutineState, [Active, Paused]);
         variants!(RoutineOccurrenceState, [Scheduled, Missed, Skipped]);
         variants!(MemoryProposalState, [Pending, Approved, Rejected]);

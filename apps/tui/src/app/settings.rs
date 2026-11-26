@@ -88,7 +88,7 @@ impl App {
                 let Some(settings) = self.settings.settings.clone() else {
                     return;
                 };
-                let order = ["openai", "gemini", "openrouter"];
+                let order = ["openai", "gemini", "openrouter", "tokenfactory"];
                 let current = order
                     .iter()
                     .position(|provider| *provider == settings.provider);

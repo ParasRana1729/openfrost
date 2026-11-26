@@ -7,12 +7,14 @@
       "models": {
         "openai": "gpt-4o-mini",
         "gemini": "gemini-2.0-flash",
-        "openrouter": "free/model"
+        "openrouter": "free/model",
+        "tokenfactory": "Qwen3.8-27B"
       },
       "hasProviderKey": false,
       "hasOpenAIKey": false,
       "hasGeminiKey": false,
       "hasOpenRouterKey": false,
+      "hasTokenFactoryKey": false,
       "executionLimits": {
         "maxSteps": 12,
         "maxWallClockMs": 600000,
@@ -30,12 +32,14 @@
       "models": {
         "openai": "gpt-4o-mini",
         "gemini": "gemini-2.0-flash",
-        "openrouter": "free/model"
+        "openrouter": "free/model",
+        "tokenfactory": "Qwen3.8-27B"
       },
       "hasProviderKey": true,
       "hasOpenAIKey": true,
       "hasGeminiKey": true,
       "hasOpenRouterKey": true,
+      "hasTokenFactoryKey": true,
       "executionLimits": {
         "maxSteps": 12,
         "maxWallClockMs": 600000,
@@ -53,12 +57,14 @@
       "models": {
         "openai": "gpt-4o-mini",
         "gemini": "gemini-2.0-flash",
-        "openrouter": "free/model"
+        "openrouter": "free/model",
+        "tokenfactory": "Qwen3.8-27B"
       },
       "hasProviderKey": true,
       "hasOpenAIKey": true,
       "hasGeminiKey": true,
       "hasOpenRouterKey": true,
+      "hasTokenFactoryKey": true,
       "executionLimits": {
         "maxSteps": 12,
         "maxWallClockMs": 600000,
@@ -76,12 +82,39 @@
       "models": {
         "openai": "gpt-4o-mini",
         "gemini": "gemini-2.0-flash",
-        "openrouter": "free/model"
+        "openrouter": "free/model",
+        "tokenfactory": "Qwen3.8-27B"
       },
       "hasProviderKey": true,
       "hasOpenAIKey": true,
       "hasGeminiKey": true,
       "hasOpenRouterKey": true,
+      "hasTokenFactoryKey": true,
+      "executionLimits": {
+        "maxSteps": 12,
+        "maxWallClockMs": 600000,
+        "maxInputChars": 20000,
+        "maxOutputChars": 100000
+      },
+      "onboardingCompletedAt": "2026-11-24T09:00:00.000Z"
+    }
+  },
+  {
+    "name": "tokenfactory",
+    "value": {
+      "provider": "tokenfactory",
+      "model": "configured-model",
+      "models": {
+        "openai": "gpt-4o-mini",
+        "gemini": "gemini-2.0-flash",
+        "openrouter": "free/model",
+        "tokenfactory": "Qwen3.8-27B"
+      },
+      "hasProviderKey": true,
+      "hasOpenAIKey": true,
+      "hasGeminiKey": true,
+      "hasOpenRouterKey": true,
+      "hasTokenFactoryKey": true,
       "executionLimits": {
         "maxSteps": 12,
         "maxWallClockMs": 600000,

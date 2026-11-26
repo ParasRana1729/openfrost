@@ -169,6 +169,7 @@ describe('background failure logging redaction', () => {
     const orKey = 'sk-or-v1-secret-openrouter-value-123456';
     const openaiKey = 'sk-proj-secret-openai-value-123456';
     const geminiKey = 'AIzaSySecretGeminiKeyValue1234567890';
+    const tfKey = 'rc-secret-tokenfactory-value-123456';
     const bearerToken = 'Bearer super-secret-bearer-token-987654';
     const secretApp = await startApp({
       steps: [
@@ -176,7 +177,7 @@ describe('background failure logging redaction', () => {
           type: 'error',
           message:
             `upstream failed with authorization: ${bearerToken} ` +
-            `openrouter=${orKey} openai=${openaiKey} gemini=${geminiKey}`,
+            `openrouter=${orKey} openai=${openaiKey} gemini=${geminiKey} tokenfactory=${tfKey}`,
         },
       ],
     });
@@ -199,6 +200,7 @@ describe('background failure logging redaction', () => {
       expect(secretApp.logs.contains(orKey)).toBe(false);
       expect(secretApp.logs.contains(openaiKey)).toBe(false);
       expect(secretApp.logs.contains(geminiKey)).toBe(false);
+      expect(secretApp.logs.contains(tfKey)).toBe(false);
       expect(secretApp.logs.contains('super-secret-bearer-token-987654')).toBe(false);
       expect(secretApp.logs.contains('[redacted]')).toBe(true);
     } finally {

@@ -38,7 +38,7 @@ export const bootstrapScriptUrl =
   'https://raw.githubusercontent.com/ParasRana1729/openfrost/main/scripts/bootstrap.ps1';
 export const installCommand = `irm ${bootstrapScriptUrl} | iex`;
 
-export const providers = ['OpenAI', 'Gemini', 'OpenRouter'] as const;
+export const providers = ['OpenAI', 'Gemini', 'OpenRouter', 'AMD Token Factory'] as const;
 
 export const workflows = [
   {
@@ -124,7 +124,7 @@ export const tuiScreens = [
     tabLabel: 'Settings & DPAPI',
     title: 'Provider, model picker, DPAPI keys & export roots',
     caption:
-      'Cycle between OpenAI, Gemini, and OpenRouter, pick or reset models inline with m, seal API keys with Windows DPAPI, and grant export folders.',
+      'Cycle between OpenAI, Gemini, OpenRouter, and AMD Token Factory, pick or reset models inline with m, seal API keys with Windows DPAPI, and grant export folders.',
     imageSrc: withBasePath('/images/tui-settings.png'),
     imageAlt:
       'OpenFrost Settings tab showing the active OpenRouter provider, model configuration, Windows DPAPI key badge, and granted export folder',

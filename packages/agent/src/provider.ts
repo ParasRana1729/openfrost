@@ -102,6 +102,7 @@ const LOG_SECRET_PATTERNS: ReadonlyArray<[RegExp, string]> = [
   [/\bsk-or-v1-[A-Za-z0-9_-]{8,}/g, '[redacted]'],
   [/\bsk-[A-Za-z0-9_-]{8,}/g, '[redacted]'],
   [/\bAIza[0-9A-Za-z_-]{12,}/g, '[redacted]'],
+  [/\brc-[A-Za-z0-9_-]{8,}/g, '[redacted]'],
   [/\bgh[pousr]_[A-Za-z0-9]{16,}/g, '[redacted]'],
   [/\bAKIA[0-9A-Z]{16}\b/g, '[redacted]'],
   [/\b(api[_-]?key|secret|password|passwd|access[_-]?token|auth[_-]?token)\b(\s*[:=]\s*["']?)[^\s"',;}{]+/gi, '$1$2[redacted]'],
