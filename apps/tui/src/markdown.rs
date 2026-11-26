@@ -14,10 +14,12 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 
 /// Default render width used by [`render_markdown`].
+#[cfg_attr(not(test), allow(dead_code))]
 const DEFAULT_RENDER_WIDTH: usize = 80;
 
 /// Converts raw Markdown text into styled Ratatui `Line`s pre-wrapped for an
 /// 80-column viewport.
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn render_markdown(input: &str) -> Vec<Line<'static>> {
     render_markdown_for_width(input, DEFAULT_RENDER_WIDTH)
 }
